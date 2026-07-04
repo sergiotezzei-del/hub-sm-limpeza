@@ -38,7 +38,7 @@
 }
 
 .login-screen {
-  width: min(100%, 520px) !important;
+  width: min(100%, 560px) !important;
   min-height: auto !important;
   flex: 1 !important;
   justify-content: center !important;
@@ -48,8 +48,8 @@
 }
 
 .login-screen .brand-mark {
-  width: clamp(96px, 23vw, 132px) !important;
-  height: clamp(96px, 23vw, 132px) !important;
+  width: clamp(150px, 42vw, 220px) !important;
+  height: clamp(150px, 42vw, 220px) !important;
   background: transparent url("/santa-maria-symbol.svg") center / contain no-repeat !important;
   border: 0 !important;
   border-radius: 0 !important;
@@ -59,19 +59,37 @@
 }
 
 .login-screen .title-group {
-  gap: 5px !important;
-}
-
-.login-screen .eyebrow {
-  font-size: clamp(0.68rem, 2.5vw, 0.82rem) !important;
-  line-height: 1.05 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  gap: 6px !important;
+  width: 100% !important;
 }
 
 .login-screen h1 {
+  order: 1 !important;
+  margin: 0 !important;
+  width: 100% !important;
   white-space: nowrap !important;
-  font-size: clamp(0.82rem, 3.05vw, 1.38rem) !important;
+  overflow: hidden !important;
+  text-overflow: clip !important;
+  text-align: center !important;
+  color: #1f2933 !important;
+  font-size: clamp(0.78rem, 3.25vw, 1.45rem) !important;
   line-height: 1.05 !important;
-  letter-spacing: -0.035em !important;
+  letter-spacing: -0.045em !important;
+  font-weight: 900 !important;
+}
+
+.login-screen .eyebrow {
+  order: 2 !important;
+  margin: 0 !important;
+  color: #c2410c !important;
+  font-size: clamp(0.68rem, 2.35vw, 0.86rem) !important;
+  line-height: 1.1 !important;
+  font-weight: 800 !important;
+  text-align: center !important;
+  text-transform: uppercase !important;
 }
 
 .login-form {
@@ -104,12 +122,16 @@ footer::before {
 
 @media (max-height: 700px) {
   .login-screen {
-    gap: 9px !important;
+    gap: 8px !important;
   }
 
   .login-screen .brand-mark {
-    width: 84px !important;
-    height: 84px !important;
+    width: clamp(126px, 34vw, 160px) !important;
+    height: clamp(126px, 34vw, 160px) !important;
+  }
+
+  .login-screen h1 {
+    font-size: clamp(0.72rem, 3vw, 1.1rem) !important;
   }
 
   .login-form {
