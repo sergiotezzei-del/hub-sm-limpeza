@@ -10,6 +10,11 @@ export type Employee = {
   saturday: string;
 };
 
+export type EmployeeProfile = {
+  employeeId: EmployeeId;
+  photoData?: string;
+};
+
 export type Activity = {
   id: string;
   employeeId: EmployeeId;
@@ -43,4 +48,22 @@ export type CleaningOrder = {
   solicitante: "Neia";
   status: OrderStatus;
   itens: OrderItem[];
+  deletedAt?: string;
+  completedAt?: string;
+};
+
+export type StockCheckItem = {
+  id: string;
+  productName: string;
+  unit: string;
+  quantity: number;
+  observation?: string;
+};
+
+export type StockCheck = {
+  id: string;
+  data: string;
+  hora: string;
+  conferente: "Neia";
+  itens: StockCheckItem[];
 };
