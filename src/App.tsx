@@ -1,16 +1,40 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
 import { activities, employees, products } from "./data";
 import {
   addOrder,
+  addStockCheck,
   deleteOrder as removeStoredOrder,
+  getEmployeeProfiles,
+  getLocalEmployeeProfiles,
   getLocalOrders,
+  getNeiaOrderHistory,
+  getOrderHistory,
   getOrders,
   isCloudStorageEnabled,
+  saveEmployeePhoto,
   updateOrder as updateStoredOrder,
 } from "./storage";
-import type { CleaningOrder, EmployeeId, OrderItem, UserRole } from "./types";
+import type {
+  CleaningOrder,
+  EmployeeId,
+  EmployeeProfile,
+  OrderItem,
+  StockCheck,
+  StockCheckItem,
+  UserRole,
+} from "./types";
 
-type View = "login" | "employee" | "order-form" | "admin" | "orders";
+type View =
+  | "login"
+  | "employee"
+  | "employee-preview"
+  | "order-form"
+  | "admin"
+  | "orders"
+  | "profiles"
+  | "stock-check"
+  | "order-history"
+  | "neia-history";
 
 type ManualDraft = {
   name: string;
@@ -18,8 +42,15 @@ type ManualDraft = {
   observation: string;
 };
 
+type SavedSession = {
+  view: View;
+  currentUser: UserRole | null;
+  previewEmployeeId: EmployeeId | null;
+};
+
 const BRAND = "SANTA MARIA SOLUÇÕES IMOBILIÁRIAS";
 const FOOTER = "TEZZEI - Operações & Processos";
+const SESSION_KEY = "hub-sm-active-session";
 
 const passwords: Record<string, UserRole> = {
   "1234": "tezzei",
@@ -34,16 +65,26 @@ const emptyManualDraft: ManualDraft = {
   observation: "",
 };
 
+const employeeIds = Object.keys(employees) as EmployeeId[];
+
 function App() {
-  const [view, setView] = useState<View>("login");
-  const [currentUser, setCurrentUser] = useState<UserRole | null>(null);
+  const initialSession = getInitialSession();
+  const [view, setView] = useState<View>(initialSession.view);
+  const [currentUser, setCurrentUser] = useState<UserRole | null>(initialSession.currentUser);
+  const [previewEmployeeId, setPreviewEmployeeId] = useState<EmployeeId | null>(
+    initialSession.previewEmployeeId,
+  );
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState("");
-  const [orders, setOrders] = useState<CleaningOrder[]>(() => getLocalOrders());
+  const [orders, setOrders] = useState<CleaningOrder[]>(() => getLocalOrders().filter((order) => !order.deletedAt));
+  const [historyOrders, setHistoryOrders] = useState<CleaningOrder[]>([]);
+  const [profiles, setProfiles] = useState<Record<EmployeeId, EmployeeProfile>>(() => getLocalEmployeeProfiles());
   const [quantities, setQuantities] = useState<Record<string, string>>({});
   const [manualOpen, setManualOpen] = useState(false);
   const [manualDraft, setManualDraft] = useState<ManualDraft>(emptyManualDraft);
   const [manualItems, setManualItems] = useState<OrderItem[]>([]);
+  const [stockQuantities, setStockQuantities] = useState<Record<string, string>>({});
+  const [stockObservations, setStockObservations] = useState<Record<string, string>>({});
   const [notice, setNotice] = useState("");
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<OrderItem[]>([]);
@@ -54,6 +95,7 @@ function App() {
   useEffect(() => {
     document.title = `${BRAND} - Central Operacional HUB SM`;
     void refreshOrders();
+    void refreshProfiles();
 
     const interval = window.setInterval(() => {
       if (isCloudStorageEnabled()) {
@@ -63,6 +105,13 @@ function App() {
 
     return () => window.clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    if (currentUser) {
+      const session: SavedSession = { view, currentUser, previewEmployeeId };
+      window.sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
+    }
+  }, [view, currentUser, previewEmployeeId]);
 
   useEffect(() => {
     const resetScroll = () => {
@@ -79,23 +128,29 @@ function App() {
       window.cancelAnimationFrame(frame);
       window.clearTimeout(timer);
     };
-  }, [view, currentUser]);
+  }, [view, currentUser, previewEmployeeId]);
 
   const newOrders = useMemo(
-    () => orders.filter((order) => order.status === "Novo"),
+    () => orders.filter((order) => order.status === "Novo" && !order.deletedAt),
     [orders],
   );
 
-  const employee =
-    currentUser && currentUser !== "tezzei" ? employees[currentUser] : null;
+  const activeEmployeeId = getActiveEmployeeId(view, currentUser, previewEmployeeId);
 
   async function refreshOrders() {
     const currentOrders = await getOrders();
     setOrders(currentOrders);
   }
 
+  async function refreshProfiles() {
+    const currentProfiles = await getEmployeeProfiles();
+    setProfiles(currentProfiles);
+  }
+
   function goToLogin() {
+    window.sessionStorage.removeItem(SESSION_KEY);
     setCurrentUser(null);
+    setPreviewEmployeeId(null);
     setView("login");
     setPassword("");
     setLoginError("");
@@ -119,9 +174,11 @@ function App() {
     }
 
     setCurrentUser(user);
+    setPreviewEmployeeId(null);
     setLoginError("");
     setNotice("");
     void refreshOrders();
+    void refreshProfiles();
     setView(user === "tezzei" ? "admin" : "employee");
   }
 
@@ -199,6 +256,48 @@ function App() {
     } catch {
       await refreshOrders();
       setNotice("Pedido salvo neste aparelho. Falha ao sincronizar online.");
+      setView("employee");
+    }
+  }
+
+  async function sendStockCheck() {
+    const items = products
+      .map((product) => {
+        const quantity = Number(stockQuantities[product.id]);
+        const observation = stockObservations[product.id]?.trim();
+        if ((!Number.isFinite(quantity) || quantity <= 0) && !observation) return null;
+        return {
+          id: product.id,
+          productName: product.name,
+          unit: product.unit,
+          quantity: Number.isFinite(quantity) && quantity > 0 ? quantity : 0,
+          observation: observation || undefined,
+        };
+      })
+      .filter((item): item is StockCheckItem => Boolean(item));
+
+    if (items.length === 0) {
+      setNotice("Informe pelo menos um item para conferir o estoque.");
+      return;
+    }
+
+    const now = new Date();
+    const check: StockCheck = {
+      id: createId(),
+      data: now.toLocaleDateString("pt-BR"),
+      hora: now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }),
+      conferente: "Neia",
+      itens: items,
+    };
+
+    try {
+      await addStockCheck(check);
+      setStockQuantities({});
+      setStockObservations({});
+      setNotice("Conferência de estoque enviada para Tezzei.");
+      setView("employee");
+    } catch {
+      setNotice("Conferência salva neste aparelho. Falha ao sincronizar online.");
       setView("employee");
     }
   }
@@ -286,11 +385,52 @@ function App() {
       await removeStoredOrder(deleteTarget.id);
       await refreshOrders();
       setDeleteTarget(null);
-      setNotice("Pedido excluído.");
+      setNotice("Pedido excluído e enviado ao histórico.");
     } catch {
       await refreshOrders();
       setDeleteTarget(null);
       setNotice("Pedido excluído apenas neste aparelho. Falha ao sincronizar online.");
+    }
+  }
+
+  async function openOrderHistory() {
+    setNotice("");
+    const history = await getOrderHistory();
+    setHistoryOrders(history);
+    setView("order-history");
+  }
+
+  async function openNeiaHistory() {
+    setNotice("");
+    const history = await getNeiaOrderHistory();
+    setHistoryOrders(history);
+    setView("neia-history");
+  }
+
+  function openProfiles() {
+    setNotice("");
+    setPreviewEmployeeId(null);
+    void refreshProfiles();
+    setView("profiles");
+  }
+
+  function previewEmployee(employeeId: EmployeeId) {
+    setNotice("");
+    setPreviewEmployeeId(employeeId);
+    setView("employee-preview");
+  }
+
+  async function handlePhotoChange(employeeId: EmployeeId, file: File | null) {
+    if (!file) return;
+
+    try {
+      const photoData = await imageFileToDataUrl(file);
+      await saveEmployeePhoto(employeeId, photoData);
+      const currentProfiles = await getEmployeeProfiles();
+      setProfiles(currentProfiles);
+      setNotice("Foto cadastrada.");
+    } catch {
+      setNotice("Não foi possível salvar a foto.");
     }
   }
 
@@ -305,15 +445,24 @@ function App() {
         />
       )}
 
-      {view === "employee" && employee && (
+      {(view === "employee" || view === "employee-preview") && activeEmployeeId && (
         <EmployeeScreen
-          employeeId={employee.id}
+          employeeId={activeEmployeeId}
+          profile={profiles[activeEmployeeId]}
           notice={notice}
+          adminPreview={view === "employee-preview"}
           onLogout={goToLogin}
+          onBackToProfiles={() => setView("profiles")}
           onNewOrder={() => {
             setNotice("");
             setView("order-form");
           }}
+          onStockCheck={() => {
+            setNotice("");
+            setView("stock-check");
+          }}
+          onOpenHistory={openNeiaHistory}
+          onProfilePhotoChange={handlePhotoChange}
         />
       )}
 
@@ -326,7 +475,7 @@ function App() {
           notice={notice}
           onBack={() => {
             setNotice("");
-            setView("employee");
+            setView(activeEmployeeId ? "employee" : "admin");
           }}
           onLogout={goToLogin}
           onQuantityChange={setProductQuantity}
@@ -335,6 +484,24 @@ function App() {
           onAddManualItem={addManualItem}
           onRemoveManualItem={removeManualItem}
           onSendOrder={sendOrder}
+        />
+      )}
+
+      {view === "stock-check" && (
+        <StockCheckScreen
+          quantities={stockQuantities}
+          observations={stockObservations}
+          notice={notice}
+          onBack={() => {
+            setNotice("");
+            setView("employee");
+          }}
+          onLogout={goToLogin}
+          onQuantityChange={(productId, value) => setStockQuantities((current) => ({ ...current, [productId]: value }))}
+          onObservationChange={(productId, value) =>
+            setStockObservations((current) => ({ ...current, [productId]: value }))
+          }
+          onSendStockCheck={sendStockCheck}
         />
       )}
 
@@ -348,6 +515,20 @@ function App() {
             void refreshOrders();
             setView("orders");
           }}
+          onOpenProfiles={openProfiles}
+          onOpenOrderHistory={openOrderHistory}
+          onOpenNeiaHistory={openNeiaHistory}
+        />
+      )}
+
+      {view === "profiles" && (
+        <ProfilesScreen
+          profiles={profiles}
+          notice={notice}
+          onBack={() => setView("admin")}
+          onLogout={goToLogin}
+          onPreviewEmployee={previewEmployee}
+          onProfilePhotoChange={handlePhotoChange}
         />
       )}
 
@@ -375,6 +556,17 @@ function App() {
           onSaveEdit={saveEdit}
           onMarkDone={markOrderDone}
           onRequestDelete={setDeleteTarget}
+        />
+      )}
+
+      {(view === "order-history" || view === "neia-history") && (
+        <HistoryScreen
+          title={view === "order-history" ? "Histórico de Concluídos e Excluídos" : "Histórico de Pedidos da Neia"}
+          subtitle={view === "order-history" ? "Pedidos concluídos ou apagados" : "Todos os pedidos feitos pela Neia"}
+          orders={historyOrders}
+          onBack={() => setView("admin")}
+          onLogout={goToLogin}
+          onCopyOrder={copyOrder}
         />
       )}
 
@@ -425,30 +617,62 @@ function LoginScreen({ password, loginError, onPasswordChange, onSubmit }: Login
 
 type EmployeeScreenProps = {
   employeeId: EmployeeId;
+  profile: EmployeeProfile;
   notice: string;
+  adminPreview: boolean;
   onLogout: () => void;
+  onBackToProfiles: () => void;
   onNewOrder: () => void;
+  onStockCheck: () => void;
+  onOpenHistory: () => void;
+  onProfilePhotoChange: (employeeId: EmployeeId, file: File | null) => void;
 };
 
-function EmployeeScreen({ employeeId, notice, onLogout, onNewOrder }: EmployeeScreenProps) {
+function EmployeeScreen({
+  employeeId,
+  profile,
+  notice,
+  adminPreview,
+  onLogout,
+  onBackToProfiles,
+  onNewOrder,
+  onStockCheck,
+  onOpenHistory,
+  onProfilePhotoChange,
+}: EmployeeScreenProps) {
   const employee = employees[employeeId];
   const employeeActivities = activities.filter((activity) => activity.employeeId === employeeId);
 
   return (
     <section className="screen">
-      <TopBar title={employee.name} subtitle="Módulo Limpeza" onLogout={onLogout} />
+      <EmployeeHeader
+        employeeId={employeeId}
+        profile={profile}
+        adminPreview={adminPreview}
+        onLogout={onLogout}
+        onBackToProfiles={onBackToProfiles}
+        onProfilePhotoChange={onProfilePhotoChange}
+      />
       {notice && <p className="success-message">{notice}</p>}
 
-      <section className="info-grid" aria-label="Horários">
+      <section className="info-grid work-schedule-card" aria-label="Horários">
         <InfoCard title="Horário" value={employee.schedule} />
         <InfoCard title="Almoço" value={employee.lunch} />
         <InfoCard title="Sábado" value={employee.saturday} />
       </section>
 
       {employeeId === "neia" && (
-        <button className="primary-button wide-button" type="button" onClick={onNewOrder}>
-          Fazer Pedido Sinval
-        </button>
+        <section className="quick-actions">
+          <button className="primary-button wide-button" type="button" onClick={onNewOrder}>
+            Fazer Pedido Sinval
+          </button>
+          <button className="secondary-button wide-button" type="button" onClick={onStockCheck}>
+            Conferência de Estoque
+          </button>
+          <button className="ghost-button wide-button" type="button" onClick={onOpenHistory}>
+            Histórico de Pedidos
+          </button>
+        </section>
       )}
 
       <section className="section-block">
@@ -467,6 +691,60 @@ function EmployeeScreen({ employeeId, notice, onLogout, onNewOrder }: EmployeeSc
         </div>
       </section>
     </section>
+  );
+}
+
+type EmployeeHeaderProps = {
+  employeeId: EmployeeId;
+  profile: EmployeeProfile;
+  adminPreview: boolean;
+  onLogout: () => void;
+  onBackToProfiles: () => void;
+  onProfilePhotoChange: (employeeId: EmployeeId, file: File | null) => void;
+};
+
+function EmployeeHeader({
+  employeeId,
+  profile,
+  adminPreview,
+  onLogout,
+  onBackToProfiles,
+  onProfilePhotoChange,
+}: EmployeeHeaderProps) {
+  const employee = employees[employeeId];
+
+  function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
+    onProfilePhotoChange(employeeId, event.target.files?.[0] ?? null);
+    event.target.value = "";
+  }
+
+  return (
+    <header className="top-bar employee-top-bar">
+      <div className="employee-photo-box">
+        {profile?.photoData ? (
+          <img src={profile.photoData} alt={`Foto de ${employee.name}`} />
+        ) : (
+          <span>{employee.name.slice(0, 1)}</span>
+        )}
+      </div>
+      <div className="employee-title-block">
+        <p className="eyebrow">{BRAND}</p>
+        <h1>{employee.name}</h1>
+        <p>{adminPreview ? "Visualização pelo Painel Tezzei" : "Módulo Limpeza"}</p>
+        <label className="photo-button">
+          Cadastrar / alterar foto
+          <input type="file" accept="image/*" capture="environment" onChange={handleFileChange} />
+        </label>
+      </div>
+      <div className="top-actions">
+        {adminPreview && (
+          <button className="ghost-button" type="button" onClick={onBackToProfiles}>
+            Voltar
+          </button>
+        )}
+        <button className="logout-button" type="button" onClick={onLogout}>Sair</button>
+      </div>
+    </header>
   );
 }
 
@@ -504,7 +782,7 @@ function OrderFormScreen({
   return (
     <section className="screen">
       <TopBar title="Fazer Pedido Sinval" subtitle="Solicitante: Neia" onLogout={onLogout} />
-      <button className="ghost-button" type="button" onClick={onBack}>Voltar para Neia</button>
+      <button className="ghost-button" type="button" onClick={onBack}>Voltar</button>
       {notice && <p className="notice-message">{notice}</p>}
 
       <section className="product-list" aria-label="Produtos cadastrados">
@@ -589,14 +867,86 @@ function OrderFormScreen({
   );
 }
 
+type StockCheckScreenProps = {
+  quantities: Record<string, string>;
+  observations: Record<string, string>;
+  notice: string;
+  onBack: () => void;
+  onLogout: () => void;
+  onQuantityChange: (productId: string, value: string) => void;
+  onObservationChange: (productId: string, value: string) => void;
+  onSendStockCheck: () => void;
+};
+
+function StockCheckScreen({
+  quantities,
+  observations,
+  notice,
+  onBack,
+  onLogout,
+  onQuantityChange,
+  onObservationChange,
+  onSendStockCheck,
+}: StockCheckScreenProps) {
+  return (
+    <section className="screen">
+      <TopBar title="Conferência de Estoque" subtitle="Solicitante: Neia" onLogout={onLogout} />
+      <button className="ghost-button" type="button" onClick={onBack}>Voltar para Neia</button>
+      {notice && <p className="notice-message">{notice}</p>}
+
+      <section className="product-list" aria-label="Conferência de estoque">
+        {products.map((product) => (
+          <label className="product-row stock-row" key={product.id}>
+            <span>
+              <strong>{product.name}</strong>
+              <small>{product.unit}</small>
+            </span>
+            <input
+              type="number"
+              inputMode="decimal"
+              min="0"
+              placeholder="Qtd"
+              value={quantities[product.id] ?? ""}
+              onChange={(event) => onQuantityChange(product.id, event.target.value)}
+              aria-label={`Quantidade atual de ${product.name}`}
+            />
+            <input
+              type="text"
+              placeholder="Obs."
+              value={observations[product.id] ?? ""}
+              onChange={(event) => onObservationChange(product.id, event.target.value)}
+              aria-label={`Observação de ${product.name}`}
+            />
+          </label>
+        ))}
+      </section>
+
+      <button className="primary-button wide-button sticky-action" type="button" onClick={onSendStockCheck}>
+        Enviar Conferência
+      </button>
+    </section>
+  );
+}
+
 type AdminScreenProps = {
   newOrdersCount: number;
   onlineEnabled: boolean;
   onLogout: () => void;
   onOpenOrders: () => void;
+  onOpenProfiles: () => void;
+  onOpenOrderHistory: () => void;
+  onOpenNeiaHistory: () => void;
 };
 
-function AdminScreen({ newOrdersCount, onlineEnabled, onLogout, onOpenOrders }: AdminScreenProps) {
+function AdminScreen({
+  newOrdersCount,
+  onlineEnabled,
+  onLogout,
+  onOpenOrders,
+  onOpenProfiles,
+  onOpenOrderHistory,
+  onOpenNeiaHistory,
+}: AdminScreenProps) {
   return (
     <section className="screen">
       <TopBar
@@ -620,12 +970,82 @@ function AdminScreen({ newOrdersCount, onlineEnabled, onLogout, onOpenOrders }: 
           <span>Pedidos Pendentes</span>
           <strong>{newOrdersCount > 0 ? `Pedidos Pendentes: ${newOrdersCount}` : "Nenhum pedido pendente"}</strong>
         </button>
-        <AdminCard title="Estoque" detail="Em breve — produtos e inventário" />
+        <button className="admin-card action-card" type="button" onClick={onOpenProfiles}>
+          <span>Ver perfil usuário</span>
+          <strong>Acessar tela da Neia, Selma ou Helena</strong>
+        </button>
+        <button className="admin-card action-card" type="button" onClick={onOpenOrderHistory}>
+          <span>Histórico</span>
+          <strong>Concluídos e excluídos</strong>
+        </button>
+        <button className="admin-card action-card" type="button" onClick={onOpenNeiaHistory}>
+          <span>Histórico Neia</span>
+          <strong>Todos os pedidos da Neia</strong>
+        </button>
+        <AdminCard title="Estoque" detail="Conferência pela Neia" />
         <AdminCard title="Manutenção" detail="Em breve — chamados internos" />
         <AdminCard title="Chaves" detail="Em breve — controle de acessos" />
         <AdminCard title="Patrimônio" detail="Em breve — itens e equipamentos" />
         <AdminCard title="Relatórios" detail="Em breve — indicadores" />
-        <AdminCard title="Equipe" detail="Neia, Selma e Helena" />
+      </section>
+    </section>
+  );
+}
+
+type ProfilesScreenProps = {
+  profiles: Record<EmployeeId, EmployeeProfile>;
+  notice: string;
+  onBack: () => void;
+  onLogout: () => void;
+  onPreviewEmployee: (employeeId: EmployeeId) => void;
+  onProfilePhotoChange: (employeeId: EmployeeId, file: File | null) => void;
+};
+
+function ProfilesScreen({
+  profiles,
+  notice,
+  onBack,
+  onLogout,
+  onPreviewEmployee,
+  onProfilePhotoChange,
+}: ProfilesScreenProps) {
+  return (
+    <section className="screen">
+      <TopBar title="Perfis das Usuárias" subtitle="Visualizar telas sem digitar senha" onLogout={onLogout} />
+      <button className="ghost-button" type="button" onClick={onBack}>Voltar ao Painel</button>
+      {notice && <p className="success-message">{notice}</p>}
+
+      <section className="profile-grid">
+        {employeeIds.map((employeeId) => {
+          const employee = employees[employeeId];
+          const profile = profiles[employeeId];
+          return (
+            <article className="profile-card" key={employeeId}>
+              <div className="employee-photo-box profile-photo-box">
+                {profile?.photoData ? <img src={profile.photoData} alt={`Foto de ${employee.name}`} /> : <span>{employee.name.slice(0, 1)}</span>}
+              </div>
+              <div>
+                <h2>{employee.name}</h2>
+                <p>{employee.schedule}</p>
+              </div>
+              <label className="photo-button">
+                Cadastrar / alterar foto
+                <input
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  onChange={(event) => {
+                    onProfilePhotoChange(employeeId, event.target.files?.[0] ?? null);
+                    event.target.value = "";
+                  }}
+                />
+              </label>
+              <button className="primary-button" type="button" onClick={() => onPreviewEmployee(employeeId)}>
+                Ver tela da usuária
+              </button>
+            </article>
+          );
+        })}
       </section>
     </section>
   );
@@ -681,29 +1101,12 @@ function OrdersScreen({
             const editing = editingOrderId === order.id;
             return (
               <article className="order-card" key={order.id}>
-                <div className="order-head">
-                  <div>
-                    <p className="card-kicker">{order.data} às {order.hora}</p>
-                    <h2>{order.solicitante}</h2>
-                  </div>
-                  <span className={order.status === "Novo" ? "status-new" : "status-done"}>{order.status}</span>
-                </div>
+                <OrderHeader order={order} />
 
                 {editing ? (
                   <EditOrderItems items={editDraft} onUpdateDraftItem={onUpdateDraftItem} onRemoveDraftItem={onRemoveDraftItem} />
                 ) : (
-                  <ul className="item-list">
-                    {order.itens.map((item) => (
-                      <li key={item.id}>
-                        <span>
-                          {item.productName}
-                          {item.manual && <small>Produto não cadastrado</small>}
-                          {item.observation && <small>{item.observation}</small>}
-                        </span>
-                        <strong>{item.quantity} {item.unit}</strong>
-                      </li>
-                    ))}
-                  </ul>
+                  <OrderItems order={order} />
                 )}
 
                 <div className="button-grid">
@@ -724,6 +1127,43 @@ function OrdersScreen({
               </article>
             );
           })}
+        </section>
+      )}
+    </section>
+  );
+}
+
+type HistoryScreenProps = {
+  title: string;
+  subtitle: string;
+  orders: CleaningOrder[];
+  onBack: () => void;
+  onLogout: () => void;
+  onCopyOrder: (order: CleaningOrder) => void;
+};
+
+function HistoryScreen({ title, subtitle, orders, onBack, onLogout, onCopyOrder }: HistoryScreenProps) {
+  return (
+    <section className="screen">
+      <TopBar title={title} subtitle={subtitle} onLogout={onLogout} />
+      <button className="ghost-button" type="button" onClick={onBack}>Voltar ao Painel</button>
+
+      {orders.length === 0 ? (
+        <section className="empty-state">
+          <h2>Nenhum histórico encontrado</h2>
+          <p>Os pedidos concluídos ou excluídos aparecerão aqui.</p>
+        </section>
+      ) : (
+        <section className="orders-list" aria-label="Histórico de pedidos">
+          {orders.map((order) => (
+            <article className="order-card" key={order.id}>
+              <OrderHeader order={order} />
+              <OrderItems order={order} />
+              <div className="button-grid">
+                <button className="secondary-button" type="button" onClick={() => onCopyOrder(order)}>Copiar Pedido</button>
+              </div>
+            </article>
+          ))}
         </section>
       )}
     </section>
@@ -818,6 +1258,41 @@ function AdminCard({ title, detail }: AdminCardProps) {
   );
 }
 
+type OrderHeaderProps = { order: CleaningOrder };
+
+function OrderHeader({ order }: OrderHeaderProps) {
+  return (
+    <div className="order-head">
+      <div>
+        <p className="card-kicker">{order.data} às {order.hora}</p>
+        <h2>{order.solicitante}</h2>
+        {order.completedAt && <small>Concluído em {formatDateTime(order.completedAt)}</small>}
+        {order.deletedAt && <small>Excluído em {formatDateTime(order.deletedAt)}</small>}
+      </div>
+      <span className={getStatusClass(order)}>{getOrderStatusLabel(order)}</span>
+    </div>
+  );
+}
+
+type OrderItemsProps = { order: CleaningOrder };
+
+function OrderItems({ order }: OrderItemsProps) {
+  return (
+    <ul className="item-list">
+      {order.itens.map((item) => (
+        <li key={item.id}>
+          <span>
+            {item.productName}
+            {item.manual && <small>Produto não cadastrado</small>}
+            {item.observation && <small>{item.observation}</small>}
+          </span>
+          <strong>{item.quantity} {item.unit}</strong>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 type DeleteDialogProps = {
   order: CleaningOrder;
   onCancel: () => void;
@@ -829,7 +1304,7 @@ function DeleteDialog({ order, onCancel, onConfirm }: DeleteDialogProps) {
     <div className="dialog-backdrop" role="presentation">
       <section className="dialog" role="dialog" aria-modal="true" aria-labelledby="delete-title">
         <h2 id="delete-title">Tem certeza que deseja excluir este pedido?</h2>
-        <p>Pedido de {order.solicitante}, {order.data} às {order.hora}.</p>
+        <p>Pedido de {order.solicitante}, {order.data} às {order.hora}. Ele será enviado para o histórico.</p>
         <div className="button-grid">
           <button className="ghost-button" type="button" onClick={onCancel}>Cancelar</button>
           <button className="danger-button" type="button" onClick={onConfirm}>Excluir</button>
@@ -837,6 +1312,94 @@ function DeleteDialog({ order, onCancel, onConfirm }: DeleteDialogProps) {
       </section>
     </div>
   );
+}
+
+function getActiveEmployeeId(
+  view: View,
+  currentUser: UserRole | null,
+  previewEmployeeId: EmployeeId | null,
+): EmployeeId | null {
+  if (view === "employee-preview") return previewEmployeeId;
+  if (currentUser && currentUser !== "tezzei") return currentUser;
+  return null;
+}
+
+function getOrderStatusLabel(order: CleaningOrder) {
+  if (order.deletedAt) return "Excluído";
+  if (order.status === "Pedido feito") return "Concluído";
+  return "Novo";
+}
+
+function getStatusClass(order: CleaningOrder) {
+  if (order.deletedAt) return "status-deleted";
+  if (order.status === "Pedido feito") return "status-done";
+  return "status-new";
+}
+
+function formatDateTime(value: string) {
+  try {
+    return new Date(value).toLocaleString("pt-BR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return value;
+  }
+}
+
+function getInitialSession(): SavedSession {
+  const fallback: SavedSession = { view: "login", currentUser: null, previewEmployeeId: null };
+
+  if (typeof window === "undefined") return fallback;
+
+  const navigation = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined;
+  const isReload = navigation?.type === "reload";
+  if (!isReload) return fallback;
+
+  try {
+    const storedSession = window.sessionStorage.getItem(SESSION_KEY);
+    if (!storedSession) return fallback;
+    const parsed = JSON.parse(storedSession) as SavedSession;
+    if (!parsed.currentUser) return fallback;
+    return parsed;
+  } catch {
+    return fallback;
+  }
+}
+
+async function imageFileToDataUrl(file: File): Promise<string> {
+  const rawDataUrl = await readFileAsDataUrl(file);
+  const image = await loadImage(rawDataUrl);
+  const maxSize = 520;
+  const scale = Math.min(1, maxSize / Math.max(image.width, image.height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(image.width * scale));
+  canvas.height = Math.max(1, Math.round(image.height * scale));
+  const context = canvas.getContext("2d");
+  if (!context) return rawDataUrl;
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL("image/jpeg", 0.78);
+}
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = reject;
+    image.src = src;
+  });
 }
 
 function createId() {
