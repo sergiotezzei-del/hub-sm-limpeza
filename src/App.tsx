@@ -18,6 +18,9 @@ type ManualDraft = {
   observation: string;
 };
 
+const BRAND = "SANTA MARIA SOLUÇÕES IMOBILIÁRIAS";
+const FOOTER = "TEZZEI - Operações & Processos";
+
 const passwords: Record<string, UserRole> = {
   "1234": "tezzei",
   neia1234: "neia",
@@ -49,6 +52,7 @@ function App() {
   const onlineEnabled = isCloudStorageEnabled();
 
   useEffect(() => {
+    document.title = `${BRAND} - Central Operacional HUB SM`;
     void refreshOrders();
 
     const interval = window.setInterval(() => {
@@ -382,7 +386,7 @@ function App() {
         />
       )}
 
-      <footer>Desenvolvido por TEZZEI</footer>
+      <footer>{FOOTER}</footer>
     </main>
   );
 }
@@ -397,10 +401,10 @@ type LoginScreenProps = {
 function LoginScreen({ password, loginError, onPasswordChange, onSubmit }: LoginScreenProps) {
   return (
     <section className="screen login-screen">
-      <div className="brand-mark" aria-hidden="true">T</div>
+      <div className="brand-mark" aria-hidden="true">SM</div>
       <div className="title-group center">
         <p className="eyebrow">Central Operacional HUB SM</p>
-        <h1>TEZZEI HUB</h1>
+        <h1>{BRAND}</h1>
       </div>
 
       <form className="login-form" onSubmit={onSubmit}>
@@ -783,7 +787,7 @@ function TopBar({ title, subtitle, onLogout }: TopBarProps) {
   return (
     <header className="top-bar">
       <div>
-        <p className="eyebrow">TEZZEI HUB</p>
+        <p className="eyebrow">{BRAND}</p>
         <h1>{title}</h1>
         <p>{subtitle}</p>
       </div>
