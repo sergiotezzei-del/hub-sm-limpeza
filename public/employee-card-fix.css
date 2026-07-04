@@ -32,3 +32,87 @@
   color: #1f2933 !important;
   font-size: 1.15rem !important;
 }
+
+.app-shell {
+  min-height: 100svh !important;
+}
+
+.login-screen {
+  width: min(100%, 520px) !important;
+  min-height: auto !important;
+  flex: 1 !important;
+  justify-content: center !important;
+  gap: 12px !important;
+  padding-top: 8px !important;
+  padding-bottom: 10px !important;
+}
+
+.login-screen .brand-mark {
+  width: clamp(96px, 23vw, 132px) !important;
+  height: clamp(96px, 23vw, 132px) !important;
+  background: transparent url("/santa-maria-symbol.svg") center / contain no-repeat !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  color: transparent !important;
+  font-size: 0 !important;
+}
+
+.login-screen .title-group {
+  gap: 5px !important;
+}
+
+.login-screen .eyebrow {
+  font-size: clamp(0.68rem, 2.5vw, 0.82rem) !important;
+  line-height: 1.05 !important;
+}
+
+.login-screen h1 {
+  white-space: nowrap !important;
+  font-size: clamp(0.82rem, 3.05vw, 1.38rem) !important;
+  line-height: 1.05 !important;
+  letter-spacing: -0.035em !important;
+}
+
+.login-form {
+  gap: 10px !important;
+  padding: 14px !important;
+}
+
+.login-form input {
+  min-height: 44px !important;
+}
+
+.login-form .primary-button {
+  min-height: 46px !important;
+}
+
+footer {
+  padding: 8px 16px 10px !important;
+  line-height: 1.15 !important;
+}
+
+footer::before {
+  content: "desenvolvido por";
+  display: block;
+  margin-bottom: 2px;
+  color: #667085;
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: lowercase;
+}
+
+@media (max-height: 700px) {
+  .login-screen {
+    gap: 9px !important;
+  }
+
+  .login-screen .brand-mark {
+    width: 84px !important;
+    height: 84px !important;
+  }
+
+  .login-form {
+    padding: 12px !important;
+  }
+}
