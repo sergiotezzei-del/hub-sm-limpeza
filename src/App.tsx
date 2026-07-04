@@ -63,6 +63,7 @@ function App() {
     setLoginError("");
     setNotice("");
     setEditingOrderId(null);
+    setEditDraft([]);
   }
 
   function handleLogin(event: FormEvent<HTMLFormElement>) {
@@ -82,10 +83,7 @@ function App() {
   }
 
   function setProductQuantity(productId: string, value: string) {
-    setQuantities((current) => ({
-      ...current,
-      [productId]: value,
-    }));
+    setQuantities((current) => ({ ...current, [productId]: value }));
   }
 
   function addManualItem() {
@@ -96,16 +94,17 @@ function App() {
       return;
     }
 
-    const item: OrderItem = {
-      id: createId(),
-      productName: manualDraft.name.trim(),
-      unit: "Produto não cadastrado",
-      quantity,
-      manual: true,
-      observation: manualDraft.observation.trim() || undefined,
-    };
-
-    setManualItems((current) => [...current, item]);
+    setManualItems((current) => [
+      ...current,
+      {
+        id: createId(),
+        productName: manualDraft.name.trim(),
+        unit: "Produto não cadastrado",
+        quantity,
+        manual: true,
+        observation: manualDraft.observation.trim() || undefined,
+      },
+    ]);
     setManualDraft(emptyManualDraft);
     setNotice("");
   }
@@ -118,11 +117,7 @@ function App() {
     const selectedProducts = products
       .map((product) => {
         const quantity = Number(quantities[product.id]);
-
-        if (!Number.isFinite(quantity) || quantity <= 0) {
-          return null;
-        }
-
+        if (!Number.isFinite(quantity) || quantity <= 0) return null;
         return {
           id: product.id,
           productName: product.name,
@@ -132,9 +127,7 @@ function App() {
       })
       .filter((item): item is OrderItem => Boolean(item));
 
-    const items = [...selectedProducts, ...manualItems].filter(
-      (item) => item.quantity > 0,
-    );
+    const items = [...selectedProducts, ...manualItems].filter((item) => item.quantity > 0);
 
     if (items.length === 0) {
       setNotice("Adicione pelo menos um item ao pedido.");
@@ -145,10 +138,7 @@ function App() {
     const order: CleaningOrder = {
       id: createId(),
       data: now.toLocaleDateString("pt-BR"),
-      hora: now.toLocaleTimeString("pt-BR", {
-        hour: "2-digit",
-        minute: "2-digit",
-      }),
+      hora: now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }),
       solicitante: "Neia",
       status: "Novo",
       itens: items,
@@ -189,17 +179,13 @@ function App() {
 
   function updateDraftItem(itemId: string, field: keyof OrderItem, value: string) {
     setEditDraft((current) =>
-      current.map((item) => {
-        if (item.id !== itemId) {
-          return item;
-        }
-
-        if (field === "quantity") {
-          return { ...item, quantity: Number(value) };
-        }
-
-        return { ...item, [field]: value };
-      }),
+      current.map((item) =>
+        item.id === itemId
+          ? field === "quantity"
+            ? { ...item, quantity: Number(value) }
+            : { ...item, [field]: value }
+          : item,
+      ),
     );
   }
 
@@ -235,10 +221,7 @@ function App() {
   }
 
   function confirmDeleteOrder() {
-    if (!deleteTarget) {
-      return;
-    }
-
+    if (!deleteTarget) return;
     removeStoredOrder(deleteTarget.id);
     refreshOrders();
     setDeleteTarget(null);
@@ -348,20 +331,13 @@ type LoginScreenProps = {
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 };
 
-function LoginScreen({
-  password,
-  loginError,
-  onPasswordChange,
-  onSubmit,
-}: LoginScreenProps) {
+function LoginScreen({ password, loginError, onPasswordChange, onSubmit }: LoginScreenProps) {
   return (
     <section className="screen login-screen">
-      <div className="brand-mark" aria-hidden="true">
-        SM
-      </div>
+      <div className="brand-mark" aria-hidden="true">T</div>
       <div className="title-group center">
-        <p className="eyebrow">HUB SM</p>
-        <h1>Gestão de Limpeza</h1>
+        <p className="eyebrow">Central Operacional HUB SM</p>
+        <h1>TEZZEI HUB</h1>
       </div>
 
       <form className="login-form" onSubmit={onSubmit}>
@@ -374,9 +350,7 @@ function LoginScreen({
           onChange={(event) => onPasswordChange(event.target.value)}
         />
         {loginError && <p className="error-message">{loginError}</p>}
-        <button className="primary-button" type="submit">
-          Entrar
-        </button>
+        <button className="primary-button" type="submit">Entrar</button>
       </form>
     </section>
   );
@@ -389,21 +363,13 @@ type EmployeeScreenProps = {
   onNewOrder: () => void;
 };
 
-function EmployeeScreen({
-  employeeId,
-  notice,
-  onLogout,
-  onNewOrder,
-}: EmployeeScreenProps) {
+function EmployeeScreen({ employeeId, notice, onLogout, onNewOrder }: EmployeeScreenProps) {
   const employee = employees[employeeId];
-  const employeeActivities = activities.filter(
-    (activity) => activity.employeeId === employeeId,
-  );
+  const employeeActivities = activities.filter((activity) => activity.employeeId === employeeId);
 
   return (
     <section className="screen">
-      <TopBar title={employee.name} subtitle="Rotina de limpeza" onLogout={onLogout} />
-
+      <TopBar title={employee.name} subtitle="Módulo Limpeza" onLogout={onLogout} />
       {notice && <p className="success-message">{notice}</p>}
 
       <section className="info-grid" aria-label="Horários">
@@ -471,11 +437,7 @@ function OrderFormScreen({
   return (
     <section className="screen">
       <TopBar title="Fazer Pedido Sinval" subtitle="Solicitante: Neia" onLogout={onLogout} />
-
-      <button className="ghost-button" type="button" onClick={onBack}>
-        Voltar para Neia
-      </button>
-
+      <button className="ghost-button" type="button" onClick={onBack}>Voltar para Neia</button>
       {notice && <p className="notice-message">{notice}</p>}
 
       <section className="product-list" aria-label="Produtos cadastrados">
@@ -498,11 +460,7 @@ function OrderFormScreen({
         ))}
       </section>
 
-      <button
-        className="secondary-button wide-button"
-        type="button"
-        onClick={() => onManualOpenChange(!manualOpen)}
-      >
+      <button className="secondary-button wide-button" type="button" onClick={() => onManualOpenChange(!manualOpen)}>
         Adicionar pedido que não tem na lista
       </button>
 
@@ -513,9 +471,7 @@ function OrderFormScreen({
             <input
               type="text"
               value={manualDraft.name}
-              onChange={(event) =>
-                onManualDraftChange({ ...manualDraft, name: event.target.value })
-              }
+              onChange={(event) => onManualDraftChange({ ...manualDraft, name: event.target.value })}
             />
           </label>
           <label>
@@ -525,9 +481,7 @@ function OrderFormScreen({
               inputMode="numeric"
               min="0"
               value={manualDraft.quantity}
-              onChange={(event) =>
-                onManualDraftChange({ ...manualDraft, quantity: event.target.value })
-              }
+              onChange={(event) => onManualDraftChange({ ...manualDraft, quantity: event.target.value })}
             />
           </label>
           <label>
@@ -535,14 +489,10 @@ function OrderFormScreen({
             <textarea
               value={manualDraft.observation}
               rows={3}
-              onChange={(event) =>
-                onManualDraftChange({ ...manualDraft, observation: event.target.value })
-              }
+              onChange={(event) => onManualDraftChange({ ...manualDraft, observation: event.target.value })}
             />
           </label>
-          <button className="primary-button" type="button" onClick={onAddManualItem}>
-            Adicionar ao pedido
-          </button>
+          <button className="primary-button" type="button" onClick={onAddManualItem}>Adicionar ao pedido</button>
         </section>
       )}
 
@@ -558,13 +508,7 @@ function OrderFormScreen({
                 </div>
                 <p>Quantidade: {item.quantity}</p>
                 {item.observation && <p>{item.observation}</p>}
-                <button
-                  className="danger-button"
-                  type="button"
-                  onClick={() => onRemoveManualItem(item.id)}
-                >
-                  Remover
-                </button>
+                <button className="danger-button" type="button" onClick={() => onRemoveManualItem(item.id)}>Remover</button>
               </article>
             ))}
           </div>
@@ -587,11 +531,7 @@ type AdminScreenProps = {
 function AdminScreen({ newOrdersCount, onLogout, onOpenOrders }: AdminScreenProps) {
   return (
     <section className="screen">
-      <TopBar
-        title="Painel Tezzei"
-        subtitle="Visão geral da limpeza HUB SM"
-        onLogout={onLogout}
-      />
+      <TopBar title="Painel Tezzei" subtitle="Central Operacional HUB SM" onLogout={onLogout} />
 
       {newOrdersCount > 0 && (
         <button className="alert-banner" type="button" onClick={onOpenOrders}>
@@ -600,19 +540,20 @@ function AdminScreen({ newOrdersCount, onLogout, onOpenOrders }: AdminScreenProp
       )}
 
       <section className="admin-grid" aria-label="Painel administrativo">
-        <AdminCard title="Neia" detail="06:30 às 15:30" />
-        <AdminCard title="Selma" detail="07:00 às 16:00" />
-        <AdminCard title="Helena" detail="08:00 às 18:00" />
+        <button className="admin-card action-card" type="button" onClick={onOpenOrders}>
+          <span>Limpeza</span>
+          <strong>Ativo — rotinas e pedidos Sinval</strong>
+        </button>
         <button className="admin-card action-card" type="button" onClick={onOpenOrders}>
           <span>Pedidos Pendentes</span>
-          <strong>
-            {newOrdersCount > 0
-              ? `Pedidos Pendentes: ${newOrdersCount}`
-              : "Nenhum pedido pendente"}
-          </strong>
+          <strong>{newOrdersCount > 0 ? `Pedidos Pendentes: ${newOrdersCount}` : "Nenhum pedido pendente"}</strong>
         </button>
-        <AdminCard title="Estoque em breve" detail="Próxima etapa" />
-        <AdminCard title="Relatórios em breve" detail="Próxima etapa" />
+        <AdminCard title="Estoque" detail="Em breve — produtos e inventário" />
+        <AdminCard title="Manutenção" detail="Em breve — chamados internos" />
+        <AdminCard title="Chaves" detail="Em breve — controle de acessos" />
+        <AdminCard title="Patrimônio" detail="Em breve — itens e equipamentos" />
+        <AdminCard title="Relatórios" detail="Em breve — indicadores" />
+        <AdminCard title="Equipe" detail="Neia, Selma e Helena" />
       </section>
     </section>
   );
@@ -654,11 +595,7 @@ function OrdersScreen({
   return (
     <section className="screen">
       <TopBar title="Pedidos da Neia" subtitle="Pedidos salvos no aparelho" onLogout={onLogout} />
-
-      <button className="ghost-button" type="button" onClick={onBack}>
-        Voltar ao Painel
-      </button>
-
+      <button className="ghost-button" type="button" onClick={onBack}>Voltar ao Painel</button>
       {notice && <p className="notice-message">{notice}</p>}
 
       {orders.length === 0 ? (
@@ -670,7 +607,6 @@ function OrdersScreen({
         <section className="orders-list" aria-label="Pedidos salvos">
           {orders.map((order) => {
             const editing = editingOrderId === order.id;
-
             return (
               <article className="order-card" key={order.id}>
                 <div className="order-head">
@@ -678,17 +614,11 @@ function OrdersScreen({
                     <p className="card-kicker">{order.data} às {order.hora}</p>
                     <h2>{order.solicitante}</h2>
                   </div>
-                  <span className={order.status === "Novo" ? "status-new" : "status-done"}>
-                    {order.status}
-                  </span>
+                  <span className={order.status === "Novo" ? "status-new" : "status-done"}>{order.status}</span>
                 </div>
 
                 {editing ? (
-                  <EditOrderItems
-                    items={editDraft}
-                    onUpdateDraftItem={onUpdateDraftItem}
-                    onRemoveDraftItem={onRemoveDraftItem}
-                  />
+                  <EditOrderItems items={editDraft} onUpdateDraftItem={onUpdateDraftItem} onRemoveDraftItem={onRemoveDraftItem} />
                 ) : (
                   <ul className="item-list">
                     {order.itens.map((item) => (
@@ -707,47 +637,15 @@ function OrdersScreen({
                 <div className="button-grid">
                   {editing ? (
                     <>
-                      <button
-                        className="primary-button"
-                        type="button"
-                        onClick={() => onSaveEdit(order)}
-                      >
-                        Salvar
-                      </button>
-                      <button className="ghost-button" type="button" onClick={onCancelEdit}>
-                        Cancelar
-                      </button>
+                      <button className="primary-button" type="button" onClick={() => onSaveEdit(order)}>Salvar</button>
+                      <button className="ghost-button" type="button" onClick={onCancelEdit}>Cancelar</button>
                     </>
                   ) : (
                     <>
-                      <button
-                        className="secondary-button"
-                        type="button"
-                        onClick={() => onCopyOrder(order)}
-                      >
-                        Copiar Pedido
-                      </button>
-                      <button
-                        className="ghost-button"
-                        type="button"
-                        onClick={() => onStartEdit(order)}
-                      >
-                        Editar Pedido
-                      </button>
-                      <button
-                        className="success-button"
-                        type="button"
-                        onClick={() => onMarkDone(order)}
-                      >
-                        Marcar como Pedido Feito
-                      </button>
-                      <button
-                        className="danger-button"
-                        type="button"
-                        onClick={() => onRequestDelete(order)}
-                      >
-                        Excluir Pedido
-                      </button>
+                      <button className="secondary-button" type="button" onClick={() => onCopyOrder(order)}>Copiar Pedido</button>
+                      <button className="ghost-button" type="button" onClick={() => onStartEdit(order)}>Editar Pedido</button>
+                      <button className="success-button" type="button" onClick={() => onMarkDone(order)}>Marcar como Pedido Feito</button>
+                      <button className="danger-button" type="button" onClick={() => onRequestDelete(order)}>Excluir Pedido</button>
                     </>
                   )}
                 </div>
@@ -766,11 +664,7 @@ type EditOrderItemsProps = {
   onRemoveDraftItem: (itemId: string) => void;
 };
 
-function EditOrderItems({
-  items,
-  onUpdateDraftItem,
-  onRemoveDraftItem,
-}: EditOrderItemsProps) {
+function EditOrderItems({ items, onUpdateDraftItem, onRemoveDraftItem }: EditOrderItemsProps) {
   return (
     <div className="edit-list">
       {items.map((item) => (
@@ -781,9 +675,7 @@ function EditOrderItems({
               type="text"
               value={item.productName}
               disabled={!item.manual}
-              onChange={(event) =>
-                onUpdateDraftItem(item.id, "productName", event.target.value)
-              }
+              onChange={(event) => onUpdateDraftItem(item.id, "productName", event.target.value)}
             />
           </label>
           <label>
@@ -793,9 +685,7 @@ function EditOrderItems({
               inputMode="numeric"
               min="0"
               value={String(item.quantity)}
-              onChange={(event) =>
-                onUpdateDraftItem(item.id, "quantity", event.target.value)
-              }
+              onChange={(event) => onUpdateDraftItem(item.id, "quantity", event.target.value)}
             />
           </label>
           {item.manual && (
@@ -804,19 +694,11 @@ function EditOrderItems({
               <input
                 type="text"
                 value={item.observation ?? ""}
-                onChange={(event) =>
-                  onUpdateDraftItem(item.id, "observation", event.target.value)
-                }
+                onChange={(event) => onUpdateDraftItem(item.id, "observation", event.target.value)}
               />
             </label>
           )}
-          <button
-            className="danger-button"
-            type="button"
-            onClick={() => onRemoveDraftItem(item.id)}
-          >
-            Remover
-          </button>
+          <button className="danger-button" type="button" onClick={() => onRemoveDraftItem(item.id)}>Remover</button>
         </section>
       ))}
     </div>
@@ -833,21 +715,16 @@ function TopBar({ title, subtitle, onLogout }: TopBarProps) {
   return (
     <header className="top-bar">
       <div>
-        <p className="eyebrow">HUB SM</p>
+        <p className="eyebrow">TEZZEI HUB</p>
         <h1>{title}</h1>
         <p>{subtitle}</p>
       </div>
-      <button className="logout-button" type="button" onClick={onLogout}>
-        Sair
-      </button>
+      <button className="logout-button" type="button" onClick={onLogout}>Sair</button>
     </header>
   );
 }
 
-type InfoCardProps = {
-  title: string;
-  value: string;
-};
+type InfoCardProps = { title: string; value: string };
 
 function InfoCard({ title, value }: InfoCardProps) {
   return (
@@ -858,10 +735,7 @@ function InfoCard({ title, value }: InfoCardProps) {
   );
 }
 
-type AdminCardProps = {
-  title: string;
-  detail: string;
-};
+type AdminCardProps = { title: string; detail: string };
 
 function AdminCard({ title, detail }: AdminCardProps) {
   return (
@@ -883,16 +757,10 @@ function DeleteDialog({ order, onCancel, onConfirm }: DeleteDialogProps) {
     <div className="dialog-backdrop" role="presentation">
       <section className="dialog" role="dialog" aria-modal="true" aria-labelledby="delete-title">
         <h2 id="delete-title">Tem certeza que deseja excluir este pedido?</h2>
-        <p>
-          Pedido de {order.solicitante}, {order.data} às {order.hora}.
-        </p>
+        <p>Pedido de {order.solicitante}, {order.data} às {order.hora}.</p>
         <div className="button-grid">
-          <button className="ghost-button" type="button" onClick={onCancel}>
-            Cancelar
-          </button>
-          <button className="danger-button" type="button" onClick={onConfirm}>
-            Excluir
-          </button>
+          <button className="ghost-button" type="button" onClick={onCancel}>Cancelar</button>
+          <button className="danger-button" type="button" onClick={onConfirm}>Excluir</button>
         </div>
       </section>
     </div>
@@ -900,10 +768,7 @@ function DeleteDialog({ order, onCancel, onConfirm }: DeleteDialogProps) {
 }
 
 function createId() {
-  if (crypto.randomUUID) {
-    return crypto.randomUUID();
-  }
-
+  if (crypto.randomUUID) return crypto.randomUUID();
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
