@@ -1,18 +1,18 @@
 .info-grid {
   grid-template-columns: 1fr !important;
   gap: 0 !important;
-  padding: 12px 14px !important;
-  margin-bottom: 14px !important;
+  padding: 8px 10px !important;
+  margin-bottom: 12px !important;
   background: #ffffff !important;
   border: 1px solid #d8dee8 !important;
   border-radius: 8px !important;
-  box-shadow: 0 8px 18px rgba(31, 41, 51, 0.05) !important;
+  box-shadow: 0 8px 18px rgba(31, 41, 51, 0.04) !important;
 }
 
 .info-grid .info-card {
   display: grid !important;
   min-height: auto !important;
-  padding: 7px 0 !important;
+  padding: 4px 0 !important;
   background: transparent !important;
   border: 0 !important;
   border-radius: 0 !important;
@@ -25,12 +25,13 @@
 
 .info-grid .info-card span {
   color: #667085 !important;
-  font-size: 0.78rem !important;
+  font-size: 0.68rem !important;
+  font-weight: 700 !important;
 }
 
 .info-grid .info-card strong {
   color: #1f2933 !important;
-  font-size: 0.94rem !important;
+  font-size: 0.8rem !important;
   font-weight: 800 !important;
 }
 
@@ -123,19 +124,24 @@ footer::before {
 
 .quick-actions {
   display: grid;
-  gap: 10px;
-  margin-bottom: 16px;
+  gap: 9px;
+  margin-bottom: 14px;
+}
+
+.quick-actions .ghost-button {
+  display: none !important;
 }
 
 .employee-top-bar {
   display: grid !important;
   grid-template-columns: auto minmax(0, 1fr) auto !important;
   align-items: center !important;
+  gap: 12px !important;
 }
 
 .employee-photo-box {
-  width: 72px;
-  height: 72px;
+  width: 92px;
+  height: 92px;
   display: grid;
   place-items: center;
   overflow: hidden;
@@ -143,7 +149,7 @@ footer::before {
   color: #c2410c;
   background: #fff1e6;
   border: 2px solid #fed7aa;
-  font-size: 1.65rem;
+  font-size: 2rem;
   font-weight: 900;
 }
 
@@ -159,12 +165,14 @@ footer::before {
 
 .photo-button {
   width: fit-content;
-  margin-top: 8px;
-  padding: 8px 10px;
+  margin-top: 6px;
+  min-height: auto !important;
+  padding: 5px 7px !important;
   color: #c2410c;
   background: #fff1e6;
   border-radius: 8px;
-  font-size: 0.78rem;
+  font-size: 0.65rem !important;
+  line-height: 1.1 !important;
   font-weight: 900;
 }
 
@@ -176,6 +184,18 @@ footer::before {
   display: grid;
   gap: 8px;
   min-width: 92px;
+}
+
+.admin-grid .action-card:nth-child(3) {
+  order: -1;
+  grid-column: 1 / -1;
+  min-height: 84px;
+  border-left: 6px solid #f97316;
+}
+
+.admin-grid .action-card:nth-child(4),
+.admin-grid .action-card:nth-child(5) {
+  border-left: 6px solid #2563eb;
 }
 
 .profile-grid {
@@ -208,8 +228,8 @@ footer::before {
 }
 
 .profile-photo-box {
-  width: 82px;
-  height: 82px;
+  width: 96px;
+  height: 96px;
 }
 
 .stock-row {
@@ -244,8 +264,8 @@ footer::before {
   }
 
   .employee-photo-box {
-    width: 64px;
-    height: 64px;
+    width: 82px;
+    height: 82px;
   }
 
   .stock-row {
