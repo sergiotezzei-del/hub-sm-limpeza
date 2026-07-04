@@ -1,0 +1,7 @@
+.info-grid {
+  grid-template-columns: 1fr !important;
+}
+
+.info-grid .info-card:not(:first-child) {
+  display: none !important;
+}
