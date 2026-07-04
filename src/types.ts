@@ -57,7 +57,7 @@ export type StockCheckItem = {
   productName: string;
   unit: string;
   quantity: number;
-  observation?: string;
+  observation: string | undefined;
 };
 
 export type StockCheck = {
