@@ -60,6 +60,23 @@ function App() {
     return () => window.clearInterval(interval);
   }, []);
 
+  useEffect(() => {
+    const resetScroll = () => {
+      window.scrollTo(0, 0);
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+    };
+
+    resetScroll();
+    const frame = window.requestAnimationFrame(resetScroll);
+    const timer = window.setTimeout(resetScroll, 120);
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(timer);
+    };
+  }, [view, currentUser]);
+
   const newOrders = useMemo(
     () => orders.filter((order) => order.status === "Novo"),
     [orders],
@@ -90,6 +107,11 @@ function App() {
     if (!user) {
       setLoginError("Senha incorreta");
       return;
+    }
+
+    const activeElement = document.activeElement;
+    if (activeElement instanceof HTMLElement) {
+      activeElement.blur();
     }
 
     setCurrentUser(user);
