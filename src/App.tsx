@@ -1,9 +1,11 @@
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { activities, employees, products } from "./data";
 import {
   addOrder,
   deleteOrder as removeStoredOrder,
+  getLocalOrders,
   getOrders,
+  isCloudStorageEnabled,
   updateOrder as updateStoredOrder,
 } from "./storage";
 import type { CleaningOrder, EmployeeId, OrderItem, UserRole } from "./types";
@@ -34,7 +36,7 @@ function App() {
   const [currentUser, setCurrentUser] = useState<UserRole | null>(null);
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState("");
-  const [orders, setOrders] = useState<CleaningOrder[]>(() => getOrders());
+  const [orders, setOrders] = useState<CleaningOrder[]>(() => getLocalOrders());
   const [quantities, setQuantities] = useState<Record<string, string>>({});
   const [manualOpen, setManualOpen] = useState(false);
   const [manualDraft, setManualDraft] = useState<ManualDraft>(emptyManualDraft);
@@ -44,6 +46,20 @@ function App() {
   const [editDraft, setEditDraft] = useState<OrderItem[]>([]);
   const [deleteTarget, setDeleteTarget] = useState<CleaningOrder | null>(null);
 
+  const onlineEnabled = isCloudStorageEnabled();
+
+  useEffect(() => {
+    void refreshOrders();
+
+    const interval = window.setInterval(() => {
+      if (isCloudStorageEnabled()) {
+        void refreshOrders();
+      }
+    }, 30000);
+
+    return () => window.clearInterval(interval);
+  }, []);
+
   const newOrders = useMemo(
     () => orders.filter((order) => order.status === "Novo"),
     [orders],
@@ -52,8 +68,9 @@ function App() {
   const employee =
     currentUser && currentUser !== "tezzei" ? employees[currentUser] : null;
 
-  function refreshOrders() {
-    setOrders(getOrders());
+  async function refreshOrders() {
+    const currentOrders = await getOrders();
+    setOrders(currentOrders);
   }
 
   function goToLogin() {
@@ -78,7 +95,7 @@ function App() {
     setCurrentUser(user);
     setLoginError("");
     setNotice("");
-    refreshOrders();
+    void refreshOrders();
     setView(user === "tezzei" ? "admin" : "employee");
   }
 
@@ -113,7 +130,7 @@ function App() {
     setManualItems((current) => current.filter((item) => item.id !== itemId));
   }
 
-  function sendOrder() {
+  async function sendOrder() {
     const selectedProducts = products
       .map((product) => {
         const quantity = Number(quantities[product.id]);
@@ -144,14 +161,20 @@ function App() {
       itens: items,
     };
 
-    addOrder(order);
-    refreshOrders();
-    setQuantities({});
-    setManualItems([]);
-    setManualDraft(emptyManualDraft);
-    setManualOpen(false);
-    setNotice("Pedido enviado para Tezzei.");
-    setView("employee");
+    try {
+      await addOrder(order);
+      await refreshOrders();
+      setQuantities({});
+      setManualItems([]);
+      setManualDraft(emptyManualDraft);
+      setManualOpen(false);
+      setNotice(onlineEnabled ? "Pedido enviado para Tezzei." : "Pedido salvo neste aparelho.");
+      setView("employee");
+    } catch {
+      await refreshOrders();
+      setNotice("Pedido salvo neste aparelho. Falha ao sincronizar online.");
+      setView("employee");
+    }
   }
 
   async function copyOrder(order: CleaningOrder) {
@@ -193,7 +216,7 @@ function App() {
     setEditDraft((current) => current.filter((item) => item.id !== itemId));
   }
 
-  function saveEdit(order: CleaningOrder) {
+  async function saveEdit(order: CleaningOrder) {
     const cleanItems = editDraft
       .map((item) => ({
         ...item,
@@ -207,25 +230,42 @@ function App() {
       return;
     }
 
-    updateStoredOrder({ ...order, itens: cleanItems });
-    refreshOrders();
-    setEditingOrderId(null);
-    setEditDraft([]);
-    setNotice("Pedido atualizado.");
+    try {
+      await updateStoredOrder({ ...order, itens: cleanItems });
+      await refreshOrders();
+      setEditingOrderId(null);
+      setEditDraft([]);
+      setNotice("Pedido atualizado.");
+    } catch {
+      await refreshOrders();
+      setNotice("Pedido atualizado apenas neste aparelho. Falha ao sincronizar online.");
+    }
   }
 
-  function markOrderDone(order: CleaningOrder) {
-    updateStoredOrder({ ...order, status: "Pedido feito" });
-    refreshOrders();
-    setNotice("Pedido marcado como feito.");
+  async function markOrderDone(order: CleaningOrder) {
+    try {
+      await updateStoredOrder({ ...order, status: "Pedido feito" });
+      await refreshOrders();
+      setNotice("Pedido marcado como feito.");
+    } catch {
+      await refreshOrders();
+      setNotice("Pedido marcado apenas neste aparelho. Falha ao sincronizar online.");
+    }
   }
 
-  function confirmDeleteOrder() {
+  async function confirmDeleteOrder() {
     if (!deleteTarget) return;
-    removeStoredOrder(deleteTarget.id);
-    refreshOrders();
-    setDeleteTarget(null);
-    setNotice("Pedido excluído.");
+
+    try {
+      await removeStoredOrder(deleteTarget.id);
+      await refreshOrders();
+      setDeleteTarget(null);
+      setNotice("Pedido excluído.");
+    } catch {
+      await refreshOrders();
+      setDeleteTarget(null);
+      setNotice("Pedido excluído apenas neste aparelho. Falha ao sincronizar online.");
+    }
   }
 
   return (
@@ -275,10 +315,11 @@ function App() {
       {view === "admin" && (
         <AdminScreen
           newOrdersCount={newOrders.length}
+          onlineEnabled={onlineEnabled}
           onLogout={goToLogin}
           onOpenOrders={() => {
             setNotice("");
-            refreshOrders();
+            void refreshOrders();
             setView("orders");
           }}
         />
@@ -293,7 +334,7 @@ function App() {
           onBack={() => {
             setEditingOrderId(null);
             setNotice("");
-            refreshOrders();
+            void refreshOrders();
             setView("admin");
           }}
           onLogout={goToLogin}
@@ -524,14 +565,19 @@ function OrderFormScreen({
 
 type AdminScreenProps = {
   newOrdersCount: number;
+  onlineEnabled: boolean;
   onLogout: () => void;
   onOpenOrders: () => void;
 };
 
-function AdminScreen({ newOrdersCount, onLogout, onOpenOrders }: AdminScreenProps) {
+function AdminScreen({ newOrdersCount, onlineEnabled, onLogout, onOpenOrders }: AdminScreenProps) {
   return (
     <section className="screen">
-      <TopBar title="Painel Tezzei" subtitle="Central Operacional HUB SM" onLogout={onLogout} />
+      <TopBar
+        title="Painel Tezzei"
+        subtitle={onlineEnabled ? "Central Operacional HUB SM — online" : "Central Operacional HUB SM — local"}
+        onLogout={onLogout}
+      />
 
       {newOrdersCount > 0 && (
         <button className="alert-banner" type="button" onClick={onOpenOrders}>
@@ -594,7 +640,7 @@ function OrdersScreen({
 }: OrdersScreenProps) {
   return (
     <section className="screen">
-      <TopBar title="Pedidos da Neia" subtitle="Pedidos salvos no aparelho" onLogout={onLogout} />
+      <TopBar title="Pedidos da Neia" subtitle="Pedidos sincronizados no HUB SM" onLogout={onLogout} />
       <button className="ghost-button" type="button" onClick={onBack}>Voltar ao Painel</button>
       {notice && <p className="notice-message">{notice}</p>}
 
