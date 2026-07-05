@@ -138,6 +138,14 @@ function App() {
 
   const activeEmployeeId = getActiveEmployeeId(view, currentUser, previewEmployeeId);
 
+  function getAfterCleaningActionView(): View {
+    if (currentUser === "tezzei") {
+      return previewEmployeeId ? "employee-preview" : "cleaning-dashboard";
+    }
+
+    return "employee";
+  }
+
   async function refreshOrders() {
     const currentOrders = await getOrders();
     setOrders(currentOrders);
@@ -253,11 +261,11 @@ function App() {
       setManualDraft(emptyManualDraft);
       setManualOpen(false);
       setNotice(onlineEnabled ? "Pedido enviado para Tezzei." : "Pedido salvo neste aparelho.");
-      setView("employee");
+      setView(getAfterCleaningActionView());
     } catch {
       await refreshOrders();
       setNotice("Pedido salvo neste aparelho. Falha ao sincronizar online.");
-      setView("employee");
+      setView(getAfterCleaningActionView());
     }
   }
 
@@ -296,10 +304,10 @@ function App() {
       setStockQuantities({});
       setStockObservations({});
       setNotice("Conferência de estoque enviada para Tezzei.");
-      setView("employee");
+      setView(getAfterCleaningActionView());
     } catch {
       setNotice("Conferência salva neste aparelho. Falha ao sincronizar online.");
-      setView("employee");
+      setView(getAfterCleaningActionView());
     }
   }
 
@@ -1367,6 +1375,7 @@ function getActiveEmployeeId(
   previewEmployeeId: EmployeeId | null,
 ): EmployeeId | null {
   if (view === "employee-preview") return previewEmployeeId;
+  if (view === "employee" && currentUser === "tezzei") return previewEmployeeId;
   if (currentUser && currentUser !== "tezzei") return currentUser;
   return null;
 }
