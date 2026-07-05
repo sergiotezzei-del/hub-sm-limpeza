@@ -30,6 +30,7 @@ type View =
   | "employee-preview"
   | "order-form"
   | "admin"
+  | "cleaning-dashboard"
   | "orders"
   | "profiles"
   | "stock-check"
@@ -414,6 +415,13 @@ function App() {
     setView("profiles");
   }
 
+  function openCleaningDashboard() {
+    setNotice("");
+    void refreshOrders();
+    void refreshProfiles();
+    setView("cleaning-dashboard");
+  }
+
   function previewEmployee(employeeId: EmployeeId) {
     setNotice("");
     setPreviewEmployeeId(employeeId);
@@ -475,7 +483,7 @@ function App() {
           notice={notice}
           onBack={() => {
             setNotice("");
-            setView(activeEmployeeId ? "employee" : "admin");
+            setView(activeEmployeeId ? "employee" : "cleaning-dashboard");
           }}
           onLogout={goToLogin}
           onQuantityChange={setProductQuantity}
@@ -494,7 +502,7 @@ function App() {
           notice={notice}
           onBack={() => {
             setNotice("");
-            setView("employee");
+            setView(activeEmployeeId ? "employee" : "cleaning-dashboard");
           }}
           onLogout={goToLogin}
           onQuantityChange={(productId, value) => setStockQuantities((current) => ({ ...current, [productId]: value }))}
@@ -509,6 +517,15 @@ function App() {
         <AdminScreen
           newOrdersCount={newOrders.length}
           onlineEnabled={onlineEnabled}
+          onLogout={goToLogin}
+          onOpenCleaningDashboard={openCleaningDashboard}
+        />
+      )}
+
+      {view === "cleaning-dashboard" && (
+        <CleaningDashboardScreen
+          newOrdersCount={newOrders.length}
+          onBack={() => setView("admin")}
           onLogout={goToLogin}
           onOpenOrders={() => {
             setNotice("");
@@ -525,7 +542,7 @@ function App() {
         <ProfilesScreen
           profiles={profiles}
           notice={notice}
-          onBack={() => setView("admin")}
+          onBack={() => setView("cleaning-dashboard")}
           onLogout={goToLogin}
           onPreviewEmployee={previewEmployee}
           onProfilePhotoChange={handlePhotoChange}
@@ -542,7 +559,7 @@ function App() {
             setEditingOrderId(null);
             setNotice("");
             void refreshOrders();
-            setView("admin");
+            setView("cleaning-dashboard");
           }}
           onLogout={goToLogin}
           onCopyOrder={copyOrder}
@@ -564,7 +581,7 @@ function App() {
           title={view === "order-history" ? "Histórico de Concluídos e Excluídos" : "Histórico de Pedidos da Neia"}
           subtitle={view === "order-history" ? "Pedidos concluídos ou apagados" : "Todos os pedidos feitos pela Neia"}
           orders={historyOrders}
-          onBack={() => setView("admin")}
+          onBack={() => setView("cleaning-dashboard")}
           onLogout={goToLogin}
           onCopyOrder={copyOrder}
         />
@@ -891,7 +908,7 @@ function StockCheckScreen({
   return (
     <section className="screen">
       <TopBar title="Conferência de Estoque" subtitle="Solicitante: Neia" onLogout={onLogout} />
-      <button className="ghost-button" type="button" onClick={onBack}>Voltar para Neia</button>
+      <button className="ghost-button" type="button" onClick={onBack}>Voltar</button>
       {notice && <p className="notice-message">{notice}</p>}
 
       <section className="product-list" aria-label="Conferência de estoque">
@@ -932,20 +949,14 @@ type AdminScreenProps = {
   newOrdersCount: number;
   onlineEnabled: boolean;
   onLogout: () => void;
-  onOpenOrders: () => void;
-  onOpenProfiles: () => void;
-  onOpenOrderHistory: () => void;
-  onOpenNeiaHistory: () => void;
+  onOpenCleaningDashboard: () => void;
 };
 
 function AdminScreen({
   newOrdersCount,
   onlineEnabled,
   onLogout,
-  onOpenOrders,
-  onOpenProfiles,
-  onOpenOrderHistory,
-  onOpenNeiaHistory,
+  onOpenCleaningDashboard,
 }: AdminScreenProps) {
   return (
     <section className="screen">
@@ -955,38 +966,74 @@ function AdminScreen({
         onLogout={onLogout}
       />
 
+      <section className="admin-grid module-grid" aria-label="Gestões operacionais">
+        <button
+          className={`admin-card action-card module-card cleaning-card ${newOrdersCount > 0 ? "needs-attention" : ""}`}
+          type="button"
+          onClick={onOpenCleaningDashboard}
+        >
+          <span>Limpeza</span>
+          <strong>{newOrdersCount > 0 ? `${newOrdersCount} pedido(s) pendente(s)` : "Rotinas, pedidos Sinval e equipe"}</strong>
+          {newOrdersCount > 0 && <small className="attention-pill">⚠ Precisa de atenção</small>}
+        </button>
+        <AdminCard title="Máquina de Café" detail="Insumos, doses e reposição" />
+        <AdminCard title="Água" detail="Controle de fardos e copos" />
+        <AdminCard title="Manutenção" detail="Chamados e tarefas internas" />
+        <AdminCard title="Chaves" detail="Controle de acessos" />
+        <AdminCard title="Patrimônio" detail="Itens, equipamentos e auditoria" />
+      </section>
+    </section>
+  );
+}
+
+type CleaningDashboardScreenProps = {
+  newOrdersCount: number;
+  onBack: () => void;
+  onLogout: () => void;
+  onOpenOrders: () => void;
+  onOpenProfiles: () => void;
+  onOpenOrderHistory: () => void;
+  onOpenNeiaHistory: () => void;
+};
+
+function CleaningDashboardScreen({
+  newOrdersCount,
+  onBack,
+  onLogout,
+  onOpenOrders,
+  onOpenProfiles,
+  onOpenOrderHistory,
+  onOpenNeiaHistory,
+}: CleaningDashboardScreenProps) {
+  return (
+    <section className="screen">
+      <TopBar title="Gestão de Limpeza" subtitle="Neia, Selma, Helena, pedidos e auditoria" onLogout={onLogout} />
+      <button className="ghost-button" type="button" onClick={onBack}>Voltar ao Painel</button>
+
       {newOrdersCount > 0 && (
-        <button className="alert-banner" type="button" onClick={onOpenOrders}>
-          🔔 Pedido novo da Neia
+        <button className="alert-banner cleaning-alert-banner" type="button" onClick={onOpenOrders}>
+          🔔 Pedido novo da Neia — precisa de atenção
         </button>
       )}
 
-      <section className="admin-grid" aria-label="Painel administrativo">
-        <button className="admin-card action-card" type="button" onClick={onOpenOrders}>
-          <span>Limpeza</span>
-          <strong>Ativo — rotinas e pedidos Sinval</strong>
+      <section className="admin-grid cleaning-dashboard-grid" aria-label="Controles de limpeza">
+        <button className={`admin-card action-card cleaning-control-card ${newOrdersCount > 0 ? "needs-attention" : ""}`} type="button" onClick={onOpenOrders}>
+          <span>Pedidos Sinval</span>
+          <strong>{newOrdersCount > 0 ? `${newOrdersCount} pedido(s) pendente(s)` : "Nenhum pedido pendente"}</strong>
+          {newOrdersCount > 0 && <small className="attention-pill">⚠ Verificar agora</small>}
         </button>
-        <button className="admin-card action-card" type="button" onClick={onOpenOrders}>
-          <span>Pedidos Pendentes</span>
-          <strong>{newOrdersCount > 0 ? `Pedidos Pendentes: ${newOrdersCount}` : "Nenhum pedido pendente"}</strong>
+        <button className="admin-card action-card cleaning-control-card" type="button" onClick={onOpenNeiaHistory}>
+          <span>Histórico Neia</span>
+          <strong>Todos os pedidos feitos pela Neia</strong>
         </button>
-        <button className="admin-card action-card" type="button" onClick={onOpenProfiles}>
-          <span>Ver perfil usuário</span>
-          <strong>Acessar tela da Neia, Selma ou Helena</strong>
-        </button>
-        <button className="admin-card action-card" type="button" onClick={onOpenOrderHistory}>
-          <span>Histórico</span>
+        <button className="admin-card action-card cleaning-control-card" type="button" onClick={onOpenOrderHistory}>
+          <span>Histórico / Auditoria</span>
           <strong>Concluídos e excluídos</strong>
         </button>
-        <button className="admin-card action-card" type="button" onClick={onOpenNeiaHistory}>
-          <span>Histórico Neia</span>
-          <strong>Todos os pedidos da Neia</strong>
+        <button className="admin-card action-card cleaning-control-card" type="button" onClick={onOpenProfiles}>
+          <span>Perfis da equipe</span>
+          <strong>Acessar telas da Neia, Selma e Helena</strong>
         </button>
-        <AdminCard title="Estoque" detail="Conferência pela Neia" />
-        <AdminCard title="Manutenção" detail="Em breve — chamados internos" />
-        <AdminCard title="Chaves" detail="Em breve — controle de acessos" />
-        <AdminCard title="Patrimônio" detail="Em breve — itens e equipamentos" />
-        <AdminCard title="Relatórios" detail="Em breve — indicadores" />
       </section>
     </section>
   );
@@ -1011,8 +1058,8 @@ function ProfilesScreen({
 }: ProfilesScreenProps) {
   return (
     <section className="screen">
-      <TopBar title="Perfis das Usuárias" subtitle="Visualizar telas sem digitar senha" onLogout={onLogout} />
-      <button className="ghost-button" type="button" onClick={onBack}>Voltar ao Painel</button>
+      <TopBar title="Perfis da Equipe de Limpeza" subtitle="Visualizar telas sem digitar senha" onLogout={onLogout} />
+      <button className="ghost-button" type="button" onClick={onBack}>Voltar para Limpeza</button>
       {notice && <p className="success-message">{notice}</p>}
 
       <section className="profile-grid">
@@ -1086,8 +1133,8 @@ function OrdersScreen({
 }: OrdersScreenProps) {
   return (
     <section className="screen">
-      <TopBar title="Pedidos da Neia" subtitle="Pedidos sincronizados no HUB SM" onLogout={onLogout} />
-      <button className="ghost-button" type="button" onClick={onBack}>Voltar ao Painel</button>
+      <TopBar title="Limpeza — Pedidos Sinval" subtitle="Pedidos feitos pela Neia" onLogout={onLogout} />
+      <button className="ghost-button" type="button" onClick={onBack}>Voltar para Limpeza</button>
       {notice && <p className="notice-message">{notice}</p>}
 
       {orders.length === 0 ? (
@@ -1146,7 +1193,7 @@ function HistoryScreen({ title, subtitle, orders, onBack, onLogout, onCopyOrder 
   return (
     <section className="screen">
       <TopBar title={title} subtitle={subtitle} onLogout={onLogout} />
-      <button className="ghost-button" type="button" onClick={onBack}>Voltar ao Painel</button>
+      <button className="ghost-button" type="button" onClick={onBack}>Voltar para Limpeza</button>
 
       {orders.length === 0 ? (
         <section className="empty-state">
@@ -1251,7 +1298,7 @@ type AdminCardProps = { title: string; detail: string };
 
 function AdminCard({ title, detail }: AdminCardProps) {
   return (
-    <article className="admin-card">
+    <article className="admin-card module-card">
       <span>{title}</span>
       <strong>{detail}</strong>
     </article>
