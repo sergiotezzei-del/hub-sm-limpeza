@@ -1,0 +1,128 @@
+.module-grid,
+.cleaning-dashboard-grid {
+  display: grid !important;
+  gap: 12px !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  align-items: stretch !important;
+}
+
+.module-grid::before {
+  content: "Gestões operacionais";
+  grid-column: 1 / -1;
+  margin-top: 4px;
+  color: #667085;
+  font-size: 0.78rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.cleaning-dashboard-grid::before {
+  content: "Controles da limpeza";
+  grid-column: 1 / -1;
+  margin-top: 4px;
+  color: #667085;
+  font-size: 0.78rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.module-card,
+.cleaning-control-card {
+  position: relative;
+  display: grid !important;
+  min-height: 104px !important;
+  align-content: center !important;
+  gap: 8px !important;
+  padding: 16px !important;
+  overflow: hidden !important;
+  border-left: 6px solid #d8dee8 !important;
+}
+
+.module-card span,
+.cleaning-control-card span {
+  font-size: 0.82rem !important;
+  font-weight: 900 !important;
+  letter-spacing: 0.02em !important;
+  text-transform: uppercase !important;
+}
+
+.module-card strong,
+.cleaning-control-card strong {
+  font-size: 0.95rem !important;
+  line-height: 1.2 !important;
+}
+
+.cleaning-card,
+.cleaning-control-card:first-child {
+  grid-column: 1 / -1 !important;
+  min-height: 118px !important;
+  border-left-color: #f97316 !important;
+}
+
+.needs-attention {
+  border-left-color: #dc2626 !important;
+  background: linear-gradient(135deg, #fff7ed 0%, #fee2e2 100%) !important;
+  animation: limpeza-alerta 1.05s infinite alternate;
+}
+
+.attention-pill {
+  width: fit-content;
+  margin-top: 4px;
+  padding: 6px 9px;
+  border-radius: 999px;
+  color: #ffffff;
+  background: #dc2626;
+  font-size: 0.76rem;
+  font-weight: 900;
+}
+
+.cleaning-alert-banner {
+  display: block !important;
+  margin: 12px 0 !important;
+  animation: limpeza-alerta 1.05s infinite alternate;
+}
+
+.module-grid .module-card:nth-of-type(2) {
+  border-left-color: #92400e !important;
+}
+
+.module-grid .module-card:nth-of-type(3) {
+  border-left-color: #0284c7 !important;
+}
+
+.module-grid .module-card:nth-of-type(4) {
+  border-left-color: #16a34a !important;
+}
+
+.module-grid .module-card:nth-of-type(5) {
+  border-left-color: #7c3aed !important;
+}
+
+.module-grid .module-card:nth-of-type(6) {
+  border-left-color: #475569 !important;
+}
+
+@keyframes limpeza-alerta {
+  from {
+    box-shadow: 0 0 0 rgba(249, 115, 22, 0.1);
+    transform: translateY(0);
+  }
+  to {
+    box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.18), 0 10px 22px rgba(220, 38, 38, 0.12);
+    transform: translateY(-1px);
+  }
+}
+
+@media (max-width: 720px) {
+  .module-grid,
+  .cleaning-dashboard-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .module-card,
+  .cleaning-control-card {
+    min-height: 88px !important;
+  }
+}
