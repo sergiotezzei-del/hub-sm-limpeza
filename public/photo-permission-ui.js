@@ -173,12 +173,12 @@
     box.innerHTML = '';
     if (!request) {
       box.append(
-        makeButton('Solicitar troca de foto', 'photo-control neutral', async (event) => {
+        makeButton('Trocar foto', 'photo-control neutral', async (event) => {
           event.currentTarget.disabled = true;
           await createRequest(employeeId, 'change_photo');
           await renderEmployeePermission();
         }),
-        makeButton('Solicitar remover foto', 'photo-control neutral danger-lite', async (event) => {
+        makeButton('Remover foto', 'photo-control neutral danger-lite', async (event) => {
           event.currentTarget.disabled = true;
           await createRequest(employeeId, 'remove_photo');
           await renderEmployeePermission();
@@ -195,7 +195,7 @@
     if (request.status === 'pending') return;
 
     if (request.status === 'denied') {
-      box.appendChild(makeButton('Pedir novamente', 'photo-control neutral', async (event) => {
+      box.appendChild(makeButton('Pedir de novo', 'photo-control neutral', async (event) => {
         event.currentTarget.disabled = true;
         await createRequest(employeeId, request.action || 'change_photo');
         await renderEmployeePermission();
@@ -206,7 +206,7 @@
     if (request.status === 'approved' && request.action === 'change_photo') {
       const label = document.createElement('label');
       label.className = 'photo-control approved';
-      label.textContent = 'Acesso liberado: abrir câmera';
+      label.textContent = 'Liberado: abrir câmera';
       const input = document.createElement('input');
       input.type = 'file';
       input.accept = 'image/*';
@@ -231,7 +231,7 @@
     }
 
     if (request.status === 'approved' && request.action === 'remove_photo') {
-      box.appendChild(makeButton('Acesso liberado: remover foto', 'photo-control approved', async (event) => {
+      box.appendChild(makeButton('Liberado: remover foto', 'photo-control approved', async (event) => {
         event.currentTarget.disabled = true;
         event.currentTarget.textContent = 'Removendo...';
         try {
@@ -300,7 +300,7 @@
   }
 
   const style = document.createElement('style');
-  style.textContent = '.photo-permission-box{display:grid;gap:6px;margin-top:8px;max-width:280px}.photo-control{display:grid;place-items:center;width:100%;min-height:34px;padding:7px 10px;border-radius:8px;border:1px solid #cbd5e1;background:#fff;color:#475569;font-size:.72rem;font-weight:900;text-align:center;cursor:pointer;line-height:1.15}.photo-control.neutral{background:#fff;color:#475569}.photo-control.danger-lite{color:#991b1b;background:#fff7f7;border-color:#fecaca}.photo-control.approved{color:#166534;background:#dcfce7;border-color:#86efac}.photo-status{display:block;width:fit-content;padding:6px 8px;border-radius:999px;font-size:.7rem;font-weight:900;line-height:1.1}.photo-status.pending{color:#92400e;background:#fef3c7}.photo-status.approved{color:#166534;background:#dcfce7}.photo-status.denied{color:#991b1b;background:#fee2e2}.photo-admin-panel{display:grid;gap:10px;margin:12px 0;padding:14px;background:#fff7ed;border:1px solid #fed7aa;border-left:6px solid #f97316;border-radius:10px}.photo-admin-panel h2{margin:0;color:#9a3412;font-size:1rem;font-weight:900}.photo-request-card{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;padding:10px;background:#fff;border:1px solid #fed7aa;border-radius:8px}.photo-request-card strong{display:block;color:#1f2933}.photo-request-card small{display:block;color:#667085;font-weight:800}.photo-request-actions{display:flex;gap:8px;align-items:center}.small-button{min-height:34px!important;padding:7px 10px!important;font-size:.78rem!important}@media(max-width:720px){.photo-request-card{grid-template-columns:1fr}.photo-request-actions{display:grid;grid-template-columns:1fr 1fr}.photo-permission-box{max-width:100%}}';
+  style.textContent = '.photo-permission-box{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px;margin-top:6px;max-width:210px}.photo-control{display:grid;place-items:center;width:100%;min-height:26px;padding:4px 6px;border-radius:7px;border:1px solid #cbd5e1;background:#fff;color:#475569;font-size:.62rem;font-weight:900;text-align:center;cursor:pointer;line-height:1.05}.photo-control.neutral{background:#fff;color:#475569}.photo-control.danger-lite{color:#991b1b;background:#fff7f7;border-color:#fecaca}.photo-control.approved{grid-column:1/-1;color:#166534;background:#dcfce7;border-color:#86efac}.photo-status{grid-column:1/-1;display:block;width:fit-content;padding:5px 7px;border-radius:999px;font-size:.64rem;font-weight:900;line-height:1.05}.photo-status.pending{color:#92400e;background:#fef3c7}.photo-status.approved{color:#166534;background:#dcfce7}.photo-status.denied{color:#991b1b;background:#fee2e2}.photo-admin-panel{display:grid;gap:10px;margin:12px 0;padding:14px;background:#fff7ed;border:1px solid #fed7aa;border-left:6px solid #f97316;border-radius:10px}.photo-admin-panel h2{margin:0;color:#9a3412;font-size:1rem;font-weight:900}.photo-request-card{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;padding:10px;background:#fff;border:1px solid #fed7aa;border-radius:8px}.photo-request-card strong{display:block;color:#1f2933}.photo-request-card small{display:block;color:#667085;font-weight:800}.photo-request-actions{display:flex;gap:8px;align-items:center}.small-button{min-height:34px!important;padding:7px 10px!important;font-size:.78rem!important}@media(max-width:720px){.photo-request-card{grid-template-columns:1fr}.photo-request-actions{display:grid;grid-template-columns:1fr 1fr}.photo-permission-box{max-width:210px}}';
   document.head.appendChild(style);
 
   window.addEventListener('load', () => setTimeout(apply, 600));
