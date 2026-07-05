@@ -30,6 +30,26 @@ export type Product = {
   unit: string;
 };
 
+export type InventoryProduct = Product & {
+  barcode?: string;
+  currentStock: number;
+  minStock: number;
+};
+
+export type StockMovement = {
+  id: string;
+  productId: string;
+  productName: string;
+  unit: string;
+  barcode?: string;
+  movementType: "saida" | "entrada" | "ajuste";
+  quantity: number;
+  userId: EmployeeId;
+  userName: string;
+  createdAt: string;
+  observation?: string;
+};
+
 export type OrderStatus = "Novo" | "Pedido feito";
 
 export type OrderItem = {
