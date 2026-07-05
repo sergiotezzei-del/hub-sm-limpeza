@@ -1,12 +1,16 @@
 (() => {
   function applyFooter() {
     document.querySelectorAll('footer').forEach((footer) => {
-      if ((footer.textContent || '').includes('TEZZEI')) {
+      const current = (footer.textContent || '').trim();
+      if (current !== 'TEZZEI' && current.includes('TEZZEI')) {
         footer.textContent = 'TEZZEI';
       }
     });
   }
 
   window.addEventListener('load', applyFooter);
-  new MutationObserver(applyFooter).observe(document.body, { childList: true, subtree: true });
+  const observer = new MutationObserver(applyFooter);
+  window.addEventListener('load', () => {
+    if (document.body) observer.observe(document.body, { childList: true, subtree: true });
+  });
 })();
