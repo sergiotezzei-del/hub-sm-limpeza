@@ -253,6 +253,220 @@ footer::before {
   font-weight: 800;
 }
 
+.alert-banner {
+  display: none !important;
+}
+
+.admin-grid {
+  display: grid !important;
+  gap: 12px !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  align-items: stretch !important;
+}
+
+.admin-grid::before {
+  content: "Gestões operacionais";
+  grid-column: 1 / -1;
+  margin-top: 4px;
+  color: #667085;
+  font-size: 0.78rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.admin-grid .admin-card,
+.admin-grid .action-card {
+  position: relative;
+  display: grid !important;
+  min-height: 104px !important;
+  align-content: center !important;
+  gap: 8px !important;
+  padding: 16px !important;
+  overflow: hidden !important;
+  border-left: 6px solid #d8dee8 !important;
+}
+
+.admin-grid .admin-card span,
+.admin-grid .action-card span {
+  font-size: 0.82rem !important;
+  font-weight: 900 !important;
+  letter-spacing: 0.02em !important;
+  text-transform: uppercase !important;
+}
+
+.admin-grid .admin-card strong,
+.admin-grid .action-card strong {
+  font-size: 0.95rem !important;
+  line-height: 1.2 !important;
+}
+
+.admin-grid .action-card:nth-child(1) {
+  order: 1 !important;
+  grid-column: 1 / -1 !important;
+  min-height: 118px !important;
+  border-left-color: #f97316 !important;
+}
+
+.screen:has(.alert-banner) .admin-grid .action-card:nth-child(1) {
+  border-left-color: #dc2626 !important;
+  background: linear-gradient(135deg, #fff7ed 0%, #fee2e2 100%) !important;
+  animation: limpeza-alerta 1.05s infinite alternate;
+}
+
+.screen:has(.alert-banner) .admin-grid .action-card:nth-child(1)::after {
+  content: "⚠ Precisa de atenção";
+  width: fit-content;
+  margin-top: 4px;
+  padding: 6px 9px;
+  border-radius: 999px;
+  color: #ffffff;
+  background: #dc2626;
+  font-size: 0.76rem;
+  font-weight: 900;
+}
+
+@keyframes limpeza-alerta {
+  from {
+    box-shadow: 0 0 0 rgba(249, 115, 22, 0.1);
+    transform: translateY(0);
+  }
+  to {
+    box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.18), 0 10px 22px rgba(220, 38, 38, 0.12);
+    transform: translateY(-1px);
+  }
+}
+
+.admin-grid .action-card:nth-child(2) {
+  display: none !important;
+}
+
+.admin-grid .action-card:nth-child(3) {
+  order: 90 !important;
+  grid-column: 1 / -1 !important;
+  min-height: 84px !important;
+  border-left-color: #64748b !important;
+}
+
+.admin-grid .action-card:nth-child(4),
+.admin-grid .action-card:nth-child(5) {
+  order: 80 !important;
+  border-left-color: #2563eb !important;
+}
+
+.admin-grid .admin-card:nth-child(6) {
+  order: 2 !important;
+  border-left-color: #92400e !important;
+}
+
+.admin-grid .admin-card:nth-child(6) span,
+.admin-grid .admin-card:nth-child(6) strong,
+.admin-grid .admin-card:nth-child(7) span,
+.admin-grid .admin-card:nth-child(7) strong,
+.admin-grid .admin-card:nth-child(8) span,
+.admin-grid .admin-card:nth-child(8) strong,
+.admin-grid .admin-card:nth-child(9) span,
+.admin-grid .admin-card:nth-child(9) strong,
+.admin-grid .admin-card:nth-child(10) span,
+.admin-grid .admin-card:nth-child(10) strong {
+  font-size: 0 !important;
+}
+
+.admin-grid .admin-card:nth-child(6) span::after {
+  content: "Máquina de Café";
+  color: #92400e;
+  font-size: 0.82rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.admin-grid .admin-card:nth-child(6) strong::after {
+  content: "Insumos, doses e reposição";
+  color: #1f2933;
+  font-size: 0.95rem;
+  line-height: 1.2;
+}
+
+.admin-grid .admin-card:nth-child(7) {
+  order: 3 !important;
+  border-left-color: #0284c7 !important;
+}
+
+.admin-grid .admin-card:nth-child(7) span::after {
+  content: "Água";
+  color: #0284c7;
+  font-size: 0.82rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.admin-grid .admin-card:nth-child(7) strong::after {
+  content: "Controle de fardos e copos";
+  color: #1f2933;
+  font-size: 0.95rem;
+  line-height: 1.2;
+}
+
+.admin-grid .admin-card:nth-child(8) {
+  order: 4 !important;
+  border-left-color: #16a34a !important;
+}
+
+.admin-grid .admin-card:nth-child(8) span::after {
+  content: "Manutenção";
+  color: #16a34a;
+  font-size: 0.82rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.admin-grid .admin-card:nth-child(8) strong::after {
+  content: "Chamados e tarefas internas";
+  color: #1f2933;
+  font-size: 0.95rem;
+  line-height: 1.2;
+}
+
+.admin-grid .admin-card:nth-child(9) {
+  order: 5 !important;
+  border-left-color: #7c3aed !important;
+}
+
+.admin-grid .admin-card:nth-child(9) span::after {
+  content: "Chaves";
+  color: #7c3aed;
+  font-size: 0.82rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.admin-grid .admin-card:nth-child(9) strong::after {
+  content: "Controle de acessos";
+  color: #1f2933;
+  font-size: 0.95rem;
+  line-height: 1.2;
+}
+
+.admin-grid .admin-card:nth-child(10) {
+  order: 6 !important;
+  border-left-color: #475569 !important;
+}
+
+.admin-grid .admin-card:nth-child(10) span::after {
+  content: "Patrimônio";
+  color: #475569;
+  font-size: 0.82rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.admin-grid .admin-card:nth-child(10) strong::after {
+  content: "Itens, equipamentos e auditoria";
+  color: #1f2933;
+  font-size: 0.95rem;
+  line-height: 1.2;
+}
+
 @media (max-width: 720px) {
   .employee-top-bar {
     grid-template-columns: auto minmax(0, 1fr) !important;
@@ -274,6 +488,15 @@ footer::before {
 
   .stock-row input:last-child {
     grid-column: 1 / -1;
+  }
+
+  .admin-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .admin-grid .admin-card,
+  .admin-grid .action-card {
+    min-height: 88px !important;
   }
 }
 
