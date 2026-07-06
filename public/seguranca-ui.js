@@ -1,15 +1,17 @@
 (() => {
   let telaAnterior = null;
   let telaSeguranca = null;
+  let telaGuardas = null;
 
   function abrirSeguranca() {
-    const telaAtual = document.querySelector('.screen:not(.seguranca-page):not(.guardas-page)');
+    const telaAtual = document.querySelector('.screen:not(.seguranca-page):not(.guardas-page):not(.escala-page)');
     if (!telaAtual) return;
     telaAnterior = telaAtual;
     telaAtual.style.display = 'none';
 
     document.querySelector('[data-seguranca-page="1"]')?.remove();
     document.querySelector('[data-guardas-page="1"]')?.remove();
+    document.querySelector('[data-escala-page="1"]')?.remove();
 
     const pagina = document.createElement('section');
     pagina.className = 'screen seguranca-page';
@@ -31,21 +33,51 @@
     if (atual) atual.style.display = 'none';
 
     document.querySelector('[data-guardas-page="1"]')?.remove();
+    document.querySelector('[data-escala-page="1"]')?.remove();
 
     const pagina = document.createElement('section');
     pagina.className = 'screen guardas-page';
     pagina.dataset.guardasPage = '1';
-    pagina.innerHTML = '<header class="top-bar"><div><p class="eyebrow">SANTA MARIA SOLUÇÕES IMOBILIÁRIAS</p><h1>Guardas</h1><p>Controle dos guardas</p></div><button class="logout-button" type="button" data-guardas-voltar>Voltar</button></header><section class="admin-grid seguranca-grid"><button type="button" class="admin-card action-card module-card seguranca-card-interno"><span>Escala de horários</span><strong></strong></button><button type="button" class="admin-card action-card module-card seguranca-card-interno"><span>Pagamentos</span><strong></strong></button></section>';
+    pagina.innerHTML = '<header class="top-bar"><div><p class="eyebrow">SANTA MARIA SOLUÇÕES IMOBILIÁRIAS</p><h1>Guardas</h1><p>Controle dos guardas</p></div><button class="logout-button" type="button" data-guardas-voltar>Voltar</button></header><section class="admin-grid seguranca-grid"><button type="button" class="admin-card action-card module-card seguranca-card-interno" data-abrir-escala><span>Escala de horários</span><strong></strong></button><button type="button" class="admin-card action-card module-card seguranca-card-interno"><span>Pagamentos</span><strong></strong></button></section>';
 
     const footer = document.querySelector('footer');
     if (footer?.parentElement) footer.parentElement.insertBefore(pagina, footer);
     else document.querySelector('.app-shell')?.appendChild(pagina);
 
+    telaGuardas = pagina;
     pagina.querySelector('[data-guardas-voltar]').onclick = voltarSeguranca;
+    pagina.querySelector('[data-abrir-escala]').onclick = abrirEscala;
+    window.scrollTo(0, 0);
+  }
+
+  function abrirEscala() {
+    const atual = document.querySelector('[data-guardas-page="1"]');
+    if (atual) atual.style.display = 'none';
+
+    document.querySelector('[data-escala-page="1"]')?.remove();
+
+    const pagina = document.createElement('section');
+    pagina.className = 'screen escala-page';
+    pagina.dataset.escalaPage = '1';
+    pagina.innerHTML = '<header class="top-bar"><div><p class="eyebrow">SANTA MARIA SOLUÇÕES IMOBILIÁRIAS</p><h1>Escala de horários</h1><p>Guardas</p></div><button class="logout-button" type="button" data-escala-voltar>Voltar</button></header><section class="admin-grid seguranca-grid"><button type="button" class="admin-card action-card module-card seguranca-card-interno"><span>Carlos Clemente</span><strong></strong></button><button type="button" class="admin-card action-card module-card seguranca-card-interno"><span>Salomão</span><strong></strong></button></section>';
+
+    const footer = document.querySelector('footer');
+    if (footer?.parentElement) footer.parentElement.insertBefore(pagina, footer);
+    else document.querySelector('.app-shell')?.appendChild(pagina);
+
+    pagina.querySelector('[data-escala-voltar]').onclick = voltarGuardas;
+    window.scrollTo(0, 0);
+  }
+
+  function voltarGuardas() {
+    document.querySelector('[data-escala-page="1"]')?.remove();
+    const guardas = document.querySelector('[data-guardas-page="1"]') || telaGuardas;
+    if (guardas) guardas.style.display = '';
     window.scrollTo(0, 0);
   }
 
   function voltarSeguranca() {
+    document.querySelector('[data-escala-page="1"]')?.remove();
     document.querySelector('[data-guardas-page="1"]')?.remove();
     const seguranca = document.querySelector('[data-seguranca-page="1"]') || telaSeguranca;
     if (seguranca) seguranca.style.display = '';
@@ -53,11 +85,13 @@
   }
 
   function voltarPainel() {
+    document.querySelector('[data-escala-page="1"]')?.remove();
     document.querySelector('[data-guardas-page="1"]')?.remove();
     document.querySelector('[data-seguranca-page="1"]')?.remove();
     if (telaAnterior) telaAnterior.style.display = '';
     telaAnterior = null;
     telaSeguranca = null;
+    telaGuardas = null;
     window.scrollTo(0, 0);
   }
 
