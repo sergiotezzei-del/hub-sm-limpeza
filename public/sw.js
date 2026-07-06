@@ -1,4 +1,4 @@
-const CACHE_NAME = "santa-maria-hub-v8";
+const CACHE_NAME = "santa-maria-hub-v9";
 
 self.addEventListener("install", (event) => {
   self.skipWaiting();
