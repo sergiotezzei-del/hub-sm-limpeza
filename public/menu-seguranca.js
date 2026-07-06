@@ -28,6 +28,12 @@
     return new Date(`${data}T${hora}:00-03:00`);
   }
 
+  function hojeIso(data = new Date()) {
+    const mes = String(data.getMonth() + 1).padStart(2, '0');
+    const dia = String(data.getDate()).padStart(2, '0');
+    return `${data.getFullYear()}-${mes}-${dia}`;
+  }
+
   function painelAberto() {
     const grid = document.querySelector('.module-grid');
     if (!grid) return null;
@@ -77,8 +83,26 @@
     if (guardas) guardas.addEventListener('click', abrirGuardas);
   }
 
+  function plantaoHojeClemente() {
+    const agora = new Date();
+    const hoje = hojeIso(agora);
+    const ativo = escalaClemente.find((item) => dataHora(item.entradaData, item.entradaHora) <= agora && agora <= dataHora(item.saidaData, item.saidaHora));
+    if (ativo) return ativo;
+    return escalaClemente.find((item) => item.entradaData === hoje) || null;
+  }
+
+  function cardServicoHoje() {
+    const plantao = plantaoHojeClemente();
+    if (!plantao) {
+      return '<article class="servico-hoje-card"><span>HOJE DE SERVIÇO</span><strong>Nenhum guarda lançado para hoje</strong><p>Atualize a escala quando houver novo plantão.</p></article>';
+    }
+
+    const obs = plantao.obs ? `<p class="escala-obs">${plantao.obs}</p>` : '';
+    return `<article class="servico-hoje-card"><span>HOJE DE SERVIÇO</span><strong>Carlos Clemente</strong><p>Entrada: ${plantao.entradaHora}<br>Saída: ${plantao.saidaHora} — ${plantao.saidaTexto}</p>${obs}</article>`;
+  }
+
   function abrirGuardas() {
-    const tela = inserirTela('<header class="top-bar"><div><p class="eyebrow">SANTA MARIA SOLUÇÕES IMOBILIÁRIAS</p><h1>Guardas</h1><p>Selecione o guarda</p></div><button class="logout-button" type="button" data-voltar-seguranca>Voltar</button></header><section class="admin-grid seguranca-grid"><button type="button" class="admin-card action-card module-card seguranca-card" data-guarda-nome="Carlos Clemente"><span>Carlos Clemente</span><strong>Guarda Santa Maria</strong></button><button type="button" class="admin-card action-card module-card seguranca-card" data-guarda-nome="Salomão"><span>Salomão</span><strong>Guarda Santa Maria</strong></button></section>');
+    const tela = inserirTela(`<header class="top-bar"><div><p class="eyebrow">SANTA MARIA SOLUÇÕES IMOBILIÁRIAS</p><h1>Guardas</h1><p>Selecione o guarda</p></div><button class="logout-button" type="button" data-voltar-seguranca>Voltar</button></header><section class="admin-grid seguranca-grid"><button type="button" class="admin-card action-card module-card seguranca-card" data-guarda-nome="Carlos Clemente"><span>Carlos Clemente</span><strong>Guarda Santa Maria</strong></button>${cardServicoHoje()}<button type="button" class="admin-card action-card module-card seguranca-card" data-guarda-nome="Salomão"><span>Salomão</span><strong>Guarda Santa Maria</strong></button></section>`);
     const voltar = tela.querySelector('[data-voltar-seguranca]');
     if (voltar) voltar.addEventListener('click', abrirSeguranca);
     tela.querySelectorAll('[data-guarda-nome]').forEach((botao) => {
@@ -138,7 +162,7 @@
     if (document.querySelector('[data-seguranca-simples-style="1"]')) return;
     const style = document.createElement('style');
     style.dataset.segurancaSimplesStyle = '1';
-    style.textContent = '.seguranca-grid{display:grid;gap:14px}.seguranca-card{border-left:4px solid #f97316!important;cursor:pointer!important}.seguranca-card span{display:block;color:#667085;font-size:.78rem;font-weight:900;letter-spacing:.08em;text-transform:uppercase}.seguranca-card strong{display:block;margin-top:6px;color:#1f2933}.empty-state{padding:20px;border:1px solid #d0d5dd;border-radius:14px;background:#fff}.empty-state h2{margin:0 0 8px;color:#1f2933}.empty-state p{margin:6px 0;color:#475569;line-height:1.4}.escala-bloco{display:grid;gap:14px}.escala-bloco h2{margin:8px 0 0;color:#1f2933}.escala-hoje{padding:18px;border-radius:14px;border:1px solid #fed7aa;background:#fff7ed}.escala-hoje span{display:block;color:#9a3412;font-size:.78rem;font-weight:900;letter-spacing:.08em;text-transform:uppercase}.escala-hoje strong{display:block;margin-top:6px;font-size:1.25rem;color:#1f2933}.escala-hoje p{margin:8px 0 0;color:#475569;font-size:1rem;line-height:1.45}.plantao-lista{display:grid;gap:10px}.plantao-card{padding:14px;border:1px solid #d0d5dd;border-left:4px solid #f97316;border-radius:12px;background:#fff}.plantao-card span{display:block;color:#667085;font-size:.72rem;font-weight:900;letter-spacing:.08em}.plantao-card strong{display:block;margin-top:5px;color:#1f2933;font-size:1.05rem}.plantao-card p{margin:6px 0 0;color:#475569;line-height:1.4}.escala-obs{color:#9a3412!important;font-weight:800}';
+    style.textContent = '.seguranca-grid{display:grid;gap:14px}.seguranca-card{border-left:4px solid #f97316!important;cursor:pointer!important}.seguranca-card span{display:block;color:#667085;font-size:.78rem;font-weight:900;letter-spacing:.08em;text-transform:uppercase}.seguranca-card strong{display:block;margin-top:6px;color:#1f2933}.empty-state{padding:20px;border:1px solid #d0d5dd;border-radius:14px;background:#fff}.empty-state h2{margin:0 0 8px;color:#1f2933}.empty-state p{margin:6px 0;color:#475569;line-height:1.4}.servico-hoje-card{padding:16px;border-radius:14px;border:1px solid #fed7aa;background:#fff7ed}.servico-hoje-card span{display:block;color:#9a3412;font-size:.78rem;font-weight:900;letter-spacing:.08em;text-transform:uppercase}.servico-hoje-card strong{display:block;margin-top:6px;font-size:1.15rem;color:#1f2933}.servico-hoje-card p{margin:8px 0 0;color:#475569;line-height:1.45}.escala-bloco{display:grid;gap:14px}.escala-bloco h2{margin:8px 0 0;color:#1f2933}.escala-hoje{padding:18px;border-radius:14px;border:1px solid #fed7aa;background:#fff7ed}.escala-hoje span{display:block;color:#9a3412;font-size:.78rem;font-weight:900;letter-spacing:.08em;text-transform:uppercase}.escala-hoje strong{display:block;margin-top:6px;font-size:1.25rem;color:#1f2933}.escala-hoje p{margin:8px 0 0;color:#475569;font-size:1rem;line-height:1.45}.plantao-lista{display:grid;gap:10px}.plantao-card{padding:14px;border:1px solid #d0d5dd;border-left:4px solid #f97316;border-radius:12px;background:#fff}.plantao-card span{display:block;color:#667085;font-size:.72rem;font-weight:900;letter-spacing:.08em}.plantao-card strong{display:block;margin-top:5px;color:#1f2933;font-size:1.05rem}.plantao-card p{margin:6px 0 0;color:#475569;line-height:1.4}.escala-obs{color:#9a3412!important;font-weight:800}';
     document.head.appendChild(style);
   }
 
