@@ -51,9 +51,18 @@
   }
 
   function abrirGuardas() {
-    const tela = inserirTela('<header class="top-bar"><div><p class="eyebrow">SANTA MARIA SOLUÇÕES IMOBILIÁRIAS</p><h1>Guardas</h1><p>Módulo em construção</p></div><button class="logout-button" type="button" data-voltar-seguranca>Voltar</button></header><section class="empty-state"><h2>Guardas</h2><p>Próxima etapa: criar opções de cadastro, escala e controle.</p></section>');
+    const tela = inserirTela('<header class="top-bar"><div><p class="eyebrow">SANTA MARIA SOLUÇÕES IMOBILIÁRIAS</p><h1>Guardas</h1><p>Selecione o guarda</p></div><button class="logout-button" type="button" data-voltar-seguranca>Voltar</button></header><section class="admin-grid seguranca-grid"><button type="button" class="admin-card action-card module-card seguranca-card" data-guarda-nome="Carlos Clemente"><span>Carlos Clemente</span><strong>Guarda Santa Maria</strong></button><button type="button" class="admin-card action-card module-card seguranca-card" data-guarda-nome="Salomão"><span>Salomão</span><strong>Guarda Santa Maria</strong></button></section>');
     const voltar = tela.querySelector('[data-voltar-seguranca]');
     if (voltar) voltar.addEventListener('click', abrirSeguranca);
+    tela.querySelectorAll('[data-guarda-nome]').forEach((botao) => {
+      botao.addEventListener('click', () => abrirGuarda(botao.getAttribute('data-guarda-nome') || ''));
+    });
+  }
+
+  function abrirGuarda(nome) {
+    const tela = inserirTela(`<header class="top-bar"><div><p class="eyebrow">SANTA MARIA SOLUÇÕES IMOBILIÁRIAS</p><h1>${nome}</h1><p>Perfil do guarda</p></div><button class="logout-button" type="button" data-voltar-guardas>Voltar</button></header><section class="empty-state"><h2>${nome}</h2><p>Próxima etapa: criar escala, registros e controle deste guarda.</p></section>`);
+    const voltar = tela.querySelector('[data-voltar-guardas]');
+    if (voltar) voltar.addEventListener('click', abrirGuardas);
   }
 
   function adicionarBotao() {
