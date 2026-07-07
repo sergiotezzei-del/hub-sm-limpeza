@@ -18,6 +18,7 @@ import type {
   CleaningOrder,
   EmployeeId,
   EmployeeProfile,
+  GuardId,
   InventoryProduct,
   OrderItem,
   StockCheck,
@@ -29,6 +30,7 @@ import type {
 type View =
   | "login"
   | "employee"
+  | "guard"
   | "employee-preview"
   | "order-form"
   | "admin"
@@ -85,6 +87,8 @@ const passwords: Record<string, UserRole> = {
   neia1234: "neia",
   selma1234: "selma",
   helena1234: "helena",
+  carlos1234: "carlos-clemente",
+  salomao1234: "salomao",
 };
 
 const emptyManualDraft: ManualDraft = {
@@ -95,6 +99,11 @@ const emptyManualDraft: ManualDraft = {
 
 const employeeIds = Object.keys(employees) as EmployeeId[];
 const guardNames: GuardName[] = ["Carlos Clemente", "Salomão"];
+
+const guardUserMap: Record<GuardId, GuardName> = {
+  "carlos-clemente": "Carlos Clemente",
+  salomao: "Salomão",
+};
 
 const guardScheduleRows: Record<GuardName, string[]> = {
   "Carlos Clemente": [
@@ -226,6 +235,7 @@ function App() {
 
   function getAfterCleaningActionView(): View {
     if (currentUser === "tezzei") return previewEmployeeId ? "employee-preview" : "cleaning-dashboard";
+    if (isGuardId(currentUser)) return "guard";
     return "employee";
   }
 
@@ -274,13 +284,14 @@ function App() {
 
     setCurrentUser(user);
     setPreviewEmployeeId(null);
+    setSelectedGuardName(isGuardId(user) ? guardUserMap[user] : null);
     setLoginError("");
     setNotice("");
     void refreshOrders();
     void refreshProfiles();
     refreshInventory();
     refreshStockMovements();
-    setView(user === "tezzei" ? "admin" : "employee");
+    setView(user === "tezzei" ? "admin" : isGuardId(user) ? "guard" : "employee");
   }
 
   function setProductQuantity(productId: string, value: string) {
@@ -636,6 +647,10 @@ function App() {
     <main className="app-shell">
       {view === "login" && <LoginScreen password={password} loginError={loginError} onPasswordChange={setPassword} onSubmit={handleLogin} />}
 
+      {view === "guard" && currentUser && isGuardId(currentUser) && (
+        <GuardUserScreen guardName={guardUserMap[currentUser]} onLogout={goToLogin} />
+      )}
+
       {(view === "employee" || view === "employee-preview") && activeEmployeeId && (
         <EmployeeScreen
           employeeId={activeEmployeeId}
@@ -955,6 +970,13 @@ function SecurityGuardDetailScreen({ guardName, onBack, onLogout }: { guardName:
   return <section className="screen"><TopBar title={guardName} subtitle="Escala de horário" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}>Voltar para Guardas</button><section className="shift-section">{summary ? <ShiftCard shift={summary.shift} label={summary.label} featured /> : <article className="shift-card featured"><span>ESCALA</span><strong>Sem próximo plantão lançado</strong><p>Atualize a escala do mês.</p></article>}<h2>Próximos plantões</h2><div className="shift-list">{upcomingShifts.length > 0 ? upcomingShifts.map((shift) => <ShiftCard key={`${shift.startDate}-${shift.startTime}-${shift.endDate}-${shift.endTime}`} shift={shift} />) : <article className="shift-card"><strong>Sem próximos plantões</strong><p>Atualize a escala do mês.</p></article>}</div></section></section>;
 }
 
+function GuardUserScreen({ guardName, onLogout }: { guardName: GuardName; onLogout: () => void }) {
+  const summary = getGuardSummaryShift(guardName);
+  const upcomingShifts = getUpcomingGuardShifts(guardName);
+
+  return <section className="screen"><TopBar title={guardName} subtitle="Guarda Santa Maria" onLogout={onLogout} /><section className="shift-section">{summary ? <ShiftCard shift={summary.shift} label={summary.label} featured /> : <article className="shift-card featured"><span>ESCALA</span><strong>Sem próximo plantão lançado</strong><p>Atualize a escala do mês.</p></article>}<h2>Próximos plantões</h2><div className="shift-list">{upcomingShifts.length > 0 ? upcomingShifts.map((shift) => <ShiftCard key={`${shift.startDate}-${shift.startTime}-${shift.endDate}-${shift.endTime}`} shift={shift} />) : <article className="shift-card"><strong>Sem próximos plantões</strong><p>Atualize a escala do mês.</p></article>}</div></section></section>;
+}
+
 function TodayDutyCard() {
   const duty = getTodayDuty();
   if (!duty) {
@@ -1087,10 +1109,18 @@ function isGuardName(value: unknown): value is GuardName {
   return typeof value === "string" && guardNames.includes(value as GuardName);
 }
 
+function isGuardId(value: unknown): value is GuardId {
+  return value === "carlos-clemente" || value === "salomao";
+}
+
+function isEmployeeId(value: unknown): value is EmployeeId {
+  return typeof value === "string" && employeeIds.includes(value as EmployeeId);
+}
+
 function getActiveEmployeeId(view: View, currentUser: UserRole | null, previewEmployeeId: EmployeeId | null): EmployeeId | null {
   if (view === "employee-preview") return previewEmployeeId;
   if (view === "employee" && currentUser === "tezzei") return previewEmployeeId;
-  if (currentUser && currentUser !== "tezzei") return currentUser;
+  if (isEmployeeId(currentUser)) return currentUser;
   return null;
 }
 
@@ -1123,6 +1153,9 @@ function getInitialSession(): SavedSession {
     if (!storedSession) return fallback;
     const parsed = JSON.parse(storedSession) as SavedSession;
     if (!parsed.currentUser) return fallback;
+    if (isGuardId(parsed.currentUser)) {
+      return { ...parsed, view: "guard", previewEmployeeId: null, selectedGuardName: guardUserMap[parsed.currentUser] };
+    }
     if (parsed.view === "security-guard-detail" && !isGuardName(parsed.selectedGuardName)) {
       return { ...parsed, view: "security-guards", selectedGuardName: null };
     }

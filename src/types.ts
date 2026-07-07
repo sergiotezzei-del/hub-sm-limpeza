@@ -1,6 +1,8 @@
 export type EmployeeId = "neia" | "selma" | "helena";
 
-export type UserRole = "tezzei" | EmployeeId;
+export type GuardId = "carlos-clemente" | "salomao";
+
+export type UserRole = "tezzei" | EmployeeId | GuardId;
 
 export type Employee = {
   id: EmployeeId;
