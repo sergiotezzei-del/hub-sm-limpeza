@@ -15,15 +15,19 @@ import {
   updateOrder as updateStoredOrder,
 } from "./storage";
 import type {
+  AppUserType,
   CleaningOrder,
   EmployeeId,
   EmployeeProfile,
   GuardId,
   InventoryProduct,
+  ManagedUser,
   OrderItem,
   StockCheck,
   StockCheckItem,
   StockMovement,
+  UserDepartment,
+  UserPermission,
   UserRole,
 } from "./types";
 
@@ -31,6 +35,7 @@ type View =
   | "login"
   | "employee"
   | "guard"
+  | "user-home"
   | "employee-preview"
   | "order-form"
   | "admin"
@@ -44,6 +49,7 @@ type View =
   | "current-stock"
   | "order-history"
   | "neia-history"
+  | "users-permissions"
   | "security-menu"
   | "security-guards"
   | "security-guard-detail";
@@ -56,7 +62,7 @@ type ManualDraft = {
 
 type GuardName = "Carlos Clemente" | "Salomão";
 
-type StockExitUserId = EmployeeId | "Sergio Tezzei";
+type StockExitUserId = string;
 
 type GuardShift = {
   startDate: string;
@@ -81,15 +87,7 @@ const FOOTER = "TEZZEI - Operações & Processos";
 const SESSION_KEY = "hub-sm-active-session";
 const INVENTORY_KEY = "hub-sm-inventory-products";
 const STOCK_MOVEMENTS_KEY = "hub-sm-stock-movements";
-
-const passwords: Record<string, UserRole> = {
-  "1234": "tezzei",
-  neia1234: "neia",
-  selma1234: "selma",
-  helena1234: "helena",
-  carlos1234: "carlos-clemente",
-  salomao1234: "salomao",
-};
+const USERS_KEY = "hub-sm-users-permissions";
 
 const emptyManualDraft: ManualDraft = {
   name: "",
@@ -104,6 +102,112 @@ const guardUserMap: Record<GuardId, GuardName> = {
   "carlos-clemente": "Carlos Clemente",
   salomao: "Salomão",
 };
+
+const userDepartments: UserDepartment[] = ["Administração", "Limpeza", "Segurança", "Manutenção", "Estoque", "Café", "Água", "Patrimônio", "Chaves"];
+const userTypes: AppUserType[] = ["Admin", "Limpeza", "Segurança", "Manutenção", "Estoque", "Consulta"];
+const permissionOptions: Array<{ id: UserPermission; label: string }> = [
+  { id: "painel-admin", label: "Painel admin" },
+  { id: "limpeza", label: "Limpeza" },
+  { id: "estoque", label: "Estoque" },
+  { id: "saida-estoque", label: "Saída de estoque" },
+  { id: "cafe", label: "Máquina de Café" },
+  { id: "agua", label: "Água" },
+  { id: "seguranca", label: "Segurança" },
+  { id: "guardas", label: "Guardas" },
+  { id: "manutencao", label: "Manutenção" },
+  { id: "chaves", label: "Chaves" },
+  { id: "patrimonio", label: "Patrimônio" },
+  { id: "relatorios", label: "Relatórios" },
+];
+const allUserPermissions = permissionOptions.map((permission) => permission.id);
+const defaultCreatedAt = "2026-01-01T00:00:00.000Z";
+
+const defaultManagedUsers: ManagedUser[] = [
+  {
+    id: "tezzei",
+    name: "Admin Tezzei",
+    accessCode: "1234",
+    userType: "Admin",
+    jobTitle: "Administrador",
+    department: "Administração",
+    active: true,
+    permissions: allUserPermissions,
+    protected: true,
+    system: true,
+    createdAt: defaultCreatedAt,
+    updatedAt: defaultCreatedAt,
+  },
+  {
+    id: "neia",
+    name: employees.neia.name,
+    accessCode: "neia1234",
+    userType: "Limpeza",
+    jobTitle: "Limpeza",
+    department: "Limpeza",
+    active: true,
+    permissions: ["limpeza", "estoque", "saida-estoque"],
+    linkedEmployeeId: "neia",
+    system: true,
+    createdAt: defaultCreatedAt,
+    updatedAt: defaultCreatedAt,
+  },
+  {
+    id: "selma",
+    name: employees.selma.name,
+    accessCode: "selma1234",
+    userType: "Limpeza",
+    jobTitle: "Limpeza",
+    department: "Limpeza",
+    active: true,
+    permissions: ["limpeza", "saida-estoque"],
+    linkedEmployeeId: "selma",
+    system: true,
+    createdAt: defaultCreatedAt,
+    updatedAt: defaultCreatedAt,
+  },
+  {
+    id: "helena",
+    name: employees.helena.name,
+    accessCode: "helena1234",
+    userType: "Limpeza",
+    jobTitle: "Limpeza",
+    department: "Limpeza",
+    active: true,
+    permissions: ["limpeza", "saida-estoque"],
+    linkedEmployeeId: "helena",
+    system: true,
+    createdAt: defaultCreatedAt,
+    updatedAt: defaultCreatedAt,
+  },
+  {
+    id: "carlos-clemente",
+    name: "Carlos Clemente",
+    accessCode: "carlos1234",
+    userType: "Segurança",
+    jobTitle: "Guarda Santa Maria",
+    department: "Segurança",
+    active: true,
+    permissions: ["seguranca", "guardas"],
+    linkedGuardId: "carlos-clemente",
+    system: true,
+    createdAt: defaultCreatedAt,
+    updatedAt: defaultCreatedAt,
+  },
+  {
+    id: "salomao",
+    name: "Salomão",
+    accessCode: "salomao1234",
+    userType: "Segurança",
+    jobTitle: "Guarda Santa Maria",
+    department: "Segurança",
+    active: true,
+    permissions: ["seguranca", "guardas"],
+    linkedGuardId: "salomao",
+    system: true,
+    createdAt: defaultCreatedAt,
+    updatedAt: defaultCreatedAt,
+  },
+];
 
 const guardScheduleRows: Record<GuardName, string[]> = {
   "Carlos Clemente": [
@@ -165,6 +269,7 @@ function App() {
   const [orders, setOrders] = useState<CleaningOrder[]>(() => getLocalOrders().filter((order) => !order.deletedAt));
   const [historyOrders, setHistoryOrders] = useState<CleaningOrder[]>([]);
   const [profiles, setProfiles] = useState<Record<EmployeeId, EmployeeProfile>>(() => getLocalEmployeeProfiles());
+  const [managedUsers, setManagedUsers] = useState<ManagedUser[]>(() => getLocalManagedUsers());
   const [inventoryProducts, setInventoryProducts] = useState<InventoryProduct[]>(() => getLocalInventoryProducts());
   const [stockMovements, setStockMovements] = useState<StockMovement[]>(() => getLocalStockMovements());
   const [quantities, setQuantities] = useState<Record<string, string>>({});
@@ -231,12 +336,25 @@ function App() {
 
   const newOrders = useMemo(() => orders.filter((order) => order.status === "Novo" && !order.deletedAt), [orders]);
   const activeEmployeeId = getActiveEmployeeId(view, currentUser, previewEmployeeId);
+  const currentManagedUser = useMemo(() => getManagedUser(managedUsers, currentUser), [managedUsers, currentUser]);
   const selectedExitProduct = inventoryProducts.find((product) => product.id === stockExitProductId) ?? null;
 
   function getAfterCleaningActionView(): View {
-    if (currentUser === "tezzei") return previewEmployeeId ? "employee-preview" : "cleaning-dashboard";
+    if (hasCurrentPermission("painel-admin")) return previewEmployeeId ? "employee-preview" : "cleaning-dashboard";
     if (isGuardId(currentUser)) return "guard";
-    return "employee";
+    if (isEmployeeId(currentUser)) return "employee";
+    return "user-home";
+  }
+
+  function getCurrentHomeView(): View {
+    if (hasCurrentPermission("painel-admin")) return "admin";
+    if (isGuardId(currentUser)) return "guard";
+    if (isEmployeeId(currentUser)) return "employee";
+    return "user-home";
+  }
+
+  function hasCurrentPermission(permission: UserPermission) {
+    return hasManagedUserPermission(currentUser, permission, managedUsers);
   }
 
   async function refreshOrders() {
@@ -272,26 +390,31 @@ function App() {
 
   function handleLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const user = passwords[password.trim()];
+    const user = findManagedUserByAccessCode(password.trim(), managedUsers);
 
     if (!user) {
       setLoginError("Senha incorreta");
       return;
     }
 
+    if (!user.active) {
+      setLoginError("Usuário inativo");
+      return;
+    }
+
     const activeElement = document.activeElement;
     if (activeElement instanceof HTMLElement) activeElement.blur();
 
-    setCurrentUser(user);
+    setCurrentUser(user.id);
     setPreviewEmployeeId(null);
-    setSelectedGuardName(isGuardId(user) ? guardUserMap[user] : null);
+    setSelectedGuardName(user.linkedGuardId ? guardUserMap[user.linkedGuardId] : null);
     setLoginError("");
     setNotice("");
     void refreshOrders();
     void refreshProfiles();
     refreshInventory();
     refreshStockMovements();
-    setView(user === "tezzei" ? "admin" : isGuardId(user) ? "guard" : "employee");
+    setView(getInitialViewForManagedUser(user));
   }
 
   function setProductQuantity(productId: string, value: string) {
@@ -410,7 +533,12 @@ function App() {
   }
 
   function openStockExit(userId?: EmployeeId) {
-    const nextUser = userId ?? activeEmployeeId ?? "neia";
+    if (!userId && !hasCurrentPermission("saida-estoque")) {
+      setNotice("Sem permissão para saída de estoque.");
+      return;
+    }
+
+    const nextUser = userId ?? activeEmployeeId ?? currentUser ?? "neia";
     setStockExitUserId(nextUser);
     setStockExitBarcode("");
     setStockExitProductId("");
@@ -456,7 +584,7 @@ function App() {
       return;
     }
 
-    addLocalStockExit({ product: selectedExitProduct, quantity, userId: stockExitUserId, observation: stockExitObservation });
+    addLocalStockExit({ product: selectedExitProduct, quantity, userId: stockExitUserId, userName: getStockExitUserName(stockExitUserId, managedUsers), observation: stockExitObservation });
     refreshInventory();
     refreshStockMovements();
     setStockExitBarcode("");
@@ -597,6 +725,11 @@ function App() {
   }
 
   function openCleaningDashboard() {
+    if (!hasCurrentPermission("limpeza")) {
+      setNotice("Sem permissão para acessar Limpeza.");
+      return;
+    }
+
     setNotice("");
     setSelectedGuardName(null);
     void refreshOrders();
@@ -607,12 +740,22 @@ function App() {
   }
 
   function openSecurityMenu() {
+    if (!hasCurrentPermission("seguranca")) {
+      setNotice("Sem permissão para acessar Segurança.");
+      return;
+    }
+
     setNotice("");
     setSelectedGuardName(null);
     setView("security-menu");
   }
 
   function openSecurityGuards() {
+    if (!hasCurrentPermission("guardas")) {
+      setNotice("Sem permissão para acessar Guardas.");
+      return;
+    }
+
     setNotice("");
     setSelectedGuardName(null);
     setView("security-guards");
@@ -628,6 +771,63 @@ function App() {
     setNotice("");
     setPreviewEmployeeId(employeeId);
     setView("employee-preview");
+  }
+
+  function openUsersPermissions() {
+    if (!hasCurrentPermission("painel-admin")) {
+      setNotice("Sem permissão para gerenciar usuários.");
+      return;
+    }
+
+    setNotice("");
+    setSelectedGuardName(null);
+    setView("users-permissions");
+  }
+
+  function saveManagedUser(user: ManagedUser) {
+    const cleanAccessCode = user.accessCode.trim();
+    const cleanName = user.name.trim();
+
+    if (!cleanName || !cleanAccessCode) {
+      setNotice("Informe nome e senha/código de acesso.");
+      return false;
+    }
+
+    if (managedUsers.some((current) => current.id !== user.id && current.accessCode === cleanAccessCode)) {
+      setNotice("Esse código de acesso já está em uso.");
+      return false;
+    }
+
+    const previousUser = managedUsers.find((current) => current.id === user.id);
+    const now = new Date().toISOString();
+    const normalizedUser: ManagedUser = {
+      ...user,
+      name: cleanName,
+      accessCode: cleanAccessCode,
+      active: user.protected ? true : user.active,
+      permissions: user.id === "tezzei" ? allUserPermissions : uniquePermissions(user.permissions),
+      createdAt: previousUser?.createdAt ?? user.createdAt ?? now,
+      updatedAt: now,
+    };
+    const nextUsers = upsertManagedUser(managedUsers, normalizedUser);
+    saveLocalManagedUsers(nextUsers);
+    setManagedUsers(nextUsers);
+    setNotice("Usuário salvo.");
+    return true;
+  }
+
+  function deleteManagedUser(userId: string) {
+    const user = managedUsers.find((current) => current.id === userId);
+    if (!user) return;
+    if (user.system || user.protected) {
+      setNotice("Usuário do sistema não pode ser apagado.");
+      return;
+    }
+
+    const nextUsers = managedUsers.filter((current) => current.id !== userId);
+    saveLocalManagedUsers(nextUsers);
+    setManagedUsers(nextUsers);
+    setNotice("Usuário apagado.");
   }
 
   async function handlePhotoChange(employeeId: EmployeeId, file: File | null) {
@@ -649,6 +849,18 @@ function App() {
 
       {view === "guard" && currentUser && isGuardId(currentUser) && (
         <GuardUserScreen guardName={guardUserMap[currentUser]} onLogout={goToLogin} />
+      )}
+
+      {view === "user-home" && currentManagedUser && (
+        <UserAccessScreen
+          user={currentManagedUser}
+          notice={notice}
+          permissions={getManagedUserPermissions(currentUser, managedUsers)}
+          onLogout={goToLogin}
+          onOpenCleaningDashboard={openCleaningDashboard}
+          onOpenStockExit={() => openStockExit()}
+          onOpenSecurity={openSecurityMenu}
+        />
       )}
 
       {(view === "employee" || view === "employee-preview") && activeEmployeeId && (
@@ -719,7 +931,7 @@ function App() {
           quantity={stockExitQuantity}
           observation={stockExitObservation}
           message={stockExitMessage}
-          adminMode={currentUser === "tezzei"}
+          adminMode={hasCurrentPermission("painel-admin")}
           onBack={() => setView(getAfterCleaningActionView())}
           onLogout={goToLogin}
           onUserChange={setStockExitUserId}
@@ -750,9 +962,30 @@ function App() {
       {view === "stock-exit-history" && <StockExitHistoryScreen movements={stockMovements} onBack={() => setView("cleaning-dashboard")} onLogout={goToLogin} />}
       {view === "current-stock" && <CurrentStockScreen inventoryProducts={inventoryProducts} onBack={() => setView("cleaning-dashboard")} onLogout={goToLogin} />}
 
-      {view === "admin" && <AdminScreen newOrdersCount={newOrders.length} onlineEnabled={onlineEnabled} onLogout={goToLogin} onOpenCleaningDashboard={openCleaningDashboard} onOpenSecurity={openSecurityMenu} />}
+      {view === "admin" && (
+        <AdminScreen
+          newOrdersCount={newOrders.length}
+          onlineEnabled={onlineEnabled}
+          permissions={getManagedUserPermissions(currentUser, managedUsers)}
+          onLogout={goToLogin}
+          onOpenCleaningDashboard={openCleaningDashboard}
+          onOpenSecurity={openSecurityMenu}
+          onOpenUsersPermissions={openUsersPermissions}
+        />
+      )}
 
-      {view === "security-menu" && <SecurityMenuScreen onBack={() => setView("admin")} onLogout={goToLogin} onOpenGuards={openSecurityGuards} />}
+      {view === "users-permissions" && (
+        <UsersPermissionsScreen
+          users={managedUsers}
+          notice={notice}
+          onBack={() => setView(getCurrentHomeView())}
+          onLogout={goToLogin}
+          onSaveUser={saveManagedUser}
+          onDeleteUser={deleteManagedUser}
+        />
+      )}
+
+      {view === "security-menu" && <SecurityMenuScreen permissions={getManagedUserPermissions(currentUser, managedUsers)} onBack={() => setView(getCurrentHomeView())} onLogout={goToLogin} onOpenGuards={openSecurityGuards} />}
 
       {view === "security-guards" && <SecurityGuardsScreen onBack={openSecurityMenu} onLogout={goToLogin} onOpenGuard={openGuardDetail} />}
 
@@ -763,7 +996,8 @@ function App() {
       {view === "cleaning-dashboard" && (
         <CleaningDashboardScreen
           newOrdersCount={newOrders.length}
-          onBack={() => setView("admin")}
+          permissions={getManagedUserPermissions(currentUser, managedUsers)}
+          onBack={() => setView(getCurrentHomeView())}
           onLogout={goToLogin}
           onOpenOrders={() => {
             setNotice("");
@@ -951,12 +1185,80 @@ function CurrentStockScreen({ inventoryProducts, onBack, onLogout }: { inventory
   return <section className="screen"><TopBar title="Estoque Atual" subtitle="Produtos cadastrados para controle de limpeza" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}>Voltar para Limpeza</button><section className="product-list">{inventoryProducts.map((product) => <article className="product-row inventory-stock-row" key={product.id}><span><strong>{product.name}</strong><small>{product.barcode ? `Código: ${product.barcode}` : "Sem código cadastrado"}</small></span><strong>{product.currentStock} {product.unit}</strong></article>)}</section></section>;
 }
 
-function AdminScreen({ newOrdersCount, onlineEnabled, onLogout, onOpenCleaningDashboard, onOpenSecurity }: { newOrdersCount: number; onlineEnabled: boolean; onLogout: () => void; onOpenCleaningDashboard: () => void; onOpenSecurity: () => void }) {
-  return <section className="screen"><TopBar title="Painel Tezzei" subtitle={onlineEnabled ? "Central Operacional HUB SM — online" : "Central Operacional HUB SM — local"} onLogout={onLogout} /><section className="admin-grid module-grid"><button className={`admin-card action-card module-card cleaning-card ${newOrdersCount > 0 ? "needs-attention" : ""}`} type="button" onClick={onOpenCleaningDashboard}><span>Limpeza</span><strong>{newOrdersCount > 0 ? `${newOrdersCount} pedido(s) pendente(s)` : "Rotinas, pedidos Sinval e equipe"}</strong>{newOrdersCount > 0 && <small className="attention-pill">⚠ Precisa de atenção</small>}</button><AdminCard title="Máquina de Café" detail="Insumos, doses e reposição" /><AdminCard title="Água" detail="Controle de fardos e copos" /><AdminCard title="Manutenção" detail="Chamados e tarefas internas" /><AdminCard title="Chaves" detail="Controle de acessos" /><button className="admin-card action-card module-card security-card" type="button" onClick={onOpenSecurity}><span>Segurança</span><strong>Guardas e escalas</strong></button><AdminCard title="Patrimônio" detail="Itens, equipamentos e auditoria" /></section></section>;
+function UserAccessScreen({ user, permissions, notice, onLogout, onOpenCleaningDashboard, onOpenStockExit, onOpenSecurity }: { user: ManagedUser; permissions: UserPermission[]; notice: string; onLogout: () => void; onOpenCleaningDashboard: () => void; onOpenStockExit: () => void; onOpenSecurity: () => void }) {
+  const canSecurity = permissions.includes("seguranca") || permissions.includes("guardas");
+  const hasAnyModule = permissions.length > 0;
+
+  return <section className="screen"><TopBar title={user.name} subtitle={`${user.jobTitle} — ${user.department}`} onLogout={onLogout} />{notice && <p className="notice-message">{notice}</p>}<section className="admin-grid module-grid">{permissions.includes("limpeza") && <button className="admin-card action-card module-card cleaning-card" type="button" onClick={onOpenCleaningDashboard}><span>Limpeza</span><strong>Rotinas e pedidos</strong></button>}{permissions.includes("saida-estoque") && <button className="admin-card action-card module-card" type="button" onClick={onOpenStockExit}><span>Saída de estoque</span><strong>Bipar retirada do estoque</strong></button>}{canSecurity && <button className="admin-card action-card module-card security-card" type="button" onClick={onOpenSecurity}><span>Segurança</span><strong>Guardas e escalas</strong></button>}{permissions.includes("estoque") && <AdminCard title="Estoque" detail="Produtos e códigos" />}{permissions.includes("cafe") && <AdminCard title="Máquina de Café" detail="Insumos e reposição" />}{permissions.includes("agua") && <AdminCard title="Água" detail="Fardos e copos" />}{permissions.includes("manutencao") && <AdminCard title="Manutenção" detail="Chamados internos" />}{permissions.includes("chaves") && <AdminCard title="Chaves" detail="Controle de acessos" />}{permissions.includes("patrimonio") && <AdminCard title="Patrimônio" detail="Itens e equipamentos" />}{permissions.includes("relatorios") && <AdminCard title="Relatórios" detail="Consultas liberadas" />}</section>{!hasAnyModule && <section className="empty-state"><h2>Nenhum módulo liberado</h2><p>Solicite permissão ao admin.</p></section>}</section>;
 }
 
-function SecurityMenuScreen({ onBack, onLogout, onOpenGuards }: { onBack: () => void; onLogout: () => void; onOpenGuards: () => void }) {
-  return <section className="screen"><TopBar title="Segurança" subtitle="Controle de segurança" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}>Voltar ao Painel</button><section className="admin-grid security-grid"><button className="admin-card action-card module-card security-card" type="button" onClick={onOpenGuards}><span>Guardas</span><strong>Controle dos guardas</strong></button></section></section>;
+function UsersPermissionsScreen({ users, notice, onBack, onLogout, onSaveUser, onDeleteUser }: { users: ManagedUser[]; notice: string; onBack: () => void; onLogout: () => void; onSaveUser: (user: ManagedUser) => boolean; onDeleteUser: (userId: string) => void }) {
+  const [selectedUserId, setSelectedUserId] = useState(users[0]?.id ?? "");
+  const selectedUser = users.find((user) => user.id === selectedUserId) ?? users[0] ?? createBlankManagedUser();
+  const [creating, setCreating] = useState(false);
+  const [draft, setDraft] = useState<ManagedUser>(() => cloneManagedUser(selectedUser));
+
+  useEffect(() => {
+    const nextUser = users.find((user) => user.id === selectedUserId) ?? users[0] ?? createBlankManagedUser();
+    if (!creating) setDraft(cloneManagedUser(nextUser));
+  }, [creating, selectedUserId, users]);
+
+  function startNewUser() {
+    const newUser = createBlankManagedUser();
+    setCreating(true);
+    setSelectedUserId(newUser.id);
+    setDraft(newUser);
+  }
+
+  function selectUser(userId: string) {
+    setCreating(false);
+    setSelectedUserId(userId);
+  }
+
+  async function handleUserPhoto(file: File | null) {
+    if (!file) return;
+    const photoData = await imageFileToDataUrl(file);
+    setDraft((current) => ({ ...current, photoData }));
+  }
+
+  function togglePermission(permission: UserPermission) {
+    setDraft((current) => {
+      const hasPermission = current.permissions.includes(permission);
+      const permissions = hasPermission
+        ? current.permissions.filter((item) => item !== permission)
+        : [...current.permissions, permission];
+      return { ...current, permissions };
+    });
+  }
+
+  function saveDraft() {
+    const saved = onSaveUser(draft);
+    if (saved) {
+      setCreating(false);
+      setSelectedUserId(draft.id);
+    }
+  }
+
+  function deleteDraft() {
+    if (!window.confirm("Apagar este usuário?")) return;
+    onDeleteUser(draft.id);
+    setCreating(false);
+    setSelectedUserId(users[0]?.id ?? "");
+  }
+
+  return <section className="screen users-screen"><TopBar title="Usuários e Permissões" subtitle="Acessos, setores e módulos do HUB SM" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}>Voltar</button>{notice && <p className={notice.includes("salvo") || notice.includes("apagado") ? "success-message" : "notice-message"}>{notice}</p>}<section className="users-layout"><aside className="users-list"><button className="primary-button wide-button" type="button" onClick={startNewUser}>Cadastrar novo usuário</button>{users.map((user) => <button key={user.id} type="button" className={`user-list-card ${user.id === selectedUserId && !creating ? "selected" : ""}`} onClick={() => selectUser(user.id)}><UserAvatar user={user} /><span>{user.name}</span><strong>{user.jobTitle}</strong><small>{user.department} — {user.active ? "Ativo" : "Inativo"}</small></button>)}</aside><section className="user-editor"><div className="user-editor-head"><UserAvatar user={draft} large /><div><p className="card-kicker">{creating ? "Novo usuário" : "Editar usuário"}</p><h2>{draft.name || "Usuário sem nome"}</h2><small>{draft.department} — {draft.userType}</small></div></div><section className="manual-form user-form"><label>Nome<input type="text" value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></label><label>Senha / código de acesso<input type="text" value={draft.accessCode} onChange={(event) => setDraft({ ...draft, accessCode: event.target.value })} /></label><label>Cargo / função<input type="text" value={draft.jobTitle} onChange={(event) => setDraft({ ...draft, jobTitle: event.target.value })} /></label><label>Setor / departamento<select value={draft.department} onChange={(event) => setDraft({ ...draft, department: event.target.value as UserDepartment })}>{userDepartments.map((department) => <option key={department} value={department}>{department}</option>)}</select></label><label>Tipo de usuário<select value={draft.userType} onChange={(event) => setDraft({ ...draft, userType: event.target.value as AppUserType })}>{userTypes.map((userType) => <option key={userType} value={userType}>{userType}</option>)}</select></label><label className="checkbox-row"><input type="checkbox" checked={draft.active} disabled={draft.protected} onChange={(event) => setDraft({ ...draft, active: event.target.checked })} /><span>Usuário ativo</span></label><label className="photo-button user-photo-button">Definir foto do usuário<input type="file" accept="image/*" capture="environment" onChange={(event) => { void handleUserPhoto(event.target.files?.[0] ?? null); event.target.value = ""; }} /></label>{draft.photoData && <button className="ghost-button" type="button" onClick={() => setDraft({ ...draft, photoData: undefined })}>Remover foto</button>}</section><section className="permissions-panel"><h2>Permissões por módulo</h2><div className="permissions-grid">{permissionOptions.map((permission) => <label className="checkbox-row permission-row" key={permission.id}><input type="checkbox" checked={draft.id === "tezzei" || draft.permissions.includes(permission.id)} disabled={draft.id === "tezzei"} onChange={() => togglePermission(permission.id)} /><span>{permission.label}</span></label>)}</div></section><div className="button-grid user-actions"><button className="primary-button" type="button" onClick={saveDraft}>Salvar usuário</button><button className="secondary-button" type="button" disabled={draft.protected || !draft.active} onClick={() => setDraft({ ...draft, active: false })}>Inativar usuário</button>{!draft.system && !draft.protected && <button className="danger-button" type="button" onClick={deleteDraft}>Apagar usuário</button>}</div></section></section></section>;
+}
+
+function UserAvatar({ user, large = false }: { user: ManagedUser; large?: boolean }) {
+  return <div className={large ? "user-avatar large" : "user-avatar"}>{user.photoData ? <img src={user.photoData} alt={`Foto de ${user.name}`} /> : <span>{(user.name || "?").slice(0, 1)}</span>}</div>;
+}
+
+function AdminScreen({ newOrdersCount, onlineEnabled, permissions, onLogout, onOpenCleaningDashboard, onOpenSecurity, onOpenUsersPermissions }: { newOrdersCount: number; onlineEnabled: boolean; permissions: UserPermission[]; onLogout: () => void; onOpenCleaningDashboard: () => void; onOpenSecurity: () => void; onOpenUsersPermissions: () => void }) {
+  return <section className="screen"><TopBar title="Painel Tezzei" subtitle={onlineEnabled ? "Central Operacional HUB SM — online" : "Central Operacional HUB SM — local"} onLogout={onLogout} /><section className="admin-grid module-grid">{permissions.includes("limpeza") && <button className={`admin-card action-card module-card cleaning-card ${newOrdersCount > 0 ? "needs-attention" : ""}`} type="button" onClick={onOpenCleaningDashboard}><span>Limpeza</span><strong>{newOrdersCount > 0 ? `${newOrdersCount} pedido(s) pendente(s)` : "Rotinas, pedidos Sinval e equipe"}</strong>{newOrdersCount > 0 && <small className="attention-pill">⚠ Precisa de atenção</small>}</button>}{permissions.includes("estoque") && <AdminCard title="Estoque" detail="Produtos, códigos e saídas" />}{permissions.includes("cafe") && <AdminCard title="Máquina de Café" detail="Insumos, doses e reposição" />}{permissions.includes("agua") && <AdminCard title="Água" detail="Controle de fardos e copos" />}{permissions.includes("manutencao") && <AdminCard title="Manutenção" detail="Chamados e tarefas internas" />}{permissions.includes("chaves") && <AdminCard title="Chaves" detail="Controle de acessos" />}{permissions.includes("seguranca") && <button className="admin-card action-card module-card security-card" type="button" onClick={onOpenSecurity}><span>Segurança</span><strong>Guardas e escalas</strong></button>}{permissions.includes("patrimonio") && <AdminCard title="Patrimônio" detail="Itens, equipamentos e auditoria" />}{permissions.includes("relatorios") && <AdminCard title="Relatórios" detail="Consultas e auditoria" />}{permissions.includes("painel-admin") && <button className="admin-card action-card module-card users-card" type="button" onClick={onOpenUsersPermissions}><span>Usuários e Permissões</span><strong>Acessos, setores e módulos</strong></button>}</section></section>;
+}
+
+function SecurityMenuScreen({ permissions, onBack, onLogout, onOpenGuards }: { permissions: UserPermission[]; onBack: () => void; onLogout: () => void; onOpenGuards: () => void }) {
+  return <section className="screen"><TopBar title="Segurança" subtitle="Controle de segurança" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}>Voltar</button><section className="admin-grid security-grid">{permissions.includes("guardas") ? <button className="admin-card action-card module-card security-card" type="button" onClick={onOpenGuards}><span>Guardas</span><strong>Controle dos guardas</strong></button> : <article className="empty-state"><h2>Nenhum acesso liberado</h2><p>Solicite permissão para acessar Guardas.</p></article>}</section></section>;
 }
 
 function SecurityGuardsScreen({ onBack, onLogout, onOpenGuard }: { onBack: () => void; onLogout: () => void; onOpenGuard: (guardName: GuardName) => void }) {
@@ -990,8 +1292,13 @@ function ShiftCard({ shift, label, featured = false }: { shift: GuardShift; labe
   return <article className={featured ? "shift-card featured" : "shift-card"}><span>{label ?? shift.shiftType}</span><strong>{shift.startText}</strong><p>Entrada: {shift.startTime}<br />Saída: {shift.endTime} — {shift.endText}</p>{shift.observation && <p className="shift-observation">{shift.observation}</p>}</article>;
 }
 
-function CleaningDashboardScreen({ newOrdersCount, onBack, onLogout, onOpenOrders, onOpenStockExit, onOpenBarcodeRegister, onOpenCurrentStock, onOpenStockHistory, onOpenProfiles, onOpenOrderHistory, onOpenNeiaHistory }: { newOrdersCount: number; onBack: () => void; onLogout: () => void; onOpenOrders: () => void; onOpenStockExit: () => void; onOpenBarcodeRegister: () => void; onOpenCurrentStock: () => void; onOpenStockHistory: () => void; onOpenProfiles: () => void; onOpenOrderHistory: () => void; onOpenNeiaHistory: () => void }) {
-  return <section className="screen"><TopBar title="Gestão de Limpeza" subtitle="Neia, Selma, Helena, pedidos, estoque e auditoria" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}>Voltar ao Painel</button>{newOrdersCount > 0 && <button className="alert-banner cleaning-alert-banner" type="button" onClick={onOpenOrders}>🔔 Pedido novo da Neia — precisa de atenção</button>}<section className="admin-grid cleaning-dashboard-grid"><button className={`admin-card action-card cleaning-control-card ${newOrdersCount > 0 ? "needs-attention" : ""}`} type="button" onClick={onOpenOrders}><span>Pedidos Sinval</span><strong>{newOrdersCount > 0 ? `${newOrdersCount} pedido(s) pendente(s)` : "Nenhum pedido pendente"}</strong>{newOrdersCount > 0 && <small className="attention-pill">⚠ Verificar agora</small>}</button><button className="admin-card action-card cleaning-control-card" type="button" onClick={onOpenStockExit}><span>Saída de Produto</span><strong>Bipar retirada do estoque</strong></button><button className="admin-card action-card cleaning-control-card" type="button" onClick={onOpenBarcodeRegister}><span>Cadastrar Código</span><strong>Vincular código de barras ao produto</strong></button><button className="admin-card action-card cleaning-control-card" type="button" onClick={onOpenCurrentStock}><span>Estoque Atual</span><strong>Produtos e códigos cadastrados</strong></button><button className="admin-card action-card cleaning-control-card" type="button" onClick={onOpenStockHistory}><span>Histórico de Saídas</span><strong>Quem usou, quando e quanto</strong></button><button className="admin-card action-card cleaning-control-card" type="button" onClick={onOpenNeiaHistory}><span>Histórico Neia</span><strong>Todos os pedidos feitos pela Neia</strong></button><button className="admin-card action-card cleaning-control-card" type="button" onClick={onOpenOrderHistory}><span>Histórico / Auditoria</span><strong>Concluídos e excluídos</strong></button><button className="admin-card action-card cleaning-control-card" type="button" onClick={onOpenProfiles}><span>Perfis da equipe</span><strong>Acessar telas da Neia, Selma e Helena</strong></button></section></section>;
+function CleaningDashboardScreen({ newOrdersCount, permissions, onBack, onLogout, onOpenOrders, onOpenStockExit, onOpenBarcodeRegister, onOpenCurrentStock, onOpenStockHistory, onOpenProfiles, onOpenOrderHistory, onOpenNeiaHistory }: { newOrdersCount: number; permissions: UserPermission[]; onBack: () => void; onLogout: () => void; onOpenOrders: () => void; onOpenStockExit: () => void; onOpenBarcodeRegister: () => void; onOpenCurrentStock: () => void; onOpenStockHistory: () => void; onOpenProfiles: () => void; onOpenOrderHistory: () => void; onOpenNeiaHistory: () => void }) {
+  const canCleaning = permissions.includes("limpeza");
+  const canStock = permissions.includes("estoque");
+  const canStockExit = permissions.includes("saida-estoque");
+  const canReports = permissions.includes("relatorios");
+
+  return <section className="screen"><TopBar title="Gestão de Limpeza" subtitle="Neia, Selma, Helena, pedidos, estoque e auditoria" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}>Voltar</button>{canCleaning && newOrdersCount > 0 && <button className="alert-banner cleaning-alert-banner" type="button" onClick={onOpenOrders}>🔔 Pedido novo da Neia — precisa de atenção</button>}<section className="admin-grid cleaning-dashboard-grid">{canCleaning && <button className={`admin-card action-card cleaning-control-card ${newOrdersCount > 0 ? "needs-attention" : ""}`} type="button" onClick={onOpenOrders}><span>Pedidos Sinval</span><strong>{newOrdersCount > 0 ? `${newOrdersCount} pedido(s) pendente(s)` : "Nenhum pedido pendente"}</strong>{newOrdersCount > 0 && <small className="attention-pill">⚠ Verificar agora</small>}</button>}{canStockExit && <button className="admin-card action-card cleaning-control-card" type="button" onClick={onOpenStockExit}><span>Saída de Produto</span><strong>Bipar retirada do estoque</strong></button>}{canStock && <button className="admin-card action-card cleaning-control-card" type="button" onClick={onOpenBarcodeRegister}><span>Cadastrar Código</span><strong>Vincular código de barras ao produto</strong></button>}{canStock && <button className="admin-card action-card cleaning-control-card" type="button" onClick={onOpenCurrentStock}><span>Estoque Atual</span><strong>Produtos e códigos cadastrados</strong></button>}{canStock && <button className="admin-card action-card cleaning-control-card" type="button" onClick={onOpenStockHistory}><span>Histórico de Saídas</span><strong>Quem usou, quando e quanto</strong></button>}{canCleaning && <button className="admin-card action-card cleaning-control-card" type="button" onClick={onOpenNeiaHistory}><span>Histórico Neia</span><strong>Todos os pedidos feitos pela Neia</strong></button>}{canReports && <button className="admin-card action-card cleaning-control-card" type="button" onClick={onOpenOrderHistory}><span>Histórico / Auditoria</span><strong>Concluídos e excluídos</strong></button>}{canCleaning && <button className="admin-card action-card cleaning-control-card" type="button" onClick={onOpenProfiles}><span>Perfis da equipe</span><strong>Acessar telas da Neia, Selma e Helena</strong></button>}</section></section>;
 }
 
 function ProfilesScreen({ profiles, notice, onBack, onLogout, onPreviewEmployee, onProfilePhotoChange }: { profiles: Record<EmployeeId, EmployeeProfile>; notice: string; onBack: () => void; onLogout: () => void; onPreviewEmployee: (employeeId: EmployeeId) => void; onProfilePhotoChange: (employeeId: EmployeeId, file: File | null) => void }) {
@@ -1124,6 +1431,70 @@ function getActiveEmployeeId(view: View, currentUser: UserRole | null, previewEm
   return null;
 }
 
+function getManagedUser(users: ManagedUser[], userId: UserRole | null) {
+  if (!userId) return null;
+  return users.find((user) => user.id === userId) ?? null;
+}
+
+function getManagedUserPermissions(userId: UserRole | null, users: ManagedUser[]) {
+  if (userId === "tezzei") return allUserPermissions;
+  const user = getManagedUser(users, userId);
+  return user?.active ? uniquePermissions(user.permissions) : [];
+}
+
+function hasManagedUserPermission(userId: UserRole | null, permission: UserPermission, users: ManagedUser[]) {
+  return getManagedUserPermissions(userId, users).includes(permission);
+}
+
+function findManagedUserByAccessCode(accessCode: string, users: ManagedUser[]) {
+  return users.find((user) => user.accessCode === accessCode) ?? null;
+}
+
+function getInitialViewForManagedUser(user: ManagedUser): View {
+  if (user.linkedGuardId) return "guard";
+  if (user.linkedEmployeeId) return "employee";
+  if (user.permissions.includes("painel-admin")) return "admin";
+  return "user-home";
+}
+
+function upsertManagedUser(users: ManagedUser[], user: ManagedUser) {
+  const exists = users.some((current) => current.id === user.id);
+  if (exists) return users.map((current) => (current.id === user.id ? user : current));
+  return [...users, user];
+}
+
+function createBlankManagedUser(): ManagedUser {
+  const now = new Date().toISOString();
+  return {
+    id: `user-${createId()}`,
+    name: "",
+    accessCode: "",
+    userType: "Consulta",
+    jobTitle: "Consulta",
+    department: "Administração",
+    active: true,
+    permissions: [],
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+function cloneManagedUser(user: ManagedUser): ManagedUser {
+  return { ...user, permissions: [...user.permissions] };
+}
+
+function uniquePermissions(permissions: UserPermission[]) {
+  return permissionOptions
+    .map((permission) => permission.id)
+    .filter((permission) => permissions.includes(permission));
+}
+
+function getStockExitUserName(userId: StockExitUserId, users: ManagedUser[]) {
+  if (userId === "Sergio Tezzei") return userId;
+  if (isEmployeeId(userId)) return employees[userId].name;
+  return users.find((user) => user.id === userId)?.name ?? userId;
+}
+
 function getOrderStatusLabel(order: CleaningOrder) {
   if (order.deletedAt) return "Excluído";
   if (order.status === "Pedido feito") return "Concluído";
@@ -1163,6 +1534,71 @@ function getInitialSession(): SavedSession {
   } catch { return fallback; }
 }
 
+function getLocalManagedUsers(): ManagedUser[] {
+  if (typeof window === "undefined") return defaultManagedUsers;
+  const rawUsers = window.localStorage.getItem(USERS_KEY);
+  if (!rawUsers) return defaultManagedUsers.map(cloneManagedUser);
+
+  try {
+    const parsed = JSON.parse(rawUsers);
+    if (!Array.isArray(parsed)) return defaultManagedUsers.map(cloneManagedUser);
+    return mergeManagedUsers(parsed);
+  } catch {
+    return defaultManagedUsers.map(cloneManagedUser);
+  }
+}
+
+function saveLocalManagedUsers(users: ManagedUser[]) {
+  window.localStorage.setItem(USERS_KEY, JSON.stringify(users));
+}
+
+function mergeManagedUsers(storedUsers: unknown[]) {
+  const validStoredUsers = storedUsers.filter(isManagedUserLike);
+  const storedMap = new Map(validStoredUsers.map((user) => [user.id, user]));
+  const defaultIds = new Set(defaultManagedUsers.map((user) => user.id));
+  const systemUsers = defaultManagedUsers.map((defaultUser) => {
+    const storedUser = storedMap.get(defaultUser.id);
+    return normalizeManagedUser({
+      ...defaultUser,
+      ...storedUser,
+      id: defaultUser.id,
+      linkedEmployeeId: defaultUser.linkedEmployeeId,
+      linkedGuardId: defaultUser.linkedGuardId,
+      protected: defaultUser.protected,
+      system: true,
+      active: defaultUser.protected ? true : storedUser?.active ?? defaultUser.active,
+      permissions: defaultUser.id === "tezzei" ? allUserPermissions : storedUser?.permissions ?? defaultUser.permissions,
+    });
+  });
+  const customUsers = validStoredUsers
+    .filter((user) => !defaultIds.has(user.id))
+    .map(normalizeManagedUser);
+
+  return [...systemUsers, ...customUsers];
+}
+
+function isManagedUserLike(value: unknown): value is ManagedUser {
+  if (!value || typeof value !== "object") return false;
+  const user = value as Partial<ManagedUser>;
+  return typeof user.id === "string" && typeof user.name === "string" && typeof user.accessCode === "string";
+}
+
+function normalizeManagedUser(user: ManagedUser): ManagedUser {
+  const userType = userTypes.includes(user.userType) ? user.userType : "Consulta";
+  return {
+    ...user,
+    name: user.name || "Usuário",
+    accessCode: user.accessCode || "",
+    userType,
+    jobTitle: user.jobTitle || userType,
+    department: userDepartments.includes(user.department) ? user.department : "Administração",
+    active: Boolean(user.active),
+    permissions: user.id === "tezzei" ? allUserPermissions : uniquePermissions(Array.isArray(user.permissions) ? user.permissions : []),
+    createdAt: user.createdAt || defaultCreatedAt,
+    updatedAt: user.updatedAt || user.createdAt || defaultCreatedAt,
+  };
+}
+
 function baseInventory(): InventoryProduct[] {
   return products.map((product) => ({ ...product, currentStock: 0, minStock: 0 }));
 }
@@ -1198,9 +1634,8 @@ function saveLocalStockMovements(movements: StockMovement[]) {
   window.localStorage.setItem(STOCK_MOVEMENTS_KEY, JSON.stringify(movements));
 }
 
-function addLocalStockExit(input: { product: InventoryProduct; quantity: number; userId: StockExitUserId; observation?: string }) {
-  const userName = input.userId === "Sergio Tezzei" ? input.userId : employees[input.userId].name;
-  const movement: StockMovement = { id: createId(), productId: input.product.id, productName: input.product.name, unit: input.product.unit, barcode: input.product.barcode, movementType: "saida", quantity: input.quantity, userId: input.userId, userName, createdAt: new Date().toISOString(), observation: input.observation?.trim() || undefined };
+function addLocalStockExit(input: { product: InventoryProduct; quantity: number; userId: StockExitUserId; userName: string; observation?: string }) {
+  const movement: StockMovement = { id: createId(), productId: input.product.id, productName: input.product.name, unit: input.product.unit, barcode: input.product.barcode, movementType: "saida", quantity: input.quantity, userId: input.userId, userName: input.userName, createdAt: new Date().toISOString(), observation: input.observation?.trim() || undefined };
   saveLocalStockMovements([movement, ...getLocalStockMovements()]);
   saveLocalInventoryProducts(getLocalInventoryProducts().map((product) => product.id === input.product.id ? { ...product, currentStock: Math.max(0, Number(product.currentStock || 0) - input.quantity) } : product));
 }
