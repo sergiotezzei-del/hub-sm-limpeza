@@ -2,7 +2,58 @@ export type EmployeeId = "neia" | "selma" | "helena";
 
 export type GuardId = "carlos-clemente" | "salomao";
 
-export type UserRole = "tezzei" | EmployeeId | GuardId;
+export type UserRole = "tezzei" | EmployeeId | GuardId | (string & {});
+
+export type UserDepartment =
+  | "Administração"
+  | "Limpeza"
+  | "Segurança"
+  | "Manutenção"
+  | "Estoque"
+  | "Café"
+  | "Água"
+  | "Patrimônio"
+  | "Chaves";
+
+export type AppUserType =
+  | "Admin"
+  | "Limpeza"
+  | "Segurança"
+  | "Manutenção"
+  | "Estoque"
+  | "Consulta";
+
+export type UserPermission =
+  | "painel-admin"
+  | "limpeza"
+  | "estoque"
+  | "saida-estoque"
+  | "cafe"
+  | "agua"
+  | "seguranca"
+  | "guardas"
+  | "manutencao"
+  | "chaves"
+  | "patrimonio"
+  | "relatorios";
+
+export type ManagedUser = {
+  id: string;
+  name: string;
+  accessCode: string;
+  userType: AppUserType;
+  jobTitle: string;
+  department: UserDepartment;
+  active: boolean;
+  photoData?: string;
+  permissions: UserPermission[];
+  linkedEmployeeId?: EmployeeId;
+  linkedGuardId?: GuardId;
+  protected?: boolean;
+  system?: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
 
 export type Employee = {
   id: EmployeeId;
@@ -46,7 +97,7 @@ export type StockMovement = {
   barcode?: string;
   movementType: "saida" | "entrada" | "ajuste";
   quantity: number;
-  userId: EmployeeId | "Sergio Tezzei";
+  userId: string;
   userName: string;
   createdAt: string;
   observation?: string;
