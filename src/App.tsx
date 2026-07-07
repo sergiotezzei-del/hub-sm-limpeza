@@ -44,7 +44,7 @@ type View =
   | "profiles"
   | "stock-check"
   | "stock-exit"
-  | "barcode-register"
+  | "product-register"
   | "stock-exit-history"
   | "current-stock"
   | "order-history"
@@ -88,6 +88,7 @@ const SESSION_KEY = "hub-sm-active-session";
 const INVENTORY_KEY = "hub-sm-inventory-products";
 const STOCK_MOVEMENTS_KEY = "hub-sm-stock-movements";
 const USERS_KEY = "hub-sm-users-permissions";
+const LEGACY_PRODUCT_PHOTOS_KEY = "hub-sm-product-photos";
 
 const emptyManualDraft: ManualDraft = {
   name: "",
@@ -286,6 +287,7 @@ function App() {
   const [stockExitMessage, setStockExitMessage] = useState("");
   const [barcodeProductId, setBarcodeProductId] = useState(products[0]?.id ?? "");
   const [barcodeValue, setBarcodeValue] = useState("");
+  const [productPhotoData, setProductPhotoData] = useState("");
   const [barcodeMessage, setBarcodeMessage] = useState("");
   const [notice, setNotice] = useState("");
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
@@ -338,6 +340,7 @@ function App() {
   const activeEmployeeId = getActiveEmployeeId(view, currentUser, previewEmployeeId);
   const currentManagedUser = useMemo(() => getManagedUser(managedUsers, currentUser), [managedUsers, currentUser]);
   const selectedExitProduct = inventoryProducts.find((product) => product.id === stockExitProductId) ?? null;
+  const selectedRegisterProduct = inventoryProducts.find((product) => product.id === barcodeProductId) ?? null;
 
   function getAfterCleaningActionView(): View {
     if (hasCurrentPermission("painel-admin")) return previewEmployeeId ? "employee-preview" : "cleaning-dashboard";
@@ -605,15 +608,46 @@ function App() {
     }
   }
 
-  function saveBarcodeRegister() {
-    if (!barcodeProductId || !barcodeValue.trim()) {
-      setBarcodeMessage("Selecione um produto e informe o código.");
+  async function handleProductPhotoFile(file: File | null) {
+    if (!file) return;
+    try {
+      const photoData = await imageFileToDataUrl(file);
+      setProductPhotoData(photoData);
+      setBarcodeMessage("Foto carregada. Salve o produto para confirmar.");
+    } catch {
+      setBarcodeMessage("Não foi possível carregar a foto.");
+    }
+  }
+
+  function selectProductForRegister(productId: string) {
+    const product = inventoryProducts.find((item) => item.id === productId);
+    setBarcodeProductId(productId);
+    setBarcodeValue(product?.barcode ?? "");
+    setProductPhotoData(product?.photoData ?? "");
+    setBarcodeMessage("");
+  }
+
+  function openProductRegister() {
+    refreshInventory();
+    const currentProducts = getLocalInventoryProducts();
+    const currentProduct = currentProducts.find((product) => product.id === barcodeProductId) ?? currentProducts[0];
+    if (currentProduct) {
+      setBarcodeProductId(currentProduct.id);
+      setBarcodeValue(currentProduct.barcode ?? "");
+      setProductPhotoData(currentProduct.photoData ?? "");
+    }
+    setBarcodeMessage("");
+    setView("product-register");
+  }
+
+  function saveProductRegister() {
+    if (!barcodeProductId) {
+      setBarcodeMessage("Selecione um produto.");
       return;
     }
-    saveLocalProductBarcode(barcodeProductId, barcodeValue.trim());
+    saveLocalProductDetails(barcodeProductId, { barcode: barcodeValue.trim(), photoData: productPhotoData });
     refreshInventory();
-    setBarcodeValue("");
-    setBarcodeMessage("Código de barras cadastrado.");
+    setBarcodeMessage("Produto salvo.");
   }
 
   async function copyOrder(order: CleaningOrder) {
@@ -944,18 +978,22 @@ function App() {
         />
       )}
 
-      {view === "barcode-register" && (
-        <BarcodeRegisterScreen
+      {view === "product-register" && (
+        <ProductRegisterScreen
           inventoryProducts={inventoryProducts}
+          selectedProduct={selectedRegisterProduct}
           productId={barcodeProductId}
           barcode={barcodeValue}
+          photoData={productPhotoData}
           message={barcodeMessage}
           onBack={() => setView("cleaning-dashboard")}
           onLogout={goToLogin}
-          onProductChange={setBarcodeProductId}
+          onProductChange={selectProductForRegister}
           onBarcodeChange={setBarcodeValue}
-          onFileChange={handleBarcodeRegisterFile}
-          onSave={saveBarcodeRegister}
+          onBarcodeFileChange={handleBarcodeRegisterFile}
+          onPhotoFileChange={handleProductPhotoFile}
+          onRemovePhoto={() => setProductPhotoData("")}
+          onSave={saveProductRegister}
         />
       )}
 
@@ -1006,8 +1044,7 @@ function App() {
           }}
           onOpenStockExit={() => openStockExit("neia")}
           onOpenBarcodeRegister={() => {
-            setBarcodeMessage("");
-            setView("barcode-register");
+            openProductRegister();
           }}
           onOpenCurrentStock={() => {
             refreshInventory();
@@ -1169,20 +1206,24 @@ function StockCheckScreen({ quantities, observations, notice, onBack, onLogout, 
 
 function StockExitScreen({ inventoryProducts, selectedProduct, userId, barcode, quantity, observation, message, adminMode, onBack, onLogout, onUserChange, onBarcodeChange, onFileChange, onProductChange, onQuantityChange, onObservationChange, onConfirm }: { inventoryProducts: InventoryProduct[]; selectedProduct: InventoryProduct | null; userId: StockExitUserId; barcode: string; quantity: string; observation: string; message: string; adminMode: boolean; onBack: () => void; onLogout: () => void; onUserChange: (userId: StockExitUserId) => void; onBarcodeChange: (barcode: string) => void; onFileChange: (file: File | null) => void; onProductChange: (productId: string) => void; onQuantityChange: (quantity: string) => void; onObservationChange: (observation: string) => void; onConfirm: () => void }) {
   return (
-    <section className="screen"><TopBar title="Saída de Produto" subtitle="Bipe o código de barras e confirme a retirada" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}>Voltar</button>{message && <p className="notice-message">{message}</p>}<section className="manual-form inventory-form">{adminMode && <label>Quem retirou<select value={userId} onChange={(event) => onUserChange(event.target.value as StockExitUserId)}>{employeeIds.map((employeeId) => <option key={employeeId} value={employeeId}>{employees[employeeId].name}</option>)}<option value="Sergio Tezzei">Sergio Tezzei</option></select></label>}<label className="scan-button">Abrir câmera / bipar código<input type="file" accept="image/*" capture="environment" onChange={(event) => { onFileChange(event.target.files?.[0] ?? null); event.target.value = ""; }} /></label><label>Código de barras<input type="text" inputMode="numeric" value={barcode} placeholder="Bipe ou digite o código" onChange={(event) => onBarcodeChange(event.target.value)} /></label><label>Produto encontrado / ajuste manual<select value={selectedProduct?.id ?? ""} onChange={(event) => onProductChange(event.target.value)}><option value="">Selecione o produto</option>{inventoryProducts.map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}</select></label>{selectedProduct && <article className="inventory-found-card"><span>Produto</span><strong>{selectedProduct.name}</strong><small>Unidade: {selectedProduct.unit} | Estoque atual: {selectedProduct.currentStock}</small></article>}<label>Quantidade retirada<input type="number" inputMode="decimal" min="0" value={quantity} onChange={(event) => onQuantityChange(event.target.value)} /></label><label>Observação opcional<textarea rows={3} value={observation} onChange={(event) => onObservationChange(event.target.value)} /></label><button className="primary-button wide-button" type="button" onClick={onConfirm}>Confirmar saída</button></section></section>
+    <section className="screen"><TopBar title="Saída de Produto" subtitle="Bipe o código de barras e confirme a retirada" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}>Voltar</button>{message && <p className="notice-message">{message}</p>}<section className="manual-form inventory-form">{adminMode && <label>Quem retirou<select value={userId} onChange={(event) => onUserChange(event.target.value as StockExitUserId)}>{employeeIds.map((employeeId) => <option key={employeeId} value={employeeId}>{employees[employeeId].name}</option>)}<option value="Sergio Tezzei">Sergio Tezzei</option></select></label>}<label className="scan-button">Abrir câmera / bipar código<input type="file" accept="image/*" capture="environment" onChange={(event) => { onFileChange(event.target.files?.[0] ?? null); event.target.value = ""; }} /></label><label>Código de barras<input type="text" inputMode="numeric" value={barcode} placeholder="Bipe ou digite o código" onChange={(event) => onBarcodeChange(event.target.value)} /></label><label>Produto encontrado / ajuste manual<select value={selectedProduct?.id ?? ""} onChange={(event) => onProductChange(event.target.value)}><option value="">Selecione o produto</option>{inventoryProducts.map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}</select></label>{selectedProduct && <article className="inventory-found-card"><span>Produto</span><strong>{selectedProduct.name}</strong><small>Estoque atual: {formatStockQuantity(selectedProduct.currentStock, selectedProduct.unit)}</small></article>}<label>Quantidade retirada<input type="number" inputMode="decimal" min="0" value={quantity} onChange={(event) => onQuantityChange(event.target.value)} /></label><label>Observação opcional<textarea rows={3} value={observation} onChange={(event) => onObservationChange(event.target.value)} /></label><button className="primary-button wide-button" type="button" onClick={onConfirm}>Confirmar saída</button></section></section>
   );
 }
 
-function BarcodeRegisterScreen({ inventoryProducts, productId, barcode, message, onBack, onLogout, onProductChange, onBarcodeChange, onFileChange, onSave }: { inventoryProducts: InventoryProduct[]; productId: string; barcode: string; message: string; onBack: () => void; onLogout: () => void; onProductChange: (productId: string) => void; onBarcodeChange: (barcode: string) => void; onFileChange: (file: File | null) => void; onSave: () => void }) {
-  return <section className="screen"><TopBar title="Cadastrar Código de Barras" subtitle="Vincule o código ao produto de limpeza" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}>Voltar para Limpeza</button>{message && <p className="notice-message">{message}</p>}<section className="manual-form inventory-form"><label>Produto<select value={productId} onChange={(event) => onProductChange(event.target.value)}>{inventoryProducts.map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}</select></label><label className="scan-button">Abrir câmera / ler código<input type="file" accept="image/*" capture="environment" onChange={(event) => { onFileChange(event.target.files?.[0] ?? null); event.target.value = ""; }} /></label><label>Código de barras<input type="text" inputMode="numeric" value={barcode} placeholder="Bipe ou digite o código" onChange={(event) => onBarcodeChange(event.target.value)} /></label><button className="primary-button wide-button" type="button" onClick={onSave}>Salvar código no produto</button></section></section>;
+function ProductRegisterScreen({ inventoryProducts, selectedProduct, productId, barcode, photoData, message, onBack, onLogout, onProductChange, onBarcodeChange, onBarcodeFileChange, onPhotoFileChange, onRemovePhoto, onSave }: { inventoryProducts: InventoryProduct[]; selectedProduct: InventoryProduct | null; productId: string; barcode: string; photoData: string; message: string; onBack: () => void; onLogout: () => void; onProductChange: (productId: string) => void; onBarcodeChange: (barcode: string) => void; onBarcodeFileChange: (file: File | null) => void; onPhotoFileChange: (file: File | null) => void; onRemovePhoto: () => void; onSave: () => void }) {
+  return <section className="screen"><TopBar title="Cadastro de Produtos" subtitle="Edite código de barras e foto do produto" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}>Voltar para Limpeza</button>{message && <p className={message.includes("salvo") ? "success-message" : "notice-message"}>{message}</p>}<section className="manual-form inventory-form product-register-form"><label>Produto<select value={productId} onChange={(event) => onProductChange(event.target.value)}>{inventoryProducts.map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}</select></label><article className="product-register-card"><ProductPhoto productName={selectedProduct?.name ?? "Produto"} photoData={photoData} /><div><strong>{selectedProduct?.name ?? "Produto"}</strong><small>{selectedProduct ? formatStockQuantity(selectedProduct.currentStock, selectedProduct.unit) : "Sem estoque"}</small><label className="photo-button product-photo-edit">Alterar foto<input type="file" accept="image/*" capture="environment" onChange={(event) => { onPhotoFileChange(event.target.files?.[0] ?? null); event.target.value = ""; }} /></label>{photoData && <button className="ghost-button product-photo-remove" type="button" onClick={onRemovePhoto}>Remover foto</button>}</div></article><label className="scan-button">Abrir câmera / ler código<input type="file" accept="image/*" capture="environment" onChange={(event) => { onBarcodeFileChange(event.target.files?.[0] ?? null); event.target.value = ""; }} /></label><label>Código de barras<input type="text" inputMode="numeric" value={barcode} placeholder="Bipe ou digite o código" onChange={(event) => onBarcodeChange(event.target.value)} /></label><button className="primary-button wide-button" type="button" onClick={onSave}>Salvar Produto</button></section></section>;
 }
 
 function StockExitHistoryScreen({ movements, onBack, onLogout }: { movements: StockMovement[]; onBack: () => void; onLogout: () => void }) {
-  return <section className="screen"><TopBar title="Histórico de Saídas" subtitle="Consumo de produtos por usuária" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}>Voltar para Limpeza</button>{movements.length === 0 ? <section className="empty-state"><h2>Nenhuma saída registrada</h2><p>Quando uma funcionária retirar produto, aparecerá aqui.</p></section> : <section className="orders-list">{movements.map((movement) => <article className="order-card" key={movement.id}><div className="order-head"><div><p className="card-kicker">{formatDateTime(movement.createdAt)}</p><h2>{movement.productName}</h2><small>Retirado por {movement.userName}</small>{movement.barcode && <small>Código: {movement.barcode}</small>}{movement.observation && <small>{movement.observation}</small>}</div><span className="status-done">{movement.quantity} {movement.unit}</span></div></article>)}</section>}</section>;
+  return <section className="screen"><TopBar title="Histórico de Saídas" subtitle="Consumo de produtos por usuária" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}>Voltar para Limpeza</button>{movements.length === 0 ? <section className="empty-state"><h2>Nenhuma saída registrada</h2><p>Quando uma funcionária retirar produto, aparecerá aqui.</p></section> : <section className="orders-list">{movements.map((movement) => <article className="order-card" key={movement.id}><div className="order-head"><div><p className="card-kicker">{formatDateTime(movement.createdAt)}</p><h2>{movement.productName}</h2><small>Retirado por {movement.userName}</small>{movement.barcode && <small>Código: {movement.barcode}</small>}{movement.observation && <small>{movement.observation}</small>}</div><span className="status-done">{formatStockQuantity(movement.quantity, movement.unit)}</span></div></article>)}</section>}</section>;
 }
 
 function CurrentStockScreen({ inventoryProducts, onBack, onLogout }: { inventoryProducts: InventoryProduct[]; onBack: () => void; onLogout: () => void }) {
-  return <section className="screen"><TopBar title="Estoque Atual" subtitle="Produtos cadastrados para controle de limpeza" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}>Voltar para Limpeza</button><section className="product-list">{inventoryProducts.map((product) => <article className="product-row inventory-stock-row" key={product.id}><span><strong>{product.name}</strong><small>{product.barcode ? `Código: ${product.barcode}` : "Sem código cadastrado"}</small></span><strong>{product.currentStock} {product.unit}</strong></article>)}</section></section>;
+  return <section className="screen"><TopBar title="Estoque Atual" subtitle="Produtos cadastrados para controle de limpeza" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}>Voltar para Limpeza</button><section className="product-list current-stock-list">{inventoryProducts.map((product) => <article className="product-row inventory-stock-row" key={product.id}><ProductPhoto productName={product.name} photoData={product.photoData} /><span><strong>{product.name}</strong><small>{product.barcode ? `Código: ${product.barcode}` : "Sem código cadastrado"}</small></span><strong className="stock-quantity">{formatStockQuantity(product.currentStock, product.unit)}</strong></article>)}</section></section>;
+}
+
+function ProductPhoto({ productName, photoData }: { productName: string; photoData?: string }) {
+  return <div className="product-photo-box" aria-label={`Foto de ${productName}`}>{photoData ? <img src={photoData} alt={`Foto de ${productName}`} /> : <span>Sem foto</span>}</div>;
 }
 
 function UserAccessScreen({ user, permissions, notice, onLogout, onOpenCleaningDashboard, onOpenStockExit, onOpenSecurity }: { user: ManagedUser; permissions: UserPermission[]; notice: string; onLogout: () => void; onOpenCleaningDashboard: () => void; onOpenStockExit: () => void; onOpenSecurity: () => void }) {
@@ -1298,7 +1339,7 @@ function CleaningDashboardScreen({ newOrdersCount, permissions, onBack, onLogout
   const canStockExit = permissions.includes("saida-estoque");
   const canReports = permissions.includes("relatorios");
 
-  return <section className="screen"><TopBar title="Gestão de Limpeza" subtitle="Neia, Selma, Helena, pedidos, estoque e auditoria" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}>Voltar</button>{canCleaning && newOrdersCount > 0 && <button className="alert-banner cleaning-alert-banner" type="button" onClick={onOpenOrders}>🔔 Pedido novo da Neia — precisa de atenção</button>}<section className="admin-grid cleaning-dashboard-grid">{canCleaning && <button className={`admin-card action-card cleaning-control-card ${newOrdersCount > 0 ? "needs-attention" : ""}`} type="button" onClick={onOpenOrders}><span>Pedidos Sinval</span><strong>{newOrdersCount > 0 ? `${newOrdersCount} pedido(s) pendente(s)` : "Nenhum pedido pendente"}</strong>{newOrdersCount > 0 && <small className="attention-pill">⚠ Verificar agora</small>}</button>}{canStockExit && <button className="admin-card action-card cleaning-control-card" type="button" onClick={onOpenStockExit}><span>Saída de Produto</span><strong>Bipar retirada do estoque</strong></button>}{canStock && <button className="admin-card action-card cleaning-control-card" type="button" onClick={onOpenBarcodeRegister}><span>Cadastrar Código</span><strong>Vincular código de barras ao produto</strong></button>}{canStock && <button className="admin-card action-card cleaning-control-card" type="button" onClick={onOpenCurrentStock}><span>Estoque Atual</span><strong>Produtos e códigos cadastrados</strong></button>}{canStock && <button className="admin-card action-card cleaning-control-card" type="button" onClick={onOpenStockHistory}><span>Histórico de Saídas</span><strong>Quem usou, quando e quanto</strong></button>}{canCleaning && <button className="admin-card action-card cleaning-control-card" type="button" onClick={onOpenNeiaHistory}><span>Histórico Neia</span><strong>Todos os pedidos feitos pela Neia</strong></button>}{canReports && <button className="admin-card action-card cleaning-control-card" type="button" onClick={onOpenOrderHistory}><span>Histórico / Auditoria</span><strong>Concluídos e excluídos</strong></button>}{canCleaning && <button className="admin-card action-card cleaning-control-card" type="button" onClick={onOpenProfiles}><span>Perfis da equipe</span><strong>Acessar telas da Neia, Selma e Helena</strong></button>}</section></section>;
+  return <section className="screen"><TopBar title="Gestão de Limpeza" subtitle="Neia, Selma, Helena, pedidos, estoque e auditoria" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}>Voltar</button>{canCleaning && newOrdersCount > 0 && <button className="alert-banner cleaning-alert-banner" type="button" onClick={onOpenOrders}>🔔 Pedido novo da Neia — precisa de atenção</button>}<section className="admin-grid cleaning-dashboard-grid">{canCleaning && <button className={`admin-card action-card cleaning-control-card ${newOrdersCount > 0 ? "needs-attention" : ""}`} type="button" onClick={onOpenOrders}><span>Pedidos Sinval</span><strong>{newOrdersCount > 0 ? `${newOrdersCount} pedido(s) pendente(s)` : "Nenhum pedido pendente"}</strong>{newOrdersCount > 0 && <small className="attention-pill">⚠ Verificar agora</small>}</button>}{canStockExit && <button className="admin-card action-card cleaning-control-card" type="button" onClick={onOpenStockExit}><span>Saída de Produto</span><strong>Bipar retirada do estoque</strong></button>}{canStock && <button className="admin-card action-card cleaning-control-card" type="button" onClick={onOpenBarcodeRegister}><span>Cadastro de Produtos</span><strong>Código de barras e foto</strong></button>}{canStock && <button className="admin-card action-card cleaning-control-card" type="button" onClick={onOpenCurrentStock}><span>Estoque Atual</span><strong>Produtos e códigos cadastrados</strong></button>}{canStock && <button className="admin-card action-card cleaning-control-card" type="button" onClick={onOpenStockHistory}><span>Histórico de Saídas</span><strong>Quem usou, quando e quanto</strong></button>}{canCleaning && <button className="admin-card action-card cleaning-control-card" type="button" onClick={onOpenNeiaHistory}><span>Histórico Neia</span><strong>Todos os pedidos feitos pela Neia</strong></button>}{canReports && <button className="admin-card action-card cleaning-control-card" type="button" onClick={onOpenOrderHistory}><span>Histórico / Auditoria</span><strong>Concluídos e excluídos</strong></button>}{canCleaning && <button className="admin-card action-card cleaning-control-card" type="button" onClick={onOpenProfiles}><span>Perfis da equipe</span><strong>Acessar telas da Neia, Selma e Helena</strong></button>}</section></section>;
 }
 
 function ProfilesScreen({ profiles, notice, onBack, onLogout, onPreviewEmployee, onProfilePhotoChange }: { profiles: Record<EmployeeId, EmployeeProfile>; notice: string; onBack: () => void; onLogout: () => void; onPreviewEmployee: (employeeId: EmployeeId) => void; onProfilePhotoChange: (employeeId: EmployeeId, file: File | null) => void }) {
@@ -1513,6 +1554,26 @@ function formatDateTime(value: string) {
   } catch { return value; }
 }
 
+function formatStockQuantity(quantity: number, unit: string) {
+  return `${quantity} ${pluralizeUnit(unit, quantity)}`;
+}
+
+function pluralizeUnit(unit: string, quantity: number): string {
+  if (Number(quantity) === 1) return unit;
+  if (unit.includes("/")) return unit.split("/").map((part) => pluralizeUnit(part, quantity)).join("/");
+  const pluralMap: Record<string, string> = {
+    Litro: "Litros",
+    Unidade: "Unidades",
+    Galão: "Galões",
+    Caixa: "Caixas",
+    Pacote: "Pacotes",
+    Fardo: "Fardos",
+    Par: "Pares",
+    Rolo: "Rolos",
+  };
+  return pluralMap[unit] ?? unit;
+}
+
 function getInitialSession(): SavedSession {
   const fallback: SavedSession = { view: "login", currentUser: null, previewEmployeeId: null, selectedGuardName: null };
   if (typeof window === "undefined") return fallback;
@@ -1605,20 +1666,45 @@ function baseInventory(): InventoryProduct[] {
 
 function getLocalInventoryProducts(): InventoryProduct[] {
   const rawProducts = window.localStorage.getItem(INVENTORY_KEY);
-  if (!rawProducts) return baseInventory();
+  const legacyPhotos = getLegacyProductPhotos();
+  if (!rawProducts) {
+    return baseInventory().map((product) => ({ ...product, photoData: legacyPhotos[getLegacyProductPhotoKey(product.name)] }));
+  }
   try {
     const parsed = JSON.parse(rawProducts) as InventoryProduct[];
     const localMap = new Map(parsed.map((product) => [product.id, product]));
-    return baseInventory().map((product) => ({ ...product, ...localMap.get(product.id) }));
-  } catch { return baseInventory(); }
+    return baseInventory().map((product) => {
+      const localProduct = localMap.get(product.id);
+      return {
+        ...product,
+        ...localProduct,
+        photoData: localProduct?.photoData ?? legacyPhotos[getLegacyProductPhotoKey(product.name)],
+      };
+    });
+  } catch {
+    return baseInventory().map((product) => ({ ...product, photoData: legacyPhotos[getLegacyProductPhotoKey(product.name)] }));
+  }
 }
 
 function saveLocalInventoryProducts(inventoryProducts: InventoryProduct[]) {
   window.localStorage.setItem(INVENTORY_KEY, JSON.stringify(inventoryProducts));
 }
 
-function saveLocalProductBarcode(productId: string, barcode: string) {
-  saveLocalInventoryProducts(getLocalInventoryProducts().map((product) => product.id === productId ? { ...product, barcode } : product));
+function saveLocalProductDetails(productId: string, details: { barcode: string; photoData: string }) {
+  saveLocalInventoryProducts(getLocalInventoryProducts().map((product) => product.id === productId ? { ...product, barcode: details.barcode || undefined, photoData: details.photoData } : product));
+}
+
+function getLegacyProductPhotos(): Record<string, string> {
+  const rawPhotos = window.localStorage.getItem(LEGACY_PRODUCT_PHOTOS_KEY);
+  if (!rawPhotos) return {};
+  try {
+    const parsed = JSON.parse(rawPhotos);
+    return parsed && typeof parsed === "object" ? parsed as Record<string, string> : {};
+  } catch { return {}; }
+}
+
+function getLegacyProductPhotoKey(productName: string) {
+  return productName.trim().toLowerCase();
 }
 
 function getLocalStockMovements(): StockMovement[] {

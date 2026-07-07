@@ -85,6 +85,7 @@ export type Product = {
 
 export type InventoryProduct = Product & {
   barcode?: string;
+  photoData?: string;
   currentStock: number;
   minStock: number;
 };
