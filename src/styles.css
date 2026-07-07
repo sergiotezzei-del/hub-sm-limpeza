@@ -510,6 +510,78 @@ input:disabled {
   text-align: center;
 }
 
+.security-grid {
+  margin-top: 14px;
+}
+
+.security-card {
+  border-left: 4px solid var(--orange);
+}
+
+.service-today-card,
+.shift-card {
+  display: grid;
+  gap: 8px;
+  padding: 16px;
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--orange);
+  border-radius: 8px;
+  box-shadow: 0 8px 18px rgba(31, 41, 51, 0.05);
+}
+
+.service-today-card {
+  background: #fff7ed;
+  border-color: #fed7aa;
+}
+
+.service-today-card span,
+.shift-card span {
+  color: var(--orange-dark);
+  font-size: 0.78rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.service-today-card strong,
+.shift-card strong {
+  color: var(--ink);
+  font-size: 1.1rem;
+}
+
+.service-today-card p,
+.shift-card p {
+  margin-bottom: 0;
+  color: #475569;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.shift-section {
+  display: grid;
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.shift-section h2 {
+  margin: 8px 0 0;
+}
+
+.shift-list {
+  display: grid;
+  gap: 10px;
+}
+
+.shift-card.featured {
+  background: #fff7ed;
+  border-color: #fed7aa;
+}
+
+.shift-observation {
+  color: var(--orange-dark) !important;
+  font-weight: 900 !important;
+}
+
 @media (max-width: 720px) {
   .screen {
     padding-inline: 12px;
