@@ -41,7 +41,10 @@ type View =
   | "stock-exit-history"
   | "current-stock"
   | "order-history"
-  | "neia-history";
+  | "neia-history"
+  | "security-menu"
+  | "security-guards"
+  | "security-guard-detail";
 
 type ManualDraft = {
   name: string;
@@ -49,10 +52,26 @@ type ManualDraft = {
   observation: string;
 };
 
+type GuardName = "Carlos Clemente" | "Salomão";
+
+type StockExitUserId = EmployeeId | "Sergio Tezzei";
+
+type GuardShift = {
+  startDate: string;
+  startText: string;
+  startTime: string;
+  endDate: string;
+  endText: string;
+  endTime: string;
+  shiftType: string;
+  observation?: string;
+};
+
 type SavedSession = {
   view: View;
   currentUser: UserRole | null;
   previewEmployeeId: EmployeeId | null;
+  selectedGuardName?: GuardName | null;
 };
 
 const BRAND = "SANTA MARIA SOLUÇÕES IMOBILIÁRIAS";
@@ -75,12 +94,63 @@ const emptyManualDraft: ManualDraft = {
 };
 
 const employeeIds = Object.keys(employees) as EmployeeId[];
+const guardNames: GuardName[] = ["Carlos Clemente", "Salomão"];
+
+const guardScheduleRows: Record<GuardName, string[]> = {
+  "Carlos Clemente": [
+    "2026-06-30|terça-feira, 30 de junho|19:00|2026-07-01|quarta-feira, 1 de julho|07:00|NOTURNO|",
+    "2026-07-02|quinta-feira, 2 de julho|19:00|2026-07-03|sexta-feira, 3 de julho|07:00|NOTURNO|",
+    "2026-07-04|sábado, 4 de julho|07:00|2026-07-04|sábado, 4 de julho|19:00|DIURNO|",
+    "2026-07-05|domingo, 5 de julho|07:00|2026-07-05|domingo, 5 de julho|19:00|DIURNO|",
+    "2026-07-06|segunda-feira, 6 de julho|19:00|2026-07-07|terça-feira, 7 de julho|07:00|NOTURNO|",
+    "2026-07-08|quarta-feira, 8 de julho|19:00|2026-07-09|quinta-feira, 9 de julho|07:00|NOTURNO|",
+    "2026-07-09|quinta-feira, 9 de julho|07:00|2026-07-09|quinta-feira, 9 de julho|13:00|DIURNO|FERIADO - EXTRA 6H",
+    "2026-07-10|sexta-feira, 10 de julho|19:00|2026-07-11|sábado, 11 de julho|07:00|NOTURNO|",
+    "2026-07-11|sábado, 11 de julho|19:00|2026-07-12|domingo, 12 de julho|07:00|NOTURNO|",
+    "2026-07-12|domingo, 12 de julho|19:00|2026-07-13|segunda-feira, 13 de julho|07:00|NOTURNO|",
+    "2026-07-14|terça-feira, 14 de julho|19:00|2026-07-15|quarta-feira, 15 de julho|07:00|NOTURNO|",
+    "2026-07-16|quinta-feira, 16 de julho|19:00|2026-07-17|sexta-feira, 17 de julho|07:00|NOTURNO|",
+    "2026-07-18|sábado, 18 de julho|07:00|2026-07-18|sábado, 18 de julho|19:00|DIURNO|",
+    "2026-07-19|domingo, 19 de julho|07:00|2026-07-19|domingo, 19 de julho|19:00|DIURNO|",
+    "2026-07-20|segunda-feira, 20 de julho|19:00|2026-07-21|terça-feira, 21 de julho|07:00|NOTURNO|",
+    "2026-07-22|quarta-feira, 22 de julho|19:00|2026-07-23|quinta-feira, 23 de julho|07:00|NOTURNO|",
+    "2026-07-25|sábado, 25 de julho|07:00|2026-07-25|sábado, 25 de julho|19:00|DIURNO|",
+    "2026-07-26|domingo, 26 de julho|07:00|2026-07-26|domingo, 26 de julho|19:00|DIURNO|",
+    "2026-07-27|segunda-feira, 27 de julho|19:00|2026-07-28|terça-feira, 28 de julho|07:00|NOTURNO|",
+    "2026-07-29|quarta-feira, 29 de julho|19:00|2026-07-30|quinta-feira, 30 de julho|07:00|NOTURNO|",
+  ],
+  Salomão: [
+    "2026-07-01|quarta-feira, 1 de julho|19:00|2026-07-02|quinta-feira, 2 de julho|07:00|NOTURNO|",
+    "2026-07-03|sexta-feira, 3 de julho|19:00|2026-07-04|sábado, 4 de julho|07:00|NOTURNO|",
+    "2026-07-04|sábado, 4 de julho|19:00|2026-07-05|domingo, 5 de julho|07:00|NOTURNO|",
+    "2026-07-05|domingo, 5 de julho|19:00|2026-07-06|segunda-feira, 6 de julho|07:00|NOTURNO|",
+    "2026-07-07|terça-feira, 7 de julho|19:00|2026-07-08|quarta-feira, 8 de julho|07:00|NOTURNO|",
+    "2026-07-09|quinta-feira, 9 de julho|13:00|2026-07-09|quinta-feira, 9 de julho|19:00|DIURNO|FERIADO - EXTRA 6H",
+    "2026-07-09|quinta-feira, 9 de julho|19:00|2026-07-10|sexta-feira, 10 de julho|07:00|NOTURNO|",
+    "2026-07-11|sábado, 11 de julho|07:00|2026-07-11|sábado, 11 de julho|19:00|DIURNO|",
+    "2026-07-12|domingo, 12 de julho|07:00|2026-07-12|domingo, 12 de julho|19:00|DIURNO|",
+    "2026-07-13|segunda-feira, 13 de julho|19:00|2026-07-14|terça-feira, 14 de julho|07:00|NOTURNO|",
+    "2026-07-15|quarta-feira, 15 de julho|19:00|2026-07-16|quinta-feira, 16 de julho|07:00|NOTURNO|",
+    "2026-07-17|sexta-feira, 17 de julho|19:00|2026-07-18|sábado, 18 de julho|07:00|NOTURNO|",
+    "2026-07-18|sábado, 18 de julho|19:00|2026-07-19|domingo, 19 de julho|07:00|NOTURNO|",
+    "2026-07-19|domingo, 19 de julho|19:00|2026-07-20|segunda-feira, 20 de julho|07:00|NOTURNO|",
+    "2026-07-21|terça-feira, 21 de julho|19:00|2026-07-22|quarta-feira, 22 de julho|07:00|NOTURNO|",
+    "2026-07-23|quinta-feira, 23 de julho|19:00|2026-07-24|sexta-feira, 24 de julho|07:00|NOTURNO|",
+    "2026-07-24|sexta-feira, 24 de julho|19:00|2026-07-25|sábado, 25 de julho|07:00|NOTURNO|",
+    "2026-07-25|sábado, 25 de julho|19:00|2026-07-26|domingo, 26 de julho|07:00|NOTURNO|",
+    "2026-07-26|domingo, 26 de julho|19:00|2026-07-27|segunda-feira, 27 de julho|07:00|NOTURNO|",
+    "2026-07-28|terça-feira, 28 de julho|19:00|2026-07-29|quarta-feira, 29 de julho|07:00|NOTURNO|",
+    "2026-07-30|quinta-feira, 30 de julho|19:00|2026-07-31|sexta-feira, 31 de julho|07:00|NOTURNO|",
+    "2026-07-31|sexta-feira, 31 de julho|19:00|2026-08-01|sábado, 1 de agosto|07:00|NOTURNO|",
+  ],
+};
 
 function App() {
   const initialSession = getInitialSession();
   const [view, setView] = useState<View>(initialSession.view);
   const [currentUser, setCurrentUser] = useState<UserRole | null>(initialSession.currentUser);
   const [previewEmployeeId, setPreviewEmployeeId] = useState<EmployeeId | null>(initialSession.previewEmployeeId);
+  const [selectedGuardName, setSelectedGuardName] = useState<GuardName | null>(initialSession.selectedGuardName ?? null);
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState("");
   const [orders, setOrders] = useState<CleaningOrder[]>(() => getLocalOrders().filter((order) => !order.deletedAt));
@@ -94,7 +164,7 @@ function App() {
   const [manualItems, setManualItems] = useState<OrderItem[]>([]);
   const [stockQuantities, setStockQuantities] = useState<Record<string, string>>({});
   const [stockObservations, setStockObservations] = useState<Record<string, string>>({});
-  const [stockExitUserId, setStockExitUserId] = useState<EmployeeId>("neia");
+  const [stockExitUserId, setStockExitUserId] = useState<StockExitUserId>("neia");
   const [stockExitBarcode, setStockExitBarcode] = useState("");
   const [stockExitProductId, setStockExitProductId] = useState("");
   const [stockExitQuantity, setStockExitQuantity] = useState("1");
@@ -128,10 +198,10 @@ function App() {
 
   useEffect(() => {
     if (currentUser) {
-      const session: SavedSession = { view, currentUser, previewEmployeeId };
+      const session: SavedSession = { view, currentUser, previewEmployeeId, selectedGuardName };
       window.sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
     }
-  }, [view, currentUser, previewEmployeeId]);
+  }, [view, currentUser, previewEmployeeId, selectedGuardName]);
 
   useEffect(() => {
     const resetScroll = () => {
@@ -181,6 +251,7 @@ function App() {
     window.sessionStorage.removeItem(SESSION_KEY);
     setCurrentUser(null);
     setPreviewEmployeeId(null);
+    setSelectedGuardName(null);
     setView("login");
     setPassword("");
     setLoginError("");
@@ -516,11 +587,30 @@ function App() {
 
   function openCleaningDashboard() {
     setNotice("");
+    setSelectedGuardName(null);
     void refreshOrders();
     void refreshProfiles();
     refreshInventory();
     refreshStockMovements();
     setView("cleaning-dashboard");
+  }
+
+  function openSecurityMenu() {
+    setNotice("");
+    setSelectedGuardName(null);
+    setView("security-menu");
+  }
+
+  function openSecurityGuards() {
+    setNotice("");
+    setSelectedGuardName(null);
+    setView("security-guards");
+  }
+
+  function openGuardDetail(guardName: GuardName) {
+    setNotice("");
+    setSelectedGuardName(guardName);
+    setView("security-guard-detail");
   }
 
   function previewEmployee(employeeId: EmployeeId) {
@@ -645,7 +735,15 @@ function App() {
       {view === "stock-exit-history" && <StockExitHistoryScreen movements={stockMovements} onBack={() => setView("cleaning-dashboard")} onLogout={goToLogin} />}
       {view === "current-stock" && <CurrentStockScreen inventoryProducts={inventoryProducts} onBack={() => setView("cleaning-dashboard")} onLogout={goToLogin} />}
 
-      {view === "admin" && <AdminScreen newOrdersCount={newOrders.length} onlineEnabled={onlineEnabled} onLogout={goToLogin} onOpenCleaningDashboard={openCleaningDashboard} />}
+      {view === "admin" && <AdminScreen newOrdersCount={newOrders.length} onlineEnabled={onlineEnabled} onLogout={goToLogin} onOpenCleaningDashboard={openCleaningDashboard} onOpenSecurity={openSecurityMenu} />}
+
+      {view === "security-menu" && <SecurityMenuScreen onBack={() => setView("admin")} onLogout={goToLogin} onOpenGuards={openSecurityGuards} />}
+
+      {view === "security-guards" && <SecurityGuardsScreen onBack={openSecurityMenu} onLogout={goToLogin} onOpenGuard={openGuardDetail} />}
+
+      {view === "security-guard-detail" && selectedGuardName && (
+        <SecurityGuardDetailScreen guardName={selectedGuardName} onBack={openSecurityGuards} onLogout={goToLogin} />
+      )}
 
       {view === "cleaning-dashboard" && (
         <CleaningDashboardScreen
@@ -820,9 +918,9 @@ function StockCheckScreen({ quantities, observations, notice, onBack, onLogout, 
   );
 }
 
-function StockExitScreen({ inventoryProducts, selectedProduct, userId, barcode, quantity, observation, message, adminMode, onBack, onLogout, onUserChange, onBarcodeChange, onFileChange, onProductChange, onQuantityChange, onObservationChange, onConfirm }: { inventoryProducts: InventoryProduct[]; selectedProduct: InventoryProduct | null; userId: EmployeeId; barcode: string; quantity: string; observation: string; message: string; adminMode: boolean; onBack: () => void; onLogout: () => void; onUserChange: (userId: EmployeeId) => void; onBarcodeChange: (barcode: string) => void; onFileChange: (file: File | null) => void; onProductChange: (productId: string) => void; onQuantityChange: (quantity: string) => void; onObservationChange: (observation: string) => void; onConfirm: () => void }) {
+function StockExitScreen({ inventoryProducts, selectedProduct, userId, barcode, quantity, observation, message, adminMode, onBack, onLogout, onUserChange, onBarcodeChange, onFileChange, onProductChange, onQuantityChange, onObservationChange, onConfirm }: { inventoryProducts: InventoryProduct[]; selectedProduct: InventoryProduct | null; userId: StockExitUserId; barcode: string; quantity: string; observation: string; message: string; adminMode: boolean; onBack: () => void; onLogout: () => void; onUserChange: (userId: StockExitUserId) => void; onBarcodeChange: (barcode: string) => void; onFileChange: (file: File | null) => void; onProductChange: (productId: string) => void; onQuantityChange: (quantity: string) => void; onObservationChange: (observation: string) => void; onConfirm: () => void }) {
   return (
-    <section className="screen"><TopBar title="Saída de Produto" subtitle="Bipe o código de barras e confirme a retirada" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}>Voltar</button>{message && <p className="notice-message">{message}</p>}<section className="manual-form inventory-form">{adminMode && <label>Quem retirou<select value={userId} onChange={(event) => onUserChange(event.target.value as EmployeeId)}>{employeeIds.map((employeeId) => <option key={employeeId} value={employeeId}>{employees[employeeId].name}</option>)}</select></label>}<label className="scan-button">Abrir câmera / bipar código<input type="file" accept="image/*" capture="environment" onChange={(event) => { onFileChange(event.target.files?.[0] ?? null); event.target.value = ""; }} /></label><label>Código de barras<input type="text" inputMode="numeric" value={barcode} placeholder="Bipe ou digite o código" onChange={(event) => onBarcodeChange(event.target.value)} /></label><label>Produto encontrado / ajuste manual<select value={selectedProduct?.id ?? ""} onChange={(event) => onProductChange(event.target.value)}><option value="">Selecione o produto</option>{inventoryProducts.map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}</select></label>{selectedProduct && <article className="inventory-found-card"><span>Produto</span><strong>{selectedProduct.name}</strong><small>Unidade: {selectedProduct.unit} | Estoque atual: {selectedProduct.currentStock}</small></article>}<label>Quantidade retirada<input type="number" inputMode="decimal" min="0" value={quantity} onChange={(event) => onQuantityChange(event.target.value)} /></label><label>Observação opcional<textarea rows={3} value={observation} onChange={(event) => onObservationChange(event.target.value)} /></label><button className="primary-button wide-button" type="button" onClick={onConfirm}>Confirmar saída</button></section></section>
+    <section className="screen"><TopBar title="Saída de Produto" subtitle="Bipe o código de barras e confirme a retirada" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}>Voltar</button>{message && <p className="notice-message">{message}</p>}<section className="manual-form inventory-form">{adminMode && <label>Quem retirou<select value={userId} onChange={(event) => onUserChange(event.target.value as StockExitUserId)}>{employeeIds.map((employeeId) => <option key={employeeId} value={employeeId}>{employees[employeeId].name}</option>)}<option value="Sergio Tezzei">Sergio Tezzei</option></select></label>}<label className="scan-button">Abrir câmera / bipar código<input type="file" accept="image/*" capture="environment" onChange={(event) => { onFileChange(event.target.files?.[0] ?? null); event.target.value = ""; }} /></label><label>Código de barras<input type="text" inputMode="numeric" value={barcode} placeholder="Bipe ou digite o código" onChange={(event) => onBarcodeChange(event.target.value)} /></label><label>Produto encontrado / ajuste manual<select value={selectedProduct?.id ?? ""} onChange={(event) => onProductChange(event.target.value)}><option value="">Selecione o produto</option>{inventoryProducts.map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}</select></label>{selectedProduct && <article className="inventory-found-card"><span>Produto</span><strong>{selectedProduct.name}</strong><small>Unidade: {selectedProduct.unit} | Estoque atual: {selectedProduct.currentStock}</small></article>}<label>Quantidade retirada<input type="number" inputMode="decimal" min="0" value={quantity} onChange={(event) => onQuantityChange(event.target.value)} /></label><label>Observação opcional<textarea rows={3} value={observation} onChange={(event) => onObservationChange(event.target.value)} /></label><button className="primary-button wide-button" type="button" onClick={onConfirm}>Confirmar saída</button></section></section>
   );
 }
 
@@ -838,8 +936,36 @@ function CurrentStockScreen({ inventoryProducts, onBack, onLogout }: { inventory
   return <section className="screen"><TopBar title="Estoque Atual" subtitle="Produtos cadastrados para controle de limpeza" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}>Voltar para Limpeza</button><section className="product-list">{inventoryProducts.map((product) => <article className="product-row inventory-stock-row" key={product.id}><span><strong>{product.name}</strong><small>{product.barcode ? `Código: ${product.barcode}` : "Sem código cadastrado"}</small></span><strong>{product.currentStock} {product.unit}</strong></article>)}</section></section>;
 }
 
-function AdminScreen({ newOrdersCount, onlineEnabled, onLogout, onOpenCleaningDashboard }: { newOrdersCount: number; onlineEnabled: boolean; onLogout: () => void; onOpenCleaningDashboard: () => void }) {
-  return <section className="screen"><TopBar title="Painel Tezzei" subtitle={onlineEnabled ? "Central Operacional HUB SM — online" : "Central Operacional HUB SM — local"} onLogout={onLogout} /><section className="admin-grid module-grid"><button className={`admin-card action-card module-card cleaning-card ${newOrdersCount > 0 ? "needs-attention" : ""}`} type="button" onClick={onOpenCleaningDashboard}><span>Limpeza</span><strong>{newOrdersCount > 0 ? `${newOrdersCount} pedido(s) pendente(s)` : "Rotinas, pedidos Sinval e equipe"}</strong>{newOrdersCount > 0 && <small className="attention-pill">⚠ Precisa de atenção</small>}</button><AdminCard title="Máquina de Café" detail="Insumos, doses e reposição" /><AdminCard title="Água" detail="Controle de fardos e copos" /><AdminCard title="Manutenção" detail="Chamados e tarefas internas" /><AdminCard title="Chaves" detail="Controle de acessos" /><AdminCard title="Patrimônio" detail="Itens, equipamentos e auditoria" /></section></section>;
+function AdminScreen({ newOrdersCount, onlineEnabled, onLogout, onOpenCleaningDashboard, onOpenSecurity }: { newOrdersCount: number; onlineEnabled: boolean; onLogout: () => void; onOpenCleaningDashboard: () => void; onOpenSecurity: () => void }) {
+  return <section className="screen"><TopBar title="Painel Tezzei" subtitle={onlineEnabled ? "Central Operacional HUB SM — online" : "Central Operacional HUB SM — local"} onLogout={onLogout} /><section className="admin-grid module-grid"><button className={`admin-card action-card module-card cleaning-card ${newOrdersCount > 0 ? "needs-attention" : ""}`} type="button" onClick={onOpenCleaningDashboard}><span>Limpeza</span><strong>{newOrdersCount > 0 ? `${newOrdersCount} pedido(s) pendente(s)` : "Rotinas, pedidos Sinval e equipe"}</strong>{newOrdersCount > 0 && <small className="attention-pill">⚠ Precisa de atenção</small>}</button><AdminCard title="Máquina de Café" detail="Insumos, doses e reposição" /><AdminCard title="Água" detail="Controle de fardos e copos" /><AdminCard title="Manutenção" detail="Chamados e tarefas internas" /><AdminCard title="Chaves" detail="Controle de acessos" /><button className="admin-card action-card module-card security-card" type="button" onClick={onOpenSecurity}><span>Segurança</span><strong>Guardas e escalas</strong></button><AdminCard title="Patrimônio" detail="Itens, equipamentos e auditoria" /></section></section>;
+}
+
+function SecurityMenuScreen({ onBack, onLogout, onOpenGuards }: { onBack: () => void; onLogout: () => void; onOpenGuards: () => void }) {
+  return <section className="screen"><TopBar title="Segurança" subtitle="Controle de segurança" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}>Voltar ao Painel</button><section className="admin-grid security-grid"><button className="admin-card action-card module-card security-card" type="button" onClick={onOpenGuards}><span>Guardas</span><strong>Controle dos guardas</strong></button></section></section>;
+}
+
+function SecurityGuardsScreen({ onBack, onLogout, onOpenGuard }: { onBack: () => void; onLogout: () => void; onOpenGuard: (guardName: GuardName) => void }) {
+  return <section className="screen"><TopBar title="Guardas" subtitle="Selecione o guarda" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}>Voltar para Segurança</button><section className="admin-grid security-grid"><TodayDutyCard />{guardNames.map((guardName) => <button key={guardName} type="button" className="admin-card action-card module-card security-card" onClick={() => onOpenGuard(guardName)}><span>{guardName}</span><strong>Guarda Santa Maria</strong></button>)}</section></section>;
+}
+
+function SecurityGuardDetailScreen({ guardName, onBack, onLogout }: { guardName: GuardName; onBack: () => void; onLogout: () => void }) {
+  const summary = getGuardSummaryShift(guardName);
+  const upcomingShifts = getUpcomingGuardShifts(guardName);
+
+  return <section className="screen"><TopBar title={guardName} subtitle="Escala de horário" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}>Voltar para Guardas</button><section className="shift-section">{summary ? <ShiftCard shift={summary.shift} label={summary.label} featured /> : <article className="shift-card featured"><span>ESCALA</span><strong>Sem próximo plantão lançado</strong><p>Atualize a escala do mês.</p></article>}<h2>Próximos plantões</h2><div className="shift-list">{upcomingShifts.length > 0 ? upcomingShifts.map((shift) => <ShiftCard key={`${shift.startDate}-${shift.startTime}-${shift.endDate}-${shift.endTime}`} shift={shift} />) : <article className="shift-card"><strong>Sem próximos plantões</strong><p>Atualize a escala do mês.</p></article>}</div></section></section>;
+}
+
+function TodayDutyCard() {
+  const duty = getTodayDuty();
+  if (!duty) {
+    return <article className="service-today-card"><span>HOJE DE SERVIÇO</span><strong>Nenhum guarda lançado para hoje</strong><p>Atualize a escala quando houver novo plantão.</p></article>;
+  }
+
+  return <article className="service-today-card"><span>HOJE DE SERVIÇO</span><strong>{duty.guardName}</strong><p>Entrada: {duty.shift.startTime}<br />Saída: {duty.shift.endTime} — {duty.shift.endText}</p>{duty.shift.observation && <p className="shift-observation">{duty.shift.observation}</p>}</article>;
+}
+
+function ShiftCard({ shift, label, featured = false }: { shift: GuardShift; label?: string; featured?: boolean }) {
+  return <article className={featured ? "shift-card featured" : "shift-card"}><span>{label ?? shift.shiftType}</span><strong>{shift.startText}</strong><p>Entrada: {shift.startTime}<br />Saída: {shift.endTime} — {shift.endText}</p>{shift.observation && <p className="shift-observation">{shift.observation}</p>}</article>;
 }
 
 function CleaningDashboardScreen({ newOrdersCount, onBack, onLogout, onOpenOrders, onOpenStockExit, onOpenBarcodeRegister, onOpenCurrentStock, onOpenStockHistory, onOpenProfiles, onOpenOrderHistory, onOpenNeiaHistory }: { newOrdersCount: number; onBack: () => void; onLogout: () => void; onOpenOrders: () => void; onOpenStockExit: () => void; onOpenBarcodeRegister: () => void; onOpenCurrentStock: () => void; onOpenStockHistory: () => void; onOpenProfiles: () => void; onOpenOrderHistory: () => void; onOpenNeiaHistory: () => void }) {
@@ -886,6 +1012,81 @@ function DeleteDialog({ order, onCancel, onConfirm }: { order: CleaningOrder; on
   return <div className="dialog-backdrop" role="presentation"><section className="dialog" role="dialog" aria-modal="true"><h2>Tem certeza que deseja excluir este pedido?</h2><p>Pedido de {order.solicitante}, {order.data} às {order.hora}. Ele será enviado para o histórico.</p><div className="button-grid"><button className="ghost-button" type="button" onClick={onCancel}>Cancelar</button><button className="danger-button" type="button" onClick={onConfirm}>Excluir</button></div></section></div>;
 }
 
+function getGuardShifts(guardName: GuardName) {
+  return guardScheduleRows[guardName]
+    .map(parseGuardShift)
+    .sort((first, second) => getShiftStart(first).getTime() - getShiftStart(second).getTime());
+}
+
+function parseGuardShift(row: string): GuardShift {
+  const [startDate, startText, startTime, endDate, endText, endTime, shiftType, observation] = row.split("|");
+  return {
+    startDate,
+    startText,
+    startTime,
+    endDate,
+    endText,
+    endTime,
+    shiftType,
+    observation: observation || undefined,
+  };
+}
+
+function getShiftStart(shift: GuardShift) {
+  return parseBrazilDateTime(shift.startDate, shift.startTime);
+}
+
+function getShiftEnd(shift: GuardShift) {
+  return parseBrazilDateTime(shift.endDate, shift.endTime);
+}
+
+function parseBrazilDateTime(date: string, time: string) {
+  return new Date(`${date}T${time}:00-03:00`);
+}
+
+function getTodayIso(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function getTodayDuty(now = new Date()): { guardName: GuardName; shift: GuardShift } | null {
+  const activeShift = guardNames
+    .map((guardName) => ({ guardName, shift: getGuardShifts(guardName).find((shift) => getShiftStart(shift) <= now && now <= getShiftEnd(shift)) }))
+    .find((item): item is { guardName: GuardName; shift: GuardShift } => Boolean(item.shift));
+
+  if (activeShift) return activeShift;
+
+  const today = getTodayIso(now);
+  return guardNames
+    .map((guardName) => ({ guardName, shift: getGuardShifts(guardName).find((shift) => shift.startDate === today) }))
+    .find((item): item is { guardName: GuardName; shift: GuardShift } => Boolean(item.shift)) ?? null;
+}
+
+function getGuardSummaryShift(guardName: GuardName, now = new Date()): { label: "HOJE" | "PRÓXIMA ESCALA"; shift: GuardShift } | null {
+  const shifts = getGuardShifts(guardName);
+  const activeShift = shifts.find((shift) => getShiftStart(shift) <= now && now <= getShiftEnd(shift));
+  if (activeShift) return { label: "HOJE", shift: activeShift };
+
+  const today = getTodayIso(now);
+  const todayShift = shifts.find((shift) => shift.startDate === today);
+  if (todayShift) return { label: "HOJE", shift: todayShift };
+
+  const nextShift = shifts.find((shift) => getShiftStart(shift) > now);
+  return nextShift ? { label: "PRÓXIMA ESCALA", shift: nextShift } : null;
+}
+
+function getUpcomingGuardShifts(guardName: GuardName, now = new Date()) {
+  return getGuardShifts(guardName)
+    .filter((shift) => getShiftEnd(shift) >= now)
+    .slice(0, 6);
+}
+
+function isGuardName(value: unknown): value is GuardName {
+  return typeof value === "string" && guardNames.includes(value as GuardName);
+}
+
 function getActiveEmployeeId(view: View, currentUser: UserRole | null, previewEmployeeId: EmployeeId | null): EmployeeId | null {
   if (view === "employee-preview") return previewEmployeeId;
   if (view === "employee" && currentUser === "tezzei") return previewEmployeeId;
@@ -912,7 +1113,7 @@ function formatDateTime(value: string) {
 }
 
 function getInitialSession(): SavedSession {
-  const fallback: SavedSession = { view: "login", currentUser: null, previewEmployeeId: null };
+  const fallback: SavedSession = { view: "login", currentUser: null, previewEmployeeId: null, selectedGuardName: null };
   if (typeof window === "undefined") return fallback;
   const navigation = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined;
   const isReload = navigation?.type === "reload";
@@ -922,6 +1123,9 @@ function getInitialSession(): SavedSession {
     if (!storedSession) return fallback;
     const parsed = JSON.parse(storedSession) as SavedSession;
     if (!parsed.currentUser) return fallback;
+    if (parsed.view === "security-guard-detail" && !isGuardName(parsed.selectedGuardName)) {
+      return { ...parsed, view: "security-guards", selectedGuardName: null };
+    }
     return parsed;
   } catch { return fallback; }
 }
@@ -961,8 +1165,8 @@ function saveLocalStockMovements(movements: StockMovement[]) {
   window.localStorage.setItem(STOCK_MOVEMENTS_KEY, JSON.stringify(movements));
 }
 
-function addLocalStockExit(input: { product: InventoryProduct; quantity: number; userId: EmployeeId; observation?: string }) {
-  const userName = employees[input.userId]?.name ?? input.userId;
+function addLocalStockExit(input: { product: InventoryProduct; quantity: number; userId: StockExitUserId; observation?: string }) {
+  const userName = input.userId === "Sergio Tezzei" ? input.userId : employees[input.userId].name;
   const movement: StockMovement = { id: createId(), productId: input.product.id, productName: input.product.name, unit: input.product.unit, barcode: input.product.barcode, movementType: "saida", quantity: input.quantity, userId: input.userId, userName, createdAt: new Date().toISOString(), observation: input.observation?.trim() || undefined };
   saveLocalStockMovements([movement, ...getLocalStockMovements()]);
   saveLocalInventoryProducts(getLocalInventoryProducts().map((product) => product.id === input.product.id ? { ...product, currentStock: Math.max(0, Number(product.currentStock || 0) - input.quantity) } : product));

@@ -44,7 +44,7 @@ export type StockMovement = {
   barcode?: string;
   movementType: "saida" | "entrada" | "ajuste";
   quantity: number;
-  userId: EmployeeId;
+  userId: EmployeeId | "Sergio Tezzei";
   userName: string;
   createdAt: string;
   observation?: string;

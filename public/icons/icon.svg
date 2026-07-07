@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" role="img" aria-label="Santa Maria">
+  <rect width="192" height="192" rx="36" fill="#f97316"/>
+  <rect x="18" y="18" width="156" height="156" rx="24" fill="#ffffff" opacity="0.16"/>
+  <path fill="#ffffff" d="M44 124c10 9 24 14 40 14 24 0 39-12 39-30 0-17-12-24-34-30-16-4-21-8-21-15 0-8 8-13 20-13 11 0 22 4 31 12l15-21c-12-10-27-15-45-15-25 0-42 13-42 32 0 20 14 27 36 33 15 4 19 7 19 14 0 8-8 13-20 13-14 0-26-5-37-15l-1 21z"/>
+  <path fill="#ffffff" d="M125 136h24V58h-24v78z"/>
+</svg>
