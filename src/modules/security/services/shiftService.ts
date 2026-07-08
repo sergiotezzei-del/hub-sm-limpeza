@@ -16,6 +16,12 @@ const CLOUD_URL = import.meta.env.VITE_DB_URL ?? "";
 const PUBLIC_KEY = import.meta.env.VITE_DB_PUBLIC_KEY ?? "";
 const KEY_HEADER = ["api", "key"].join("");
 const cloudEnabled = Boolean(CLOUD_URL && PUBLIC_KEY);
+const GUARD_SUPABASE_USER_ENV: Record<GuardId, string> = {
+  "carlos-clemente": "VITE_GUARD_CARLOS_USER_ID",
+  salomao: "VITE_GUARD_SALOMAO_USER_ID",
+};
+const LOCAL_SYNC_MESSAGE = "Registro salvo neste aparelho.";
+const CENTRAL_SYNC_PENDING_MESSAGE = "Registro salvo. Sincronização central ainda não ativada.";
 
 type ShiftSessionRow = {
   id: string;
@@ -51,14 +57,16 @@ export async function loadGuardShiftState(input: {
   todayShift: GuardScheduleShift | null;
   nextShift: GuardScheduleShift | null;
 }): Promise<GuardShiftState> {
-  const guardId = getGuardSupabaseUserId(input.guardLocalId);
+  const binding = getGuardSupabaseBinding(input.guardLocalId);
+  const guardId = binding.userId;
   const localSession = input.todayShift ? getOrCreateLocalTodaySession(input.guardLocalId, input.guardName, input.todayShift, guardId) : null;
+  const syncMessages = getSyncSetupMessages(input.guardName, binding, Boolean(input.todayShift));
 
   if (!input.todayShift || !cloudEnabled || !guardId) {
     return {
       todaySession: localSession,
       nextShift: input.nextShift,
-      syncMessage: !guardId ? "Registro local: vincule um UUID de auth.users para sincronizar no Supabase." : undefined,
+      ...syncMessages,
     };
   }
 
@@ -75,6 +83,7 @@ export async function loadGuardShiftState(input: {
       todaySession: localSession,
       nextShift: input.nextShift,
       syncMessage: "Sem sincronização online agora. O turno segue salvo neste aparelho.",
+      technicalSyncMessage: `Falha ao consultar shift_sessions para ${input.guardName}. Mantido fallback local.`,
     };
   }
 
@@ -100,7 +109,7 @@ export async function activateGuardShift(input: {
       upsertLocalShiftSession(cloudSession);
       await insertCloudAuditLog(guardId, "shift_activated", cloudSession, input.location);
       insertLocalAuditLog(input.guardLocalId, "shift_activated", cloudSession, input.location);
-      return { session: cloudSession, message: `Serviço ativo desde ${formatTime(cloudSession.startedAt)}.` };
+      return { session: cloudSession, message: "Registro sincronizado." };
     } catch (error) {
       console.error(error);
     }
@@ -119,7 +128,7 @@ export async function activateGuardShift(input: {
   insertLocalAuditLog(input.guardLocalId, "shift_activated", localSession, input.location);
   return {
     session: localSession,
-    message: `Serviço ativo desde ${formatTime(localSession.startedAt)}. Registro local aguardando sincronização Supabase.`,
+    message: LOCAL_SYNC_MESSAGE,
   };
 }
 
@@ -142,7 +151,7 @@ export async function endGuardShift(input: {
       upsertLocalShiftSession(cloudSession);
       await insertCloudAuditLog(guardId, "shift_ended", cloudSession, input.location);
       insertLocalAuditLog(input.guardLocalId, "shift_ended", cloudSession, input.location);
-      return { session: cloudSession, message: "Serviço encerrado com localização final." };
+      return { session: cloudSession, message: "Registro sincronizado." };
     } catch (error) {
       console.error(error);
     }
@@ -159,16 +168,36 @@ export async function endGuardShift(input: {
   };
   upsertLocalShiftSession(localSession);
   insertLocalAuditLog(input.guardLocalId, "shift_ended", localSession, input.location);
-  return { session: localSession, message: "Serviço encerrado neste aparelho. Registro local aguardando sincronização Supabase." };
+  return { session: localSession, message: LOCAL_SYNC_MESSAGE };
 }
 
 export function getGuardSupabaseUserId(guardLocalId: GuardId) {
+  return getGuardSupabaseBinding(guardLocalId).userId;
+}
+
+function getGuardSupabaseBinding(guardLocalId: GuardId) {
   const env = import.meta.env as Record<string, string | undefined>;
-  const ids: Record<GuardId, string | undefined> = {
-    "carlos-clemente": env.VITE_GUARD_CARLOS_USER_ID ?? env.VITE_CARLOS_CLEMENTE_USER_ID,
-    salomao: env.VITE_GUARD_SALOMAO_USER_ID ?? env.VITE_SALOMAO_USER_ID,
+  const envName = GUARD_SUPABASE_USER_ENV[guardLocalId];
+  const fallbackEnvNames: Record<GuardId, string[]> = {
+    "carlos-clemente": ["VITE_CARLOS_CLEMENTE_USER_ID"],
+    salomao: ["VITE_SALOMAO_USER_ID"],
   };
-  return ids[guardLocalId]?.trim() || undefined;
+  const userId = env[envName] ?? fallbackEnvNames[guardLocalId].map((name) => env[name]).find(Boolean);
+  return { envName, userId: userId?.trim() || undefined };
+}
+
+function getSyncSetupMessages(guardName: string, binding: ReturnType<typeof getGuardSupabaseBinding>, hasTodayShift: boolean) {
+  if (binding.userId && cloudEnabled) return {};
+
+  const simpleMessage = hasTodayShift ? CENTRAL_SYNC_PENDING_MESSAGE : "Sincronização central ainda não ativada.";
+  const missingEnvMessage = binding.userId
+    ? "Banco online configurado parcialmente; confira VITE_DB_URL e VITE_DB_PUBLIC_KEY."
+    : `${binding.envName} não configurada para ${guardName}; vincule este guarda ao UUID do Supabase Auth para sincronizar.`;
+
+  return {
+    syncMessage: simpleMessage,
+    technicalSyncMessage: missingEnvMessage,
+  };
 }
 
 function getOrCreateLocalTodaySession(guardLocalId: GuardId, guardName: string, shift: GuardScheduleShift, guardId?: string): GuardShiftSession {

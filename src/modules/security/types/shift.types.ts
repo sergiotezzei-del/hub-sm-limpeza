@@ -44,6 +44,7 @@ export type GuardShiftState = {
   todaySession: GuardShiftSession | null;
   nextShift: GuardScheduleShift | null;
   syncMessage?: string;
+  technicalSyncMessage?: string;
 };
 
 export type GuardShiftActionResult = {
