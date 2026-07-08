@@ -47,6 +47,21 @@ export type GuardShiftState = {
   technicalSyncMessage?: string;
 };
 
+export type GuardSyncDiagnosticItem = {
+  label: string;
+  ok: boolean;
+  detail?: string;
+};
+
+export type GuardSyncDiagnostic = {
+  supabaseConfigured: boolean;
+  carlosUuidConfigured: boolean;
+  salomaoUuidConfigured: boolean;
+  remoteSyncActive: boolean;
+  fallbackReason: string;
+  items: GuardSyncDiagnosticItem[];
+};
+
 export type GuardShiftActionResult = {
   session: GuardShiftSession;
   message: string;
