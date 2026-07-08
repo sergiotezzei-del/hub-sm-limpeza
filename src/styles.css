@@ -913,6 +913,7 @@ select:disabled {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.guard-shift-card,
 .service-today-card,
 .shift-card {
   display: grid;
@@ -925,11 +926,17 @@ select:disabled {
   box-shadow: 0 8px 18px rgba(31, 41, 51, 0.05);
 }
 
+.guard-shift-card {
+  margin-top: 14px;
+  background: #ffffff;
+}
+
 .service-today-card {
   background: #fff7ed;
   border-color: #fed7aa;
 }
 
+.guard-shift-card span,
 .service-today-card span,
 .shift-card span {
   color: var(--orange-dark);
@@ -938,18 +945,33 @@ select:disabled {
   text-transform: uppercase;
 }
 
+.guard-shift-card strong,
 .service-today-card strong,
 .shift-card strong {
   color: var(--ink);
   font-size: 1.1rem;
 }
 
+.guard-shift-card p,
 .service-today-card p,
 .shift-card p {
   margin-bottom: 0;
   color: #475569;
   font-weight: 700;
   line-height: 1.45;
+}
+
+.guard-shift-card small {
+  width: fit-content;
+  padding: 6px 8px;
+  color: #475569;
+  background: #f8fafc;
+  border-radius: 8px;
+  font-weight: 800;
+}
+
+.guard-shift-card .wide-button {
+  margin-top: 4px;
 }
 
 .shift-section {

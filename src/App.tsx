@@ -1,5 +1,6 @@
 import { ChangeEvent, FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
 import { activities, employees, products } from "./data";
+import { GuardShiftPanel } from "./modules/security/components/GuardShift";
 import {
   addOrder,
   addStockCheck,
@@ -1002,7 +1003,7 @@ function App() {
       {view === "login" && <LoginScreen password={password} loginError={loginError} onPasswordChange={setPassword} onSubmit={handleLogin} />}
 
       {view === "guard" && currentUser && isGuardId(currentUser) && (
-        <GuardUserScreen guardName={guardUserMap[currentUser]} onLogout={goToLogin} />
+        <GuardUserScreen guardLocalId={currentUser} guardName={guardUserMap[currentUser]} onLogout={goToLogin} />
       )}
 
       {view === "user-home" && currentManagedUser && (
@@ -1161,7 +1162,7 @@ function App() {
       {view === "security-guards" && <SecurityGuardsScreen onBack={openSecurityMenu} onLogout={goToLogin} onOpenGuard={openGuardDetail} />}
 
       {view === "security-guard-detail" && selectedGuardName && (
-        <SecurityGuardDetailScreen guardName={selectedGuardName} onBack={openSecurityGuards} onLogout={goToLogin} />
+        <SecurityGuardDetailScreen guardLocalId={getGuardIdFromName(selectedGuardName)} guardName={selectedGuardName} onBack={openSecurityGuards} onLogout={goToLogin} />
       )}
 
       {view === "cleaning-dashboard" && (
@@ -1590,18 +1591,22 @@ function SecurityGuardsScreen({ onBack, onLogout, onOpenGuard }: { onBack: () =>
   return <section className="screen"><TopBar title="Guardas" subtitle="Selecione o guarda" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}>Voltar para Segurança</button><section className="admin-grid security-grid"><TodayDutyCard />{guardNames.map((guardName) => <ModuleCard key={guardName} title={guardName} detail="Guarda Santa Maria" enabled onClick={() => onOpenGuard(guardName)} className="security-card" />)}</section></section>;
 }
 
-function SecurityGuardDetailScreen({ guardName, onBack, onLogout }: { guardName: GuardName; onBack: () => void; onLogout: () => void }) {
+function SecurityGuardDetailScreen({ guardLocalId, guardName, onBack, onLogout }: { guardLocalId: GuardId; guardName: GuardName; onBack: () => void; onLogout: () => void }) {
   const summary = getGuardSummaryShift(guardName);
   const upcomingShifts = getUpcomingGuardShifts(guardName);
+  const todayShift = getGuardTodayShift(guardName);
+  const nextShift = getNextGuardFutureShift(guardName);
 
-  return <section className="screen"><ProfileHero name={guardName} role="Guarda Santa Maria" department="Segurança" subtitle="Escala de horário" actions={<><button className="ghost-button" type="button" onClick={onBack}>Voltar para Guardas</button><button className="logout-button" type="button" onClick={onLogout}>Sair</button></>} /><section className="shift-section">{summary ? <ShiftCard shift={summary.shift} label={summary.label} featured /> : <article className="shift-card featured"><span>ESCALA</span><strong>Sem próximo plantão lançado</strong><p>Atualize a escala do mês.</p></article>}<h2>Próximos plantões</h2><div className="shift-list">{upcomingShifts.length > 0 ? upcomingShifts.map((shift) => <ShiftCard key={`${shift.startDate}-${shift.startTime}-${shift.endDate}-${shift.endTime}`} shift={shift} />) : <article className="shift-card"><strong>Sem próximos plantões</strong><p>Atualize a escala do mês.</p></article>}</div></section></section>;
+  return <section className="screen"><ProfileHero name={guardName} role="Guarda Santa Maria" department="Segurança" subtitle="Escala de horário" actions={<><button className="ghost-button" type="button" onClick={onBack}>Voltar para Guardas</button><button className="logout-button" type="button" onClick={onLogout}>Sair</button></>} /><GuardShiftPanel guardLocalId={guardLocalId} guardName={guardName} todayShift={todayShift} nextShift={nextShift} canManage={false} /><section className="shift-section">{summary ? <ShiftCard shift={summary.shift} label={summary.label} featured /> : <article className="shift-card featured"><span>ESCALA</span><strong>Sem próximo plantão lançado</strong><p>Atualize a escala do mês.</p></article>}<h2>Próximos plantões</h2><div className="shift-list">{upcomingShifts.length > 0 ? upcomingShifts.map((shift) => <ShiftCard key={`${shift.startDate}-${shift.startTime}-${shift.endDate}-${shift.endTime}`} shift={shift} />) : <article className="shift-card"><strong>Sem próximos plantões</strong><p>Atualize a escala do mês.</p></article>}</div></section></section>;
 }
 
-function GuardUserScreen({ guardName, onLogout }: { guardName: GuardName; onLogout: () => void }) {
+function GuardUserScreen({ guardLocalId, guardName, onLogout }: { guardLocalId: GuardId; guardName: GuardName; onLogout: () => void }) {
   const summary = getGuardSummaryShift(guardName);
   const upcomingShifts = getUpcomingGuardShifts(guardName);
+  const todayShift = getGuardTodayShift(guardName);
+  const nextShift = getNextGuardFutureShift(guardName);
 
-  return <section className="screen"><ProfileHero name={guardName} role="Guarda Santa Maria" department="Segurança" subtitle="Escala de horário" actions={<button className="logout-button" type="button" onClick={onLogout}>Sair</button>} /><section className="shift-section">{summary ? <ShiftCard shift={summary.shift} label={summary.label} featured /> : <article className="shift-card featured"><span>ESCALA</span><strong>Sem próximo plantão lançado</strong><p>Atualize a escala do mês.</p></article>}<h2>Próximos plantões</h2><div className="shift-list">{upcomingShifts.length > 0 ? upcomingShifts.map((shift) => <ShiftCard key={`${shift.startDate}-${shift.startTime}-${shift.endDate}-${shift.endTime}`} shift={shift} />) : <article className="shift-card"><strong>Sem próximos plantões</strong><p>Atualize a escala do mês.</p></article>}</div></section></section>;
+  return <section className="screen"><ProfileHero name={guardName} role="Guarda Santa Maria" department="Segurança" subtitle="Escala de horário" actions={<button className="logout-button" type="button" onClick={onLogout}>Sair</button>} /><GuardShiftPanel guardLocalId={guardLocalId} guardName={guardName} todayShift={todayShift} nextShift={nextShift} canManage /><section className="shift-section">{summary ? <ShiftCard shift={summary.shift} label={summary.label} featured /> : <article className="shift-card featured"><span>ESCALA</span><strong>Sem próximo plantão lançado</strong><p>Atualize a escala do mês.</p></article>}<h2>Próximos plantões</h2><div className="shift-list">{upcomingShifts.length > 0 ? upcomingShifts.map((shift) => <ShiftCard key={`${shift.startDate}-${shift.startTime}-${shift.endDate}-${shift.endTime}`} shift={shift} />) : <article className="shift-card"><strong>Sem próximos plantões</strong><p>Atualize a escala do mês.</p></article>}</div></section></section>;
 }
 
 function TodayDutyCard() {
@@ -1741,10 +1746,23 @@ function getGuardSummaryShift(guardName: GuardName, now = new Date()): { label: 
   return nextShift ? { label: "PRÓXIMA ESCALA", shift: nextShift } : null;
 }
 
+function getGuardTodayShift(guardName: GuardName, now = new Date()) {
+  const today = getTodayIso(now);
+  return getGuardShifts(guardName).find((shift) => shift.startDate === today) ?? null;
+}
+
+function getNextGuardFutureShift(guardName: GuardName, now = new Date()) {
+  return getGuardShifts(guardName).find((shift) => getShiftStart(shift) > now) ?? null;
+}
+
 function getUpcomingGuardShifts(guardName: GuardName, now = new Date()) {
   return getGuardShifts(guardName)
     .filter((shift) => getShiftEnd(shift) >= now)
     .slice(0, 6);
+}
+
+function getGuardIdFromName(guardName: GuardName): GuardId {
+  return guardName === "Carlos Clemente" ? "carlos-clemente" : "salomao";
 }
 
 function isGuardName(value: unknown): value is GuardName {
