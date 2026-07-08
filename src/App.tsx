@@ -1,6 +1,8 @@
 import { ChangeEvent, FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
 import { activities, employees, products } from "./data";
 import { GuardShiftPanel, GuardSyncDiagnosticPanel } from "./modules/security/components/GuardShift";
+import { signInGuardSupabaseAuth } from "./modules/security/services/guardAuthBridge";
+import { signOutSupabaseAuth } from "./modules/security/services/supabaseClient";
 import {
   addOrder,
   addStockCheck,
@@ -425,6 +427,7 @@ function App() {
   }
 
   function goToLogin() {
+    void signOutSupabaseAuth();
     window.sessionStorage.removeItem(SESSION_KEY);
     setCurrentUser(null);
     setPreviewEmployeeId(null);
@@ -437,9 +440,10 @@ function App() {
     setEditDraft([]);
   }
 
-  function handleLogin(event: FormEvent<HTMLFormElement>) {
+  async function handleLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const user = findManagedUserByAccessCode(password.trim(), managedUsers);
+    const cleanPassword = password.trim();
+    const user = findManagedUserByAccessCode(cleanPassword, managedUsers);
 
     if (!user) {
       setLoginError("Senha incorreta");
@@ -453,6 +457,12 @@ function App() {
 
     const activeElement = document.activeElement;
     if (activeElement instanceof HTMLElement) activeElement.blur();
+
+    if (user.linkedGuardId) {
+      await signInGuardSupabaseAuth(user.linkedGuardId, cleanPassword);
+    } else {
+      void signOutSupabaseAuth();
+    }
 
     setCurrentUser(user.id);
     setPreviewEmployeeId(null);
@@ -1243,7 +1253,7 @@ function App() {
   );
 }
 
-function LoginScreen({ password, loginError, onPasswordChange, onSubmit }: { password: string; loginError: string; onPasswordChange: (value: string) => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
+function LoginScreen({ password, loginError, onPasswordChange, onSubmit }: { password: string; loginError: string; onPasswordChange: (value: string) => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void | Promise<void> }) {
   return (
     <section className="screen login-screen">
       <div className="brand-mark" aria-hidden="true">SM</div>

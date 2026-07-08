@@ -57,6 +57,9 @@ export type GuardSyncDiagnostic = {
   supabaseConfigured: boolean;
   carlosUuidConfigured: boolean;
   salomaoUuidConfigured: boolean;
+  carlosAuthEmailConfigured: boolean;
+  salomaoAuthEmailConfigured: boolean;
+  authSessionActive: boolean;
   remoteSyncActive: boolean;
   fallbackReason: string;
   items: GuardSyncDiagnosticItem[];

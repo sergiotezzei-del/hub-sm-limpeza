@@ -6,33 +6,42 @@ O login local continua igual:
 - Carlos Clemente: `carlos1234`
 - Salomao: `salomao1234`
 
-A fase atual prepara a sincronizacao, mas nao ativa gravacao remota automaticamente. O motivo e que as policies de RLS de `shift_sessions` e `audit_logs` dependem de `auth.uid()`. Apenas configurar o UUID em env nao cria uma sessao Supabase Auth nem assina as requisicoes.
+A fase 2.2 cria uma ponte discreta com Supabase Auth. Depois que Carlos ou Salomao passa pelo login local, o app tenta criar uma sessao Supabase Auth com `supabase.auth.signInWithPassword`, usando o email tecnico configurado em env e a mesma senha digitada no login local.
 
-Sem sessao Supabase Auth real, o app mantem fallback local em `localStorage` e os guardas veem apenas mensagens operacionais simples.
+Nao existe novo campo de login, nao existe pedido de email para o guarda e nao existe `service_role` no frontend.
+
+Se as envs ou os usuarios do Supabase Auth ainda nao existirem, o app mantem fallback local em `localStorage`. Os guardas veem apenas mensagens simples, e as pendencias aparecem no diagnostico tecnico do Painel Tezzei.
+
+## Envs obrigatorias para sincronizacao real
+
+Configurar no Vercel:
+- `VITE_DB_URL`
+- `VITE_DB_PUBLIC_KEY`
+- `VITE_GUARD_CARLOS_AUTH_EMAIL`
+- `VITE_GUARD_SALOMAO_AUTH_EMAIL`
+- `VITE_GUARD_CARLOS_USER_ID`
+- `VITE_GUARD_SALOMAO_USER_ID`
+
+As envs de email sao usadas somente para iniciar a sessao Supabase Auth. As senhas nao ficam em env; o app usa a senha que o guarda digitou no login local.
 
 ## Checklist manual
 
 1. Criar usuarios reais no Supabase Auth para Carlos Clemente e Salomao, se ainda nao existirem.
-2. Copiar os UUIDs desses usuarios.
-3. Configurar no Vercel:
-   - `VITE_GUARD_CARLOS_USER_ID`
-   - `VITE_GUARD_SALOMAO_USER_ID`
-4. Confirmar que `VITE_DB_URL` e `VITE_DB_PUBLIC_KEY` estao configurados.
+2. Definir para esses usuarios as mesmas senhas locais aprovadas: `carlos1234` e `salomao1234`.
+3. Copiar os UUIDs desses usuarios.
+4. Configurar as envs `VITE_GUARD_CARLOS_AUTH_EMAIL`, `VITE_GUARD_SALOMAO_AUTH_EMAIL`, `VITE_GUARD_CARLOS_USER_ID` e `VITE_GUARD_SALOMAO_USER_ID`.
 5. Fazer redeploy do app.
-6. Abrir `Painel Tezzei > Seguranca > Guardas` e verificar o diagnostico.
-7. So considerar a sincronizacao remota ativa quando o diagnostico mostrar uma sessao Supabase Auth real.
+6. Entrar como Carlos ou Salomao pelo login local normal.
+7. Abrir `Painel Tezzei > Seguranca > Guardas` e verificar o diagnostico.
 8. Testar ativacao e encerramento de turno.
 9. Confirmar registros nas tabelas `shift_sessions` e `audit_logs`.
 
-## Bloqueio seguro
+## Regras de seguranca
 
 Nao usar `service_role` no frontend.
 
 Nao abrir RLS para escrita anonima.
 
-Nao criar tabela duplicada de usuarios.
+Nao duplicar usuarios locais nem criar tabela `guards`.
 
-Para sincronizacao real mantendo a tela de login local, sera necessaria uma ponte segura que gere ou forneca uma sessao Supabase Auth sem expor segredo no cliente. Opcoes seguras para uma proxima fase:
-- autenticar Carlos e Salomao em Supabase Auth por um fluxo server-side;
-- criar uma Edge Function que valide a identidade no servidor e use segredo somente no ambiente Supabase;
-- ou migrar, em etapa aprovada pelo usuario, o login dos guardas para Supabase Auth.
+A gravacao remota so deve acontecer quando houver sessao Supabase Auth real e o UUID autenticado conferir com `VITE_GUARD_CARLOS_USER_ID` ou `VITE_GUARD_SALOMAO_USER_ID`.
