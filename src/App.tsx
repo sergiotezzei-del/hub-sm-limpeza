@@ -64,6 +64,19 @@ type GuardName = "Carlos Clemente" | "Salomão";
 
 type StockExitUserId = string;
 
+type ProductRegisterMode = "edit" | "new";
+
+type ProductRegisterDetails = {
+  mode: ProductRegisterMode;
+  productId: string;
+  name: string;
+  unit: string;
+  currentStock: number;
+  minStock: number;
+  barcode: string;
+  photoData: string;
+};
+
 type GuardShift = {
   startDate: string;
   startText: string;
@@ -99,6 +112,8 @@ const PRODUCT_PHOTO_COMPRESSION_STEPS = [
   { maxSide: 300, quality: 0.52 },
   { maxSide: 240, quality: 0.45 },
 ];
+const productUnitOptions = ["Litro", "Unidade", "Galão", "Caixa", "Pacote", "Fardo", "Par", "Rolo", "Quilo", "Unidade/Pacote"];
+const DEFAULT_PRODUCT_UNIT = "Unidade";
 
 class ProductPhotoTooHeavyError extends Error {
   constructor() {
@@ -310,6 +325,11 @@ function App() {
   const [stockExitObservation, setStockExitObservation] = useState("");
   const [stockExitMessage, setStockExitMessage] = useState("");
   const [barcodeProductId, setBarcodeProductId] = useState(products[0]?.id ?? "");
+  const [productRegisterMode, setProductRegisterMode] = useState<ProductRegisterMode>("edit");
+  const [productName, setProductName] = useState(products[0]?.name ?? "");
+  const [productUnit, setProductUnit] = useState(products[0]?.unit ?? DEFAULT_PRODUCT_UNIT);
+  const [productCurrentStock, setProductCurrentStock] = useState("0");
+  const [productMinStock, setProductMinStock] = useState("0");
   const [barcodeValue, setBarcodeValue] = useState("");
   const [productPhotoData, setProductPhotoData] = useState("");
   const [productSaving, setProductSaving] = useState(false);
@@ -647,9 +667,40 @@ function App() {
 
   function selectProductForRegister(productId: string) {
     const product = inventoryProducts.find((item) => item.id === productId);
+    if (!product) return;
+    setProductRegisterMode("edit");
     setBarcodeProductId(productId);
-    setBarcodeValue(product?.barcode ?? "");
-    setProductPhotoData(product?.photoData ?? "");
+    fillProductRegisterFields(product);
+    setBarcodeMessage("");
+  }
+
+  function fillProductRegisterFields(product: InventoryProduct) {
+    setProductName(product.name);
+    setProductUnit(product.unit || DEFAULT_PRODUCT_UNIT);
+    setProductCurrentStock(String(product.currentStock ?? 0));
+    setProductMinStock(String(product.minStock ?? 0));
+    setBarcodeValue(product.barcode ?? "");
+    setProductPhotoData(product.photoData ?? "");
+  }
+
+  function startNewProductRegister() {
+    setProductRegisterMode("new");
+    setBarcodeProductId("");
+    setProductName("");
+    setProductUnit(DEFAULT_PRODUCT_UNIT);
+    setProductCurrentStock("0");
+    setProductMinStock("0");
+    setBarcodeValue("");
+    setProductPhotoData("");
+    setBarcodeMessage("");
+  }
+
+  function cancelNewProductRegister() {
+    const product = inventoryProducts[0];
+    if (!product) return;
+    setProductRegisterMode("edit");
+    setBarcodeProductId(product.id);
+    fillProductRegisterFields(product);
     setBarcodeMessage("");
   }
 
@@ -658,9 +709,9 @@ function App() {
     const currentProducts = getLocalInventoryProducts();
     const currentProduct = currentProducts.find((product) => product.id === barcodeProductId) ?? currentProducts[0];
     if (currentProduct) {
+      setProductRegisterMode("edit");
       setBarcodeProductId(currentProduct.id);
-      setBarcodeValue(currentProduct.barcode ?? "");
-      setProductPhotoData(currentProduct.photoData ?? "");
+      fillProductRegisterFields(currentProduct);
     }
     setBarcodeMessage("");
     setView("product-register");
@@ -668,8 +719,24 @@ function App() {
 
   async function saveProductRegister() {
     if (productSaving) return;
-    if (!barcodeProductId) {
+    if (productRegisterMode === "edit" && !barcodeProductId) {
       setBarcodeMessage("Selecione um produto.");
+      return;
+    }
+    const nextProductName = productName.trim();
+    const nextCurrentStock = parseProductQuantity(productCurrentStock);
+    const nextMinStock = parseProductQuantity(productMinStock);
+
+    if (!nextProductName) {
+      setBarcodeMessage("Informe o nome do produto.");
+      return;
+    }
+    if (nextCurrentStock === null) {
+      setBarcodeMessage("Informe um estoque atual válido.");
+      return;
+    }
+    if (nextMinStock === null) {
+      setBarcodeMessage("Informe um estoque mínimo válido.");
       return;
     }
 
@@ -677,9 +744,24 @@ function App() {
     setBarcodeMessage("Salvando...");
     try {
       await waitForNextFrame();
-      const nextProducts = await prepareLocalProductDetails(barcodeProductId, { barcode: barcodeValue.trim(), photoData: productPhotoData });
-      saveLocalProductDetails(nextProducts);
-      setInventoryProducts(nextProducts);
+      const result = await prepareLocalProductDetails({
+        mode: productRegisterMode,
+        productId: barcodeProductId,
+        name: nextProductName,
+        unit: productUnit,
+        currentStock: nextCurrentStock,
+        minStock: nextMinStock,
+        barcode: barcodeValue.trim(),
+        photoData: productPhotoData,
+      });
+      saveLocalProductDetails(result.products);
+      setInventoryProducts(result.products);
+      const savedProduct = result.products.find((product) => product.id === result.productId);
+      if (savedProduct) {
+        setProductRegisterMode("edit");
+        setBarcodeProductId(savedProduct.id);
+        fillProductRegisterFields(savedProduct);
+      }
       setBarcodeMessage("Produto salvo.");
     } catch (error) {
       setBarcodeMessage(getProductSaveErrorMessage(error));
@@ -1020,14 +1102,26 @@ function App() {
         <ProductRegisterScreen
           inventoryProducts={inventoryProducts}
           selectedProduct={selectedRegisterProduct}
+          mode={productRegisterMode}
           productId={barcodeProductId}
+          productName={productName}
+          unit={productUnit}
+          currentStock={productCurrentStock}
+          minStock={productMinStock}
           barcode={barcodeValue}
           photoData={productPhotoData}
           message={barcodeMessage}
           saving={productSaving}
+          unitOptions={productUnitOptions}
           onBack={() => setView("cleaning-dashboard")}
           onLogout={goToLogin}
+          onCreateNew={startNewProductRegister}
+          onCancelCreate={cancelNewProductRegister}
           onProductChange={selectProductForRegister}
+          onProductNameChange={setProductName}
+          onUnitChange={setProductUnit}
+          onCurrentStockChange={setProductCurrentStock}
+          onMinStockChange={setProductMinStock}
           onBarcodeChange={setBarcodeValue}
           onBarcodeFileChange={handleBarcodeRegisterFile}
           onPhotoFileChange={handleProductPhotoFile}
@@ -1249,24 +1343,35 @@ function StockExitScreen({ inventoryProducts, selectedProduct, userId, barcode, 
   );
 }
 
-function ProductRegisterScreen({ inventoryProducts, selectedProduct, productId, barcode, photoData, message, saving, onBack, onLogout, onProductChange, onBarcodeChange, onBarcodeFileChange, onPhotoFileChange, onRemovePhoto, onSave }: { inventoryProducts: InventoryProduct[]; selectedProduct: InventoryProduct | null; productId: string; barcode: string; photoData: string; message: string; saving: boolean; onBack: () => void; onLogout: () => void; onProductChange: (productId: string) => void; onBarcodeChange: (barcode: string) => void; onBarcodeFileChange: (file: File | null) => void; onPhotoFileChange: (file: File | null) => void; onRemovePhoto: () => void; onSave: () => void | Promise<void> }) {
+function ProductRegisterScreen({ inventoryProducts, selectedProduct, mode, productId, productName, unit, currentStock, minStock, barcode, photoData, message, saving, unitOptions, onBack, onLogout, onCreateNew, onCancelCreate, onProductChange, onProductNameChange, onUnitChange, onCurrentStockChange, onMinStockChange, onBarcodeChange, onBarcodeFileChange, onPhotoFileChange, onRemovePhoto, onSave }: { inventoryProducts: InventoryProduct[]; selectedProduct: InventoryProduct | null; mode: ProductRegisterMode; productId: string; productName: string; unit: string; currentStock: string; minStock: string; barcode: string; photoData: string; message: string; saving: boolean; unitOptions: string[]; onBack: () => void; onLogout: () => void; onCreateNew: () => void; onCancelCreate: () => void; onProductChange: (productId: string) => void; onProductNameChange: (name: string) => void; onUnitChange: (unit: string) => void; onCurrentStockChange: (stock: string) => void; onMinStockChange: (stock: string) => void; onBarcodeChange: (barcode: string) => void; onBarcodeFileChange: (file: File | null) => void; onPhotoFileChange: (file: File | null) => void; onRemovePhoto: () => void; onSave: () => void | Promise<void> }) {
+  const displayName = productName.trim() || selectedProduct?.name || "Novo produto";
+  const stockPreview = parseProductQuantity(currentStock) ?? 0;
+  const unitPreview = unit || DEFAULT_PRODUCT_UNIT;
+
   return (
     <section className="screen">
       <TopBar title="Cadastro de Produtos" subtitle="Edite código de barras e foto do produto" onLogout={onLogout} />
       <button className="ghost-button" type="button" onClick={onBack} disabled={saving}>Voltar para Limpeza</button>
       {message && <p className={message.includes("salvo") ? "success-message" : "notice-message"}>{message}</p>}
       <section className="manual-form inventory-form product-register-form">
-        <label>
-          Produto
-          <select value={productId} disabled={saving} onChange={(event) => onProductChange(event.target.value)}>
-            {inventoryProducts.map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}
-          </select>
-        </label>
+        <div className="button-grid">
+          <button className="secondary-button" type="button" disabled={saving} onClick={onCreateNew}>Cadastrar novo produto</button>
+          {mode === "new" && <button className="ghost-button" type="button" disabled={saving || inventoryProducts.length === 0} onClick={onCancelCreate}>Editar produto existente</button>}
+        </div>
+        <p className="card-kicker">{mode === "new" ? "Cadastrando novo produto" : "Editando produto existente"}</p>
+        {mode === "edit" && (
+          <label>
+            Produto
+            <select value={productId} disabled={saving} onChange={(event) => onProductChange(event.target.value)}>
+              {inventoryProducts.map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}
+            </select>
+          </label>
+        )}
         <article className="product-register-card">
-          <ProductPhoto productName={selectedProduct?.name ?? "Produto"} photoData={photoData} />
+          <ProductPhoto productName={displayName} photoData={photoData} />
           <div>
-            <strong>{selectedProduct?.name ?? "Produto"}</strong>
-            <small>{selectedProduct ? formatStockQuantity(selectedProduct.currentStock, selectedProduct.unit) : "Sem estoque"}</small>
+            <strong>{displayName}</strong>
+            <small>{formatStockQuantity(stockPreview, unitPreview)}</small>
             <label className="photo-button product-photo-edit">
               Alterar foto
               <input type="file" accept="image/*" capture="environment" disabled={saving} onChange={(event) => { onPhotoFileChange(event.target.files?.[0] ?? null); event.target.value = ""; }} />
@@ -1274,6 +1379,24 @@ function ProductRegisterScreen({ inventoryProducts, selectedProduct, productId, 
             {photoData && <button className="ghost-button product-photo-remove" type="button" disabled={saving} onClick={onRemovePhoto}>Remover foto</button>}
           </div>
         </article>
+        <label>
+          Nome do produto
+          <input type="text" value={productName} placeholder="Nome do produto" disabled={saving} onChange={(event) => onProductNameChange(event.target.value)} />
+        </label>
+        <label>
+          Unidade
+          <select value={unit} disabled={saving} onChange={(event) => onUnitChange(event.target.value)}>
+            {unitOptions.map((option) => <option key={option} value={option}>{option}</option>)}
+          </select>
+        </label>
+        <label>
+          Estoque atual
+          <input type="number" inputMode="decimal" min="0" value={currentStock} disabled={saving} onChange={(event) => onCurrentStockChange(event.target.value)} />
+        </label>
+        <label>
+          Estoque mínimo
+          <input type="number" inputMode="decimal" min="0" value={minStock} disabled={saving} onChange={(event) => onMinStockChange(event.target.value)} />
+        </label>
         <label className="scan-button">
           Abrir câmera / ler código
           <input type="file" accept="image/*" capture="environment" disabled={saving} onChange={(event) => { onBarcodeFileChange(event.target.files?.[0] ?? null); event.target.value = ""; }} />
@@ -1644,8 +1767,17 @@ function pluralizeUnit(unit: string, quantity: number): string {
     Fardo: "Fardos",
     Par: "Pares",
     Rolo: "Rolos",
+    Quilo: "Quilos",
   };
   return pluralMap[unit] ?? unit;
+}
+
+function parseProductQuantity(value: string) {
+  const normalizedValue = value.trim().replace(",", ".");
+  if (!normalizedValue) return null;
+  const quantity = Number(normalizedValue);
+  if (!Number.isFinite(quantity) || quantity < 0) return null;
+  return quantity;
 }
 
 function getInitialSession(): SavedSession {
@@ -1745,9 +1877,11 @@ function getLocalInventoryProducts(): InventoryProduct[] {
     return baseInventory().map((product) => ({ ...product, photoData: legacyPhotos[getLegacyProductPhotoKey(product.name)] }));
   }
   try {
-    const parsed = JSON.parse(rawProducts) as InventoryProduct[];
-    const localMap = new Map(parsed.map((product) => [product.id, product]));
-    return baseInventory().map((product) => {
+    const parsed = JSON.parse(rawProducts);
+    if (!Array.isArray(parsed)) throw new Error("Estoque inválido");
+    const storedProducts = parsed.filter(isInventoryProductLike).map(normalizeInventoryProduct);
+    const localMap = new Map(storedProducts.map((product) => [product.id, product]));
+    const baseProducts = baseInventory().map((product) => {
       const localProduct = localMap.get(product.id);
       return {
         ...product,
@@ -1755,6 +1889,9 @@ function getLocalInventoryProducts(): InventoryProduct[] {
         photoData: localProduct?.photoData ?? legacyPhotos[getLegacyProductPhotoKey(product.name)],
       };
     });
+    const baseIds = new Set(baseProducts.map((product) => product.id));
+    const customProducts = storedProducts.filter((product) => !baseIds.has(product.id));
+    return [...baseProducts, ...customProducts];
   } catch {
     return baseInventory().map((product) => ({ ...product, photoData: legacyPhotos[getLegacyProductPhotoKey(product.name)] }));
   }
@@ -1764,9 +1901,42 @@ function saveLocalInventoryProducts(inventoryProducts: InventoryProduct[]) {
   window.localStorage.setItem(INVENTORY_KEY, JSON.stringify(inventoryProducts));
 }
 
-async function prepareLocalProductDetails(productId: string, details: { barcode: string; photoData: string }) {
-  const nextProducts = getLocalInventoryProducts().map((product) => product.id === productId ? { ...product, barcode: details.barcode || undefined, photoData: details.photoData || undefined } : product);
-  return compactInventoryProductPhotos(nextProducts);
+function isInventoryProductLike(value: unknown): value is Partial<InventoryProduct> & { id: string; name: string } {
+  if (!value || typeof value !== "object") return false;
+  const product = value as Partial<InventoryProduct>;
+  return typeof product.id === "string" && typeof product.name === "string";
+}
+
+function normalizeInventoryProduct(product: Partial<InventoryProduct> & { id: string; name: string }): InventoryProduct {
+  return {
+    id: product.id,
+    name: product.name || "Produto",
+    unit: product.unit || DEFAULT_PRODUCT_UNIT,
+    barcode: product.barcode || undefined,
+    photoData: product.photoData || undefined,
+    currentStock: typeof product.currentStock === "number" && Number.isFinite(product.currentStock) ? product.currentStock : 0,
+    minStock: typeof product.minStock === "number" && Number.isFinite(product.minStock) ? product.minStock : 0,
+  };
+}
+
+async function prepareLocalProductDetails(details: ProductRegisterDetails): Promise<{ products: InventoryProduct[]; productId: string }> {
+  const currentProducts = getLocalInventoryProducts();
+  const unit = details.unit || DEFAULT_PRODUCT_UNIT;
+  const savedProduct: InventoryProduct = {
+    id: details.mode === "new" ? createProductId(details.name, currentProducts) : details.productId,
+    name: details.name,
+    unit,
+    currentStock: details.currentStock,
+    minStock: details.minStock,
+    barcode: details.barcode || undefined,
+    photoData: details.photoData || undefined,
+  };
+
+  const nextProducts = details.mode === "new"
+    ? [...currentProducts, savedProduct]
+    : currentProducts.map((product) => product.id === details.productId ? { ...product, ...savedProduct } : product);
+
+  return { products: await compactInventoryProductPhotos(nextProducts), productId: savedProduct.id };
 }
 
 function saveLocalProductDetails(inventoryProducts: InventoryProduct[]) {
@@ -1826,6 +1996,28 @@ function getLegacyProductPhotos(): Record<string, string> {
 
 function getLegacyProductPhotoKey(productName: string) {
   return productName.trim().toLowerCase();
+}
+
+function createProductId(productName: string, existingProducts: InventoryProduct[]) {
+  const baseId = slugifyProductName(productName) || `produto-${Date.now()}`;
+  const existingIds = new Set(existingProducts.map((product) => product.id));
+  let productId = baseId;
+  let suffix = 2;
+  while (existingIds.has(productId)) {
+    productId = `${baseId}-${suffix}`;
+    suffix += 1;
+  }
+  return productId;
+}
+
+function slugifyProductName(productName: string) {
+  return productName
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 60);
 }
 
 function getLocalStockMovements(): StockMovement[] {
