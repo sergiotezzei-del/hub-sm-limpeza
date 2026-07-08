@@ -8,6 +8,7 @@ import {
   type GuardShiftSession,
   type GuardShiftState,
   type GuardShiftStatus,
+  type GuardSyncDiagnostic,
 } from "../types/shift.types";
 
 const SHIFT_SESSIONS_KEY = "hub-sm-shift-sessions";
@@ -22,6 +23,7 @@ const GUARD_SUPABASE_USER_ENV: Record<GuardId, string> = {
 };
 const LOCAL_SYNC_MESSAGE = "Registro salvo neste aparelho.";
 const CENTRAL_SYNC_PENDING_MESSAGE = "Registro salvo. Sincronização central ainda não ativada.";
+const NO_AUTH_SESSION_REASON = "UUIDs configurados, mas falta uma sessão real do Supabase Auth; o RLS bloqueia gravações sem auth.uid().";
 
 type ShiftSessionRow = {
   id: string;
@@ -51,6 +53,11 @@ type LocalAuditLog = {
   createdAt: string;
 };
 
+type GuardSupabaseBinding = {
+  envName: string;
+  userId?: string;
+};
+
 export async function loadGuardShiftState(input: {
   guardLocalId: GuardId;
   guardName: string;
@@ -60,9 +67,10 @@ export async function loadGuardShiftState(input: {
   const binding = getGuardSupabaseBinding(input.guardLocalId);
   const guardId = binding.userId;
   const localSession = input.todayShift ? getOrCreateLocalTodaySession(input.guardLocalId, input.guardName, input.todayShift, guardId) : null;
-  const syncMessages = getSyncSetupMessages(input.guardName, binding, Boolean(input.todayShift));
+  const remoteReady = isGuardRemoteSyncReady(binding);
+  const syncMessages = getSyncSetupMessages(input.guardName, binding, Boolean(input.todayShift), remoteReady);
 
-  if (!input.todayShift || !cloudEnabled || !guardId) {
+  if (!input.todayShift || !remoteReady || !guardId) {
     return {
       todaySession: localSession,
       nextShift: input.nextShift,
@@ -98,11 +106,12 @@ export async function activateGuardShift(input: {
 }): Promise<GuardShiftActionResult> {
   if (!input.todayShift) throw new GuardShiftNoTodayError();
 
-  const guardId = getGuardSupabaseUserId(input.guardLocalId);
+  const binding = getGuardSupabaseBinding(input.guardLocalId);
+  const guardId = binding.userId;
   const currentSession = getOrCreateLocalTodaySession(input.guardLocalId, input.guardName, input.todayShift, guardId);
   ensureNoLocalActiveDuplicate(input.guardLocalId, currentSession.id);
 
-  if (cloudEnabled && guardId) {
+  if (isGuardRemoteSyncReady(binding) && guardId) {
     try {
       await ensureNoCloudActiveDuplicate(guardId, currentSession.id);
       const cloudSession = await upsertCloudActivation(currentSession, input.location);
@@ -138,9 +147,10 @@ export async function endGuardShift(input: {
   session: GuardShiftSession;
   location: GuardShiftLocation;
 }): Promise<GuardShiftActionResult> {
-  const guardId = input.session.guardId ?? getGuardSupabaseUserId(input.guardLocalId);
+  const binding = getGuardSupabaseBinding(input.guardLocalId);
+  const guardId = input.session.guardId ?? binding.userId;
 
-  if (cloudEnabled && guardId && input.session.syncStatus === "supabase") {
+  if (isGuardRemoteSyncReady(binding) && guardId && input.session.syncStatus === "supabase") {
     try {
       const cloudSession = await updateCloudShift(input.session.id, {
         status: "ended",
@@ -171,11 +181,53 @@ export async function endGuardShift(input: {
   return { session: localSession, message: LOCAL_SYNC_MESSAGE };
 }
 
+export function getGuardSyncDiagnostic(): GuardSyncDiagnostic {
+  const carlos = getGuardSupabaseBinding("carlos-clemente");
+  const salomao = getGuardSupabaseBinding("salomao");
+  const hasAuthSession = Boolean(getSupabaseAccessToken());
+  const remoteSyncActive = Boolean(cloudEnabled && carlos.userId && salomao.userId && hasAuthSession);
+
+  return {
+    supabaseConfigured: cloudEnabled,
+    carlosUuidConfigured: Boolean(carlos.userId),
+    salomaoUuidConfigured: Boolean(salomao.userId),
+    remoteSyncActive,
+    fallbackReason: getFallbackReason(carlos, salomao, hasAuthSession),
+    items: [
+      {
+        label: "Supabase configurado",
+        ok: cloudEnabled,
+        detail: cloudEnabled ? "VITE_DB_URL e VITE_DB_PUBLIC_KEY presentes." : "Configure VITE_DB_URL e VITE_DB_PUBLIC_KEY.",
+      },
+      {
+        label: "UUID Carlos configurado",
+        ok: Boolean(carlos.userId),
+        detail: carlos.userId ? carlos.envName : "Defina VITE_GUARD_CARLOS_USER_ID no Vercel.",
+      },
+      {
+        label: "UUID Salomão configurado",
+        ok: Boolean(salomao.userId),
+        detail: salomao.userId ? salomao.envName : "Defina VITE_GUARD_SALOMAO_USER_ID no Vercel.",
+      },
+      {
+        label: "Sessão Supabase Auth",
+        ok: hasAuthSession,
+        detail: hasAuthSession ? "Há um JWT Auth disponível para o RLS." : "Login local não cria JWT do Supabase Auth.",
+      },
+      {
+        label: "Registro remoto ativo",
+        ok: remoteSyncActive,
+        detail: remoteSyncActive ? "Requisições podem usar Auth JWT." : "Fallback local ativo.",
+      },
+    ],
+  };
+}
+
 export function getGuardSupabaseUserId(guardLocalId: GuardId) {
   return getGuardSupabaseBinding(guardLocalId).userId;
 }
 
-function getGuardSupabaseBinding(guardLocalId: GuardId) {
+function getGuardSupabaseBinding(guardLocalId: GuardId): GuardSupabaseBinding {
   const env = import.meta.env as Record<string, string | undefined>;
   const envName = GUARD_SUPABASE_USER_ENV[guardLocalId];
   const fallbackEnvNames: Record<GuardId, string[]> = {
@@ -186,18 +238,65 @@ function getGuardSupabaseBinding(guardLocalId: GuardId) {
   return { envName, userId: userId?.trim() || undefined };
 }
 
-function getSyncSetupMessages(guardName: string, binding: ReturnType<typeof getGuardSupabaseBinding>, hasTodayShift: boolean) {
-  if (binding.userId && cloudEnabled) return {};
+function isGuardRemoteSyncReady(binding: GuardSupabaseBinding) {
+  return Boolean(cloudEnabled && binding.userId && getSupabaseAccessToken());
+}
+
+function getSyncSetupMessages(guardName: string, binding: GuardSupabaseBinding, hasTodayShift: boolean, remoteReady: boolean) {
+  if (remoteReady) return {};
 
   const simpleMessage = hasTodayShift ? CENTRAL_SYNC_PENDING_MESSAGE : "Sincronização central ainda não ativada.";
-  const missingEnvMessage = binding.userId
-    ? "Banco online configurado parcialmente; confira VITE_DB_URL e VITE_DB_PUBLIC_KEY."
-    : `${binding.envName} não configurada para ${guardName}; vincule este guarda ao UUID do Supabase Auth para sincronizar.`;
 
   return {
     syncMessage: simpleMessage,
-    technicalSyncMessage: missingEnvMessage,
+    technicalSyncMessage: getTechnicalFallbackReason(guardName, binding),
   };
+}
+
+function getTechnicalFallbackReason(guardName: string, binding: GuardSupabaseBinding) {
+  if (!binding.userId) return `${binding.envName} não configurada para ${guardName}; vincule este guarda ao UUID do Supabase Auth para sincronizar.`;
+  if (!cloudEnabled) return "Banco online configurado parcialmente; confira VITE_DB_URL e VITE_DB_PUBLIC_KEY.";
+  return NO_AUTH_SESSION_REASON;
+}
+
+function getFallbackReason(carlos: GuardSupabaseBinding, salomao: GuardSupabaseBinding, hasAuthSession: boolean) {
+  const pending = [
+    !cloudEnabled ? "configure VITE_DB_URL e VITE_DB_PUBLIC_KEY" : "",
+    !carlos.userId ? "configure VITE_GUARD_CARLOS_USER_ID" : "",
+    !salomao.userId ? "configure VITE_GUARD_SALOMAO_USER_ID" : "",
+    !hasAuthSession ? "crie uma sessão Supabase Auth real para assinar as requisições" : "",
+  ].filter(Boolean);
+
+  if (pending.length === 0) return "Pronto para testar gravação remota em shift_sessions e audit_logs com RLS ativo.";
+  return `Fallback local ativo: ${pending.join("; ")}.`;
+}
+
+function getSupabaseAccessToken() {
+  if (typeof window === "undefined") return undefined;
+
+  for (let index = 0; index < window.localStorage.length; index += 1) {
+    const key = window.localStorage.key(index);
+    if (!key?.startsWith("sb-") || !key.endsWith("-auth-token")) continue;
+    const token = parseSupabaseAccessToken(window.localStorage.getItem(key));
+    if (token) return token;
+  }
+
+  return undefined;
+}
+
+function parseSupabaseAccessToken(raw: string | null) {
+  if (!raw) return undefined;
+  try {
+    const parsed = JSON.parse(raw) as { access_token?: unknown; currentSession?: { access_token?: unknown } };
+    if (typeof parsed.access_token === "string" && parsed.access_token.trim()) return parsed.access_token.trim();
+    if (typeof parsed.currentSession?.access_token === "string" && parsed.currentSession.access_token.trim()) {
+      return parsed.currentSession.access_token.trim();
+    }
+  } catch {
+    return undefined;
+  }
+
+  return undefined;
 }
 
 function getOrCreateLocalTodaySession(guardLocalId: GuardId, guardName: string, shift: GuardScheduleShift, guardId?: string): GuardShiftSession {
@@ -303,11 +402,14 @@ async function fetchShiftRows(query: string) {
 }
 
 function request(url: string, init: RequestInit = {}) {
+  const accessToken = getSupabaseAccessToken();
+  if (!accessToken) throw new Error("MISSING_SUPABASE_AUTH_SESSION");
+
   return fetch(url, {
     ...init,
     headers: {
       [KEY_HEADER]: PUBLIC_KEY,
-      Authorization: `Bearer ${PUBLIC_KEY}`,
+      Authorization: `Bearer ${accessToken}`,
       "Content-Type": "application/json",
       ...(init.headers as Record<string, string> | undefined),
     },

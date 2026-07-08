@@ -3,6 +3,7 @@ import type { GuardId } from "../../../types";
 import {
   activateGuardShift,
   endGuardShift,
+  getGuardSyncDiagnostic,
   loadGuardShiftState,
 } from "../services/shiftService";
 import {
@@ -20,6 +21,29 @@ type GuardShiftPanelProps = {
   canManage: boolean;
   showTechnicalSync?: boolean;
 };
+
+export function GuardSyncDiagnosticPanel() {
+  const diagnostic = getGuardSyncDiagnostic();
+
+  return (
+    <section className="guard-sync-diagnostic">
+      <span>DIAGNÓSTICO SUPABASE</span>
+      <strong>Sincronização dos guardas</strong>
+      <div className="guard-sync-grid">
+        {diagnostic.items.map((item) => (
+          <article className="guard-sync-item" key={item.label}>
+            <div>
+              <p>{item.label}</p>
+              {item.detail && <small>{item.detail}</small>}
+            </div>
+            <em className={item.ok ? "sync-pill ok" : "sync-pill warn"}>{item.ok ? "Sim" : "Não"}</em>
+          </article>
+        ))}
+      </div>
+      <p>{diagnostic.fallbackReason}</p>
+    </section>
+  );
+}
 
 export function GuardShiftPanel({ guardLocalId, guardName, todayShift, nextShift, canManage, showTechnicalSync = false }: GuardShiftPanelProps) {
   const [session, setSession] = useState<GuardShiftSession | null>(null);

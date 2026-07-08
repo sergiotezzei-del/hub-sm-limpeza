@@ -1,6 +1,6 @@
 import { ChangeEvent, FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
 import { activities, employees, products } from "./data";
-import { GuardShiftPanel } from "./modules/security/components/GuardShift";
+import { GuardShiftPanel, GuardSyncDiagnosticPanel } from "./modules/security/components/GuardShift";
 import {
   addOrder,
   addStockCheck,
@@ -1588,7 +1588,7 @@ function SecurityMenuScreen({ permissions, onBack, onLogout, onOpenGuards }: { p
 }
 
 function SecurityGuardsScreen({ onBack, onLogout, onOpenGuard }: { onBack: () => void; onLogout: () => void; onOpenGuard: (guardName: GuardName) => void }) {
-  return <section className="screen"><TopBar title="Guardas" subtitle="Selecione o guarda" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}>Voltar para Segurança</button><section className="admin-grid security-grid"><TodayDutyCard />{guardNames.map((guardName) => <ModuleCard key={guardName} title={guardName} detail="Guarda Santa Maria" enabled onClick={() => onOpenGuard(guardName)} className="security-card" />)}</section></section>;
+  return <section className="screen"><TopBar title="Guardas" subtitle="Selecione o guarda" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}>Voltar para Segurança</button><GuardSyncDiagnosticPanel /><section className="admin-grid security-grid"><TodayDutyCard />{guardNames.map((guardName) => <ModuleCard key={guardName} title={guardName} detail="Guarda Santa Maria" enabled onClick={() => onOpenGuard(guardName)} className="security-card" />)}</section></section>;
 }
 
 function SecurityGuardDetailScreen({ guardLocalId, guardName, onBack, onLogout }: { guardLocalId: GuardId; guardName: GuardName; onBack: () => void; onLogout: () => void }) {

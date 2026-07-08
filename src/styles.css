@@ -936,6 +936,94 @@ select:disabled {
   border-color: #fed7aa;
 }
 
+.guard-sync-diagnostic {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 16px;
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-left: 4px solid #64748b;
+  border-radius: 8px;
+  box-shadow: 0 8px 18px rgba(31, 41, 51, 0.05);
+}
+
+.guard-sync-diagnostic > span {
+  color: #475569;
+  font-size: 0.78rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.guard-sync-diagnostic > strong {
+  color: var(--ink);
+  font-size: 1.05rem;
+}
+
+.guard-sync-diagnostic > p {
+  margin-bottom: 0;
+  color: #475569;
+  font-weight: 800;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.guard-sync-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.guard-sync-item {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+  padding: 10px 12px;
+  background: #f8fafc;
+  border: 1px solid #e5eaf1;
+  border-radius: 8px;
+}
+
+.guard-sync-item p,
+.guard-sync-item small {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.guard-sync-item p {
+  color: var(--ink);
+  font-weight: 900;
+}
+
+.guard-sync-item small {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.sync-pill {
+  flex: 0 0 auto;
+  min-width: 44px;
+  padding: 5px 8px;
+  border-radius: 8px;
+  font-size: 0.78rem;
+  font-style: normal;
+  font-weight: 900;
+  text-align: center;
+}
+
+.sync-pill.ok {
+  color: #14532d;
+  background: #dcfce7;
+}
+
+.sync-pill.warn {
+  color: #7c2d12;
+  background: #ffedd5;
+}
+
 .guard-shift-card span,
 .service-today-card span,
 .shift-card span {
@@ -997,6 +1085,12 @@ select:disabled {
 .shift-observation {
   color: var(--orange-dark) !important;
   font-weight: 900 !important;
+}
+
+@media (min-width: 721px) {
+  .guard-sync-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 720px) {
