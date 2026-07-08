@@ -18,11 +18,13 @@ type GuardShiftPanelProps = {
   todayShift: GuardScheduleShift | null;
   nextShift: GuardScheduleShift | null;
   canManage: boolean;
+  showTechnicalSync?: boolean;
 };
 
-export function GuardShiftPanel({ guardLocalId, guardName, todayShift, nextShift, canManage }: GuardShiftPanelProps) {
+export function GuardShiftPanel({ guardLocalId, guardName, todayShift, nextShift, canManage, showTechnicalSync = false }: GuardShiftPanelProps) {
   const [session, setSession] = useState<GuardShiftSession | null>(null);
   const [message, setMessage] = useState("");
+  const [technicalMessage, setTechnicalMessage] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const todayKey = todayShift ? `${todayShift.startDate}-${todayShift.startTime}-${todayShift.endTime}` : "none";
@@ -36,9 +38,12 @@ export function GuardShiftPanel({ guardLocalId, guardName, todayShift, nextShift
         if (!active) return;
         setSession(state.todaySession);
         setMessage(state.syncMessage ?? "");
+        setTechnicalMessage(state.technicalSyncMessage ?? "");
       })
       .catch(() => {
-        if (active) setMessage("Não foi possível carregar o monitoramento do turno.");
+        if (!active) return;
+        setMessage("Não foi possível carregar o monitoramento do turno.");
+        setTechnicalMessage("");
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -92,6 +97,7 @@ export function GuardShiftPanel({ guardLocalId, guardName, todayShift, nextShift
         <strong>Sem turno hoje</strong>
         {nextShift ? <p>Próximo turno: {nextShift.startText}, {nextShift.startTime} às {nextShift.endTime}</p> : <p>Nenhum próximo turno lançado.</p>}
         {message && <small>{message}</small>}
+        {showTechnicalSync && technicalMessage && <small>{technicalMessage}</small>}
       </section>
     );
   }
@@ -103,6 +109,7 @@ export function GuardShiftPanel({ guardLocalId, guardName, todayShift, nextShift
       <p>{getSessionSummary(session)}</p>
       {session?.status === "ended" && <p>{getEndedSummary(session)}</p>}
       {message && <small>{message}</small>}
+      {showTechnicalSync && technicalMessage && <small>{technicalMessage}</small>}
       {canManage && session?.status === "pending" && (
         <button className="success-button wide-button" type="button" disabled={saving} onClick={handleActivate}>
           {saving ? "Ativando..." : "ATIVAR SERVIÇO"}
