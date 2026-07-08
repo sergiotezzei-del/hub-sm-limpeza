@@ -1,4 +1,4 @@
-import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
 import { activities, employees, products } from "./data";
 import {
   addOrder,
@@ -1304,14 +1304,20 @@ function EmployeeHeader({ employeeId, profile, adminPreview, onLogout, onBackToP
     event.target.value = "";
   }
   return (
-    <header className="top-bar employee-top-bar">
-      <div className="employee-photo-box">{profile?.photoData ? <img src={profile.photoData} alt={`Foto de ${employee.name}`} /> : <span>{employee.name.slice(0, 1)}</span>}</div>
-      <div className="employee-title-block">
-        <p className="eyebrow">{BRAND}</p><h1>{employee.name}</h1><p>{adminPreview ? "Visualização pelo Painel Tezzei" : "Módulo Limpeza"}</p>
-        <label className="photo-button">Cadastrar / alterar foto<input type="file" accept="image/*" capture="environment" onChange={handleFileChange} /></label>
-      </div>
-      <div className="top-actions">{adminPreview && <button className="ghost-button" type="button" onClick={onBackToProfiles}>Voltar</button>}<button className="logout-button" type="button" onClick={onLogout}>Sair</button></div>
-    </header>
+    <ProfileHero
+      name={employee.name}
+      role="Limpeza"
+      department="Limpeza"
+      subtitle={adminPreview ? "Visualização pelo Painel Tezzei" : employee.schedule}
+      photoData={profile?.photoData}
+      actions={(
+        <>
+          {adminPreview && <button className="ghost-button" type="button" onClick={onBackToProfiles}>Voltar</button>}
+          <label className="photo-button">Cadastrar / alterar foto<input type="file" accept="image/*" capture="environment" onChange={handleFileChange} /></label>
+          <button className="logout-button" type="button" onClick={onLogout}>Sair</button>
+        </>
+      )}
+    />
   );
 }
 
@@ -1424,10 +1430,33 @@ function ProductPhoto({ productName, photoData }: { productName: string; photoDa
 }
 
 function UserAccessScreen({ user, permissions, notice, onLogout, onOpenCleaningDashboard, onOpenStockExit, onOpenSecurity }: { user: ManagedUser; permissions: UserPermission[]; notice: string; onLogout: () => void; onOpenCleaningDashboard: () => void; onOpenStockExit: () => void; onOpenSecurity: () => void }) {
-  const canSecurity = permissions.includes("seguranca") || permissions.includes("guardas");
+  const moduleCards: Array<{ permission: UserPermission; title: string; detail: string; onClick?: () => void; className?: string }> = [
+    { permission: "limpeza", title: "Limpeza", detail: "Rotinas e pedidos", onClick: onOpenCleaningDashboard, className: "cleaning-card" },
+    { permission: "saida-estoque", title: "Saída de estoque", detail: "Bipar retirada do estoque", onClick: onOpenStockExit },
+    { permission: "seguranca", title: "Segurança", detail: "Guardas e escalas", onClick: onOpenSecurity, className: "security-card" },
+    { permission: "guardas", title: "Guardas", detail: "Escalas e plantões", onClick: onOpenSecurity, className: "security-card" },
+    { permission: "estoque", title: "Estoque", detail: "Produtos e códigos" },
+    { permission: "cafe", title: "Máquina de Café", detail: "Insumos e reposição" },
+    { permission: "agua", title: "Água", detail: "Fardos e copos" },
+    { permission: "manutencao", title: "Manutenção", detail: "Chamados internos" },
+    { permission: "chaves", title: "Chaves", detail: "Controle de acessos" },
+    { permission: "patrimonio", title: "Patrimônio", detail: "Itens e equipamentos" },
+    { permission: "relatorios", title: "Relatórios", detail: "Consultas liberadas" },
+  ];
   const hasAnyModule = permissions.length > 0;
 
-  return <section className="screen"><TopBar title={user.name} subtitle={`${user.jobTitle} — ${user.department}`} onLogout={onLogout} />{notice && <p className="notice-message">{notice}</p>}<section className="admin-grid module-grid">{permissions.includes("limpeza") && <button className="admin-card action-card module-card cleaning-card" type="button" onClick={onOpenCleaningDashboard}><span>Limpeza</span><strong>Rotinas e pedidos</strong></button>}{permissions.includes("saida-estoque") && <button className="admin-card action-card module-card" type="button" onClick={onOpenStockExit}><span>Saída de estoque</span><strong>Bipar retirada do estoque</strong></button>}{canSecurity && <button className="admin-card action-card module-card security-card" type="button" onClick={onOpenSecurity}><span>Segurança</span><strong>Guardas e escalas</strong></button>}{permissions.includes("estoque") && <AdminCard title="Estoque" detail="Produtos e códigos" />}{permissions.includes("cafe") && <AdminCard title="Máquina de Café" detail="Insumos e reposição" />}{permissions.includes("agua") && <AdminCard title="Água" detail="Fardos e copos" />}{permissions.includes("manutencao") && <AdminCard title="Manutenção" detail="Chamados internos" />}{permissions.includes("chaves") && <AdminCard title="Chaves" detail="Controle de acessos" />}{permissions.includes("patrimonio") && <AdminCard title="Patrimônio" detail="Itens e equipamentos" />}{permissions.includes("relatorios") && <AdminCard title="Relatórios" detail="Consultas liberadas" />}</section>{!hasAnyModule && <section className="empty-state"><h2>Nenhum módulo liberado</h2><p>Solicite permissão ao admin.</p></section>}</section>;
+  return (
+    <section className="screen">
+      <ProfileHero name={user.name} role={user.jobTitle} department={user.department} photoData={user.photoData} subtitle={user.userType} actions={<button className="logout-button" type="button" onClick={onLogout}>Sair</button>} />
+      {notice && <p className="notice-message">{notice}</p>}
+      <section className="admin-grid module-grid">
+        {moduleCards.map((card) => (
+          <ModuleCard key={card.permission} title={card.title} detail={card.detail} enabled={permissions.includes(card.permission)} onClick={card.onClick} className={card.className} />
+        ))}
+      </section>
+      {!hasAnyModule && <section className="empty-state"><h2>Nenhum módulo liberado</h2><p>Solicite permissão ao admin.</p></section>}
+    </section>
+  );
 }
 
 function UsersPermissionsScreen({ users, notice, onBack, onLogout, onSaveUser, onDeleteUser }: { users: ManagedUser[]; notice: string; onBack: () => void; onLogout: () => void; onSaveUser: (user: ManagedUser) => boolean; onDeleteUser: (userId: string) => void }) {
@@ -1484,37 +1513,95 @@ function UsersPermissionsScreen({ users, notice, onBack, onLogout, onSaveUser, o
     setSelectedUserId(users[0]?.id ?? "");
   }
 
-  return <section className="screen users-screen"><TopBar title="Usuários e Permissões" subtitle="Acessos, setores e módulos do HUB SM" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}>Voltar</button>{notice && <p className={notice.includes("salvo") || notice.includes("apagado") ? "success-message" : "notice-message"}>{notice}</p>}<section className="users-layout"><aside className="users-list"><button className="primary-button wide-button" type="button" onClick={startNewUser}>Cadastrar novo usuário</button>{users.map((user) => <button key={user.id} type="button" className={`user-list-card ${user.id === selectedUserId && !creating ? "selected" : ""}`} onClick={() => selectUser(user.id)}><UserAvatar user={user} /><span>{user.name}</span><strong>{user.jobTitle}</strong><small>{user.department} — {user.active ? "Ativo" : "Inativo"}</small></button>)}</aside><section className="user-editor"><div className="user-editor-head"><UserAvatar user={draft} large /><div><p className="card-kicker">{creating ? "Novo usuário" : "Editar usuário"}</p><h2>{draft.name || "Usuário sem nome"}</h2><small>{draft.department} — {draft.userType}</small></div></div><section className="manual-form user-form"><label>Nome<input type="text" value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></label><label>Senha / código de acesso<input type="text" value={draft.accessCode} onChange={(event) => setDraft({ ...draft, accessCode: event.target.value })} /></label><label>Cargo / função<input type="text" value={draft.jobTitle} onChange={(event) => setDraft({ ...draft, jobTitle: event.target.value })} /></label><label>Setor / departamento<select value={draft.department} onChange={(event) => setDraft({ ...draft, department: event.target.value as UserDepartment })}>{userDepartments.map((department) => <option key={department} value={department}>{department}</option>)}</select></label><label>Tipo de usuário<select value={draft.userType} onChange={(event) => setDraft({ ...draft, userType: event.target.value as AppUserType })}>{userTypes.map((userType) => <option key={userType} value={userType}>{userType}</option>)}</select></label><label className="checkbox-row"><input type="checkbox" checked={draft.active} disabled={draft.protected} onChange={(event) => setDraft({ ...draft, active: event.target.checked })} /><span>Usuário ativo</span></label><label className="photo-button user-photo-button">Definir foto do usuário<input type="file" accept="image/*" capture="environment" onChange={(event) => { void handleUserPhoto(event.target.files?.[0] ?? null); event.target.value = ""; }} /></label>{draft.photoData && <button className="ghost-button" type="button" onClick={() => setDraft({ ...draft, photoData: undefined })}>Remover foto</button>}</section><section className="permissions-panel"><h2>Permissões por módulo</h2><div className="permissions-grid">{permissionOptions.map((permission) => <label className="checkbox-row permission-row" key={permission.id}><input type="checkbox" checked={draft.id === "tezzei" || draft.permissions.includes(permission.id)} disabled={draft.id === "tezzei"} onChange={() => togglePermission(permission.id)} /><span>{permission.label}</span></label>)}</div></section><div className="button-grid user-actions"><button className="primary-button" type="button" onClick={saveDraft}>Salvar usuário</button><button className="secondary-button" type="button" disabled={draft.protected || !draft.active} onClick={() => setDraft({ ...draft, active: false })}>Inativar usuário</button>{!draft.system && !draft.protected && <button className="danger-button" type="button" onClick={deleteDraft}>Apagar usuário</button>}</div></section></section></section>;
+  return <section className="screen users-screen"><TopBar title="Usuários e Permissões" subtitle="Acessos, setores e módulos do HUB SM" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}>Voltar</button>{notice && <p className={notice.includes("salvo") || notice.includes("apagado") ? "success-message" : "notice-message"}>{notice}</p>}<section className="users-layout"><aside className="users-list"><button className="primary-button wide-button" type="button" onClick={startNewUser}>Cadastrar novo usuário</button>{users.map((user) => <button key={user.id} type="button" className={`user-list-card ${user.active ? "has-access" : "no-access"} ${user.id === selectedUserId && !creating ? "selected" : ""}`} onClick={() => selectUser(user.id)}><UserAvatar user={user} /><span>{user.name}</span><strong>{user.jobTitle}</strong><small>{user.department} — {user.active ? "Ativo" : "Inativo"}</small></button>)}</aside><section className="user-editor"><div className="user-editor-head"><UserAvatar user={draft} large /><div><p className="card-kicker">{creating ? "Novo usuário" : "Editar usuário"}</p><h2>{draft.name || "Usuário sem nome"}</h2><small>{draft.department} — {draft.userType}</small></div></div><section className="manual-form user-form"><label>Nome<input type="text" value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></label><label>Senha / código de acesso<input type="text" value={draft.accessCode} onChange={(event) => setDraft({ ...draft, accessCode: event.target.value })} /></label><label>Cargo / função<input type="text" value={draft.jobTitle} onChange={(event) => setDraft({ ...draft, jobTitle: event.target.value })} /></label><label>Setor / departamento<select value={draft.department} onChange={(event) => setDraft({ ...draft, department: event.target.value as UserDepartment })}>{userDepartments.map((department) => <option key={department} value={department}>{department}</option>)}</select></label><label>Tipo de usuário<select value={draft.userType} onChange={(event) => setDraft({ ...draft, userType: event.target.value as AppUserType })}>{userTypes.map((userType) => <option key={userType} value={userType}>{userType}</option>)}</select></label><label className="checkbox-row"><input type="checkbox" checked={draft.active} disabled={draft.protected} onChange={(event) => setDraft({ ...draft, active: event.target.checked })} /><span>Usuário ativo</span></label><label className="photo-button user-photo-button">Definir foto do usuário<input type="file" accept="image/*" capture="environment" onChange={(event) => { void handleUserPhoto(event.target.files?.[0] ?? null); event.target.value = ""; }} /></label>{draft.photoData && <button className="ghost-button" type="button" onClick={() => setDraft({ ...draft, photoData: undefined })}>Remover foto</button>}</section><section className="permissions-panel"><h2>Permissões por módulo</h2><div className="permissions-grid">{permissionOptions.map((permission) => { const checked = draft.id === "tezzei" || draft.permissions.includes(permission.id); return <label className={`checkbox-row permission-row ${checked ? "has-access" : "no-access"}`} key={permission.id}><input type="checkbox" checked={checked} disabled={draft.id === "tezzei"} onChange={() => togglePermission(permission.id)} /><span>{permission.label}</span></label>; })}</div></section><div className="button-grid user-actions"><button className="primary-button" type="button" onClick={saveDraft}>Salvar usuário</button><button className="secondary-button" type="button" disabled={draft.protected || !draft.active} onClick={() => setDraft({ ...draft, active: false })}>Inativar usuário</button>{!draft.system && !draft.protected && <button className="danger-button" type="button" onClick={deleteDraft}>Apagar usuário</button>}</div></section></section></section>;
 }
 
 function UserAvatar({ user, large = false }: { user: ManagedUser; large?: boolean }) {
-  return <div className={large ? "user-avatar large" : "user-avatar"}>{user.photoData ? <img src={user.photoData} alt={`Foto de ${user.name}`} /> : <span>{(user.name || "?").slice(0, 1)}</span>}</div>;
+  return <ProfileAvatar name={user.name} photoData={user.photoData} large={large} />;
+}
+
+function ProfileAvatar({ name, photoData, large = false }: { name: string; photoData?: string; large?: boolean }) {
+  return <div className={large ? "user-avatar profile-avatar large" : "user-avatar profile-avatar"}>{photoData ? <img src={photoData} alt={`Foto de ${name}`} /> : <span>{getInitials(name)}</span>}</div>;
+}
+
+function ProfileHero({ name, role, department, subtitle, photoData, actions }: { name: string; role: string; department: string; subtitle?: string; photoData?: string; actions?: ReactNode }) {
+  return (
+    <header className="profile-hero">
+      <ProfileAvatar name={name} photoData={photoData} large />
+      <div className="profile-hero-copy">
+        <p className="eyebrow">{department}</p>
+        <h1>{name}</h1>
+        <p>{role}{subtitle ? ` — ${subtitle}` : ""}</p>
+      </div>
+      {actions && <div className="profile-actions">{actions}</div>}
+    </header>
+  );
+}
+
+function ModuleCard({ title, detail, enabled = true, onClick, className = "", attention }: { title: string; detail: string; enabled?: boolean; onClick?: () => void; className?: string; attention?: string }) {
+  const hasAttention = enabled && Boolean(attention);
+  const cardClass = ["admin-card", "module-card", enabled ? "has-access" : "no-access", enabled && onClick ? "action-card" : "", className, hasAttention ? "needs-attention" : ""].filter(Boolean).join(" ");
+  const content = (
+    <>
+      <span>{title}</span>
+      <strong>{detail}</strong>
+      {hasAttention && <small className="attention-pill">{attention}</small>}
+      {!enabled && <small className="access-pill">Sem acesso</small>}
+    </>
+  );
+
+  if (enabled && onClick) {
+    return <button className={cardClass} type="button" onClick={onClick}>{content}</button>;
+  }
+
+  return <article className={cardClass} aria-disabled={!enabled}>{content}</article>;
 }
 
 function AdminScreen({ newOrdersCount, onlineEnabled, permissions, onLogout, onOpenCleaningDashboard, onOpenSecurity, onOpenUsersPermissions }: { newOrdersCount: number; onlineEnabled: boolean; permissions: UserPermission[]; onLogout: () => void; onOpenCleaningDashboard: () => void; onOpenSecurity: () => void; onOpenUsersPermissions: () => void }) {
-  return <section className="screen"><TopBar title="Painel Tezzei" subtitle={onlineEnabled ? "Central Operacional HUB SM — online" : "Central Operacional HUB SM — local"} onLogout={onLogout} /><section className="admin-grid module-grid">{permissions.includes("limpeza") && <button className={`admin-card action-card module-card cleaning-card ${newOrdersCount > 0 ? "needs-attention" : ""}`} type="button" onClick={onOpenCleaningDashboard}><span>Limpeza</span><strong>{newOrdersCount > 0 ? `${newOrdersCount} pedido(s) pendente(s)` : "Rotinas, pedidos Sinval e equipe"}</strong>{newOrdersCount > 0 && <small className="attention-pill">⚠ Precisa de atenção</small>}</button>}{permissions.includes("estoque") && <AdminCard title="Estoque" detail="Produtos, códigos e saídas" />}{permissions.includes("cafe") && <AdminCard title="Máquina de Café" detail="Insumos, doses e reposição" />}{permissions.includes("agua") && <AdminCard title="Água" detail="Controle de fardos e copos" />}{permissions.includes("manutencao") && <AdminCard title="Manutenção" detail="Chamados e tarefas internas" />}{permissions.includes("chaves") && <AdminCard title="Chaves" detail="Controle de acessos" />}{permissions.includes("seguranca") && <button className="admin-card action-card module-card security-card" type="button" onClick={onOpenSecurity}><span>Segurança</span><strong>Guardas e escalas</strong></button>}{permissions.includes("patrimonio") && <AdminCard title="Patrimônio" detail="Itens, equipamentos e auditoria" />}{permissions.includes("relatorios") && <AdminCard title="Relatórios" detail="Consultas e auditoria" />}{permissions.includes("painel-admin") && <button className="admin-card action-card module-card users-card" type="button" onClick={onOpenUsersPermissions}><span>Usuários e Permissões</span><strong>Acessos, setores e módulos</strong></button>}</section></section>;
+  const cards: Array<{ permission: UserPermission; title: string; detail: string; onClick?: () => void; className?: string; attention?: string }> = [
+    { permission: "limpeza", title: "Limpeza", detail: newOrdersCount > 0 ? `${newOrdersCount} pedido(s) pendente(s)` : "Rotinas, pedidos Sinval e equipe", onClick: onOpenCleaningDashboard, className: "cleaning-card", attention: newOrdersCount > 0 ? "Precisa de atenção" : undefined },
+    { permission: "estoque", title: "Estoque", detail: "Produtos, códigos e saídas" },
+    { permission: "cafe", title: "Máquina de Café", detail: "Insumos, doses e reposição" },
+    { permission: "agua", title: "Água", detail: "Controle de fardos e copos" },
+    { permission: "manutencao", title: "Manutenção", detail: "Chamados e tarefas internas" },
+    { permission: "chaves", title: "Chaves", detail: "Controle de acessos" },
+    { permission: "seguranca", title: "Segurança", detail: "Guardas e escalas", onClick: onOpenSecurity, className: "security-card" },
+    { permission: "patrimonio", title: "Patrimônio", detail: "Itens, equipamentos e auditoria" },
+    { permission: "relatorios", title: "Relatórios", detail: "Consultas e auditoria" },
+    { permission: "painel-admin", title: "Usuários e Permissões", detail: "Acessos, setores e módulos", onClick: onOpenUsersPermissions, className: "users-card" },
+  ];
+
+  return (
+    <section className="screen">
+      <TopBar title="Painel Tezzei" subtitle={onlineEnabled ? "Central Operacional HUB SM — online" : "Central Operacional HUB SM — local"} onLogout={onLogout} />
+      <section className="admin-grid module-grid">
+        {cards.map((card) => <ModuleCard key={card.permission} title={card.title} detail={card.detail} enabled={permissions.includes(card.permission)} onClick={card.onClick} className={card.className} attention={card.attention} />)}
+      </section>
+    </section>
+  );
 }
 
 function SecurityMenuScreen({ permissions, onBack, onLogout, onOpenGuards }: { permissions: UserPermission[]; onBack: () => void; onLogout: () => void; onOpenGuards: () => void }) {
-  return <section className="screen"><TopBar title="Segurança" subtitle="Controle de segurança" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}>Voltar</button><section className="admin-grid security-grid">{permissions.includes("guardas") ? <button className="admin-card action-card module-card security-card" type="button" onClick={onOpenGuards}><span>Guardas</span><strong>Controle dos guardas</strong></button> : <article className="empty-state"><h2>Nenhum acesso liberado</h2><p>Solicite permissão para acessar Guardas.</p></article>}</section></section>;
+  const canGuards = permissions.includes("guardas");
+  return <section className="screen"><TopBar title="Segurança" subtitle="Controle de segurança" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}>Voltar</button><section className="admin-grid security-grid"><ModuleCard title="Guardas" detail="Controle dos guardas" enabled={canGuards} onClick={onOpenGuards} className="security-card" /></section></section>;
 }
 
 function SecurityGuardsScreen({ onBack, onLogout, onOpenGuard }: { onBack: () => void; onLogout: () => void; onOpenGuard: (guardName: GuardName) => void }) {
-  return <section className="screen"><TopBar title="Guardas" subtitle="Selecione o guarda" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}>Voltar para Segurança</button><section className="admin-grid security-grid"><TodayDutyCard />{guardNames.map((guardName) => <button key={guardName} type="button" className="admin-card action-card module-card security-card" onClick={() => onOpenGuard(guardName)}><span>{guardName}</span><strong>Guarda Santa Maria</strong></button>)}</section></section>;
+  return <section className="screen"><TopBar title="Guardas" subtitle="Selecione o guarda" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}>Voltar para Segurança</button><section className="admin-grid security-grid"><TodayDutyCard />{guardNames.map((guardName) => <ModuleCard key={guardName} title={guardName} detail="Guarda Santa Maria" enabled onClick={() => onOpenGuard(guardName)} className="security-card" />)}</section></section>;
 }
 
 function SecurityGuardDetailScreen({ guardName, onBack, onLogout }: { guardName: GuardName; onBack: () => void; onLogout: () => void }) {
   const summary = getGuardSummaryShift(guardName);
   const upcomingShifts = getUpcomingGuardShifts(guardName);
 
-  return <section className="screen"><TopBar title={guardName} subtitle="Escala de horário" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}>Voltar para Guardas</button><section className="shift-section">{summary ? <ShiftCard shift={summary.shift} label={summary.label} featured /> : <article className="shift-card featured"><span>ESCALA</span><strong>Sem próximo plantão lançado</strong><p>Atualize a escala do mês.</p></article>}<h2>Próximos plantões</h2><div className="shift-list">{upcomingShifts.length > 0 ? upcomingShifts.map((shift) => <ShiftCard key={`${shift.startDate}-${shift.startTime}-${shift.endDate}-${shift.endTime}`} shift={shift} />) : <article className="shift-card"><strong>Sem próximos plantões</strong><p>Atualize a escala do mês.</p></article>}</div></section></section>;
+  return <section className="screen"><ProfileHero name={guardName} role="Guarda Santa Maria" department="Segurança" subtitle="Escala de horário" actions={<><button className="ghost-button" type="button" onClick={onBack}>Voltar para Guardas</button><button className="logout-button" type="button" onClick={onLogout}>Sair</button></>} /><section className="shift-section">{summary ? <ShiftCard shift={summary.shift} label={summary.label} featured /> : <article className="shift-card featured"><span>ESCALA</span><strong>Sem próximo plantão lançado</strong><p>Atualize a escala do mês.</p></article>}<h2>Próximos plantões</h2><div className="shift-list">{upcomingShifts.length > 0 ? upcomingShifts.map((shift) => <ShiftCard key={`${shift.startDate}-${shift.startTime}-${shift.endDate}-${shift.endTime}`} shift={shift} />) : <article className="shift-card"><strong>Sem próximos plantões</strong><p>Atualize a escala do mês.</p></article>}</div></section></section>;
 }
 
 function GuardUserScreen({ guardName, onLogout }: { guardName: GuardName; onLogout: () => void }) {
   const summary = getGuardSummaryShift(guardName);
   const upcomingShifts = getUpcomingGuardShifts(guardName);
 
-  return <section className="screen"><TopBar title={guardName} subtitle="Guarda Santa Maria" onLogout={onLogout} /><section className="shift-section">{summary ? <ShiftCard shift={summary.shift} label={summary.label} featured /> : <article className="shift-card featured"><span>ESCALA</span><strong>Sem próximo plantão lançado</strong><p>Atualize a escala do mês.</p></article>}<h2>Próximos plantões</h2><div className="shift-list">{upcomingShifts.length > 0 ? upcomingShifts.map((shift) => <ShiftCard key={`${shift.startDate}-${shift.startTime}-${shift.endDate}-${shift.endTime}`} shift={shift} />) : <article className="shift-card"><strong>Sem próximos plantões</strong><p>Atualize a escala do mês.</p></article>}</div></section></section>;
+  return <section className="screen"><ProfileHero name={guardName} role="Guarda Santa Maria" department="Segurança" subtitle="Escala de horário" actions={<button className="logout-button" type="button" onClick={onLogout}>Sair</button>} /><section className="shift-section">{summary ? <ShiftCard shift={summary.shift} label={summary.label} featured /> : <article className="shift-card featured"><span>ESCALA</span><strong>Sem próximo plantão lançado</strong><p>Atualize a escala do mês.</p></article>}<h2>Próximos plantões</h2><div className="shift-list">{upcomingShifts.length > 0 ? upcomingShifts.map((shift) => <ShiftCard key={`${shift.startDate}-${shift.startTime}-${shift.endDate}-${shift.endTime}`} shift={shift} />) : <article className="shift-card"><strong>Sem próximos plantões</strong><p>Atualize a escala do mês.</p></article>}</div></section></section>;
 }
 
 function TodayDutyCard() {
@@ -1535,12 +1622,22 @@ function CleaningDashboardScreen({ newOrdersCount, permissions, onBack, onLogout
   const canStock = permissions.includes("estoque");
   const canStockExit = permissions.includes("saida-estoque");
   const canReports = permissions.includes("relatorios");
+  const cards = [
+    { key: "orders", title: "Pedidos Sinval", detail: newOrdersCount > 0 ? `${newOrdersCount} pedido(s) pendente(s)` : "Nenhum pedido pendente", enabled: canCleaning, onClick: onOpenOrders, attention: newOrdersCount > 0 ? "Verificar agora" : undefined },
+    { key: "stock-exit", title: "Saída de Produto", detail: "Bipar retirada do estoque", enabled: canStockExit, onClick: onOpenStockExit },
+    { key: "product-register", title: "Cadastro de Produtos", detail: "Produtos, códigos e foto", enabled: canStock, onClick: onOpenBarcodeRegister },
+    { key: "current-stock", title: "Estoque Atual", detail: "Produtos e códigos cadastrados", enabled: canStock, onClick: onOpenCurrentStock },
+    { key: "stock-history", title: "Histórico de Saídas", detail: "Quem usou, quando e quanto", enabled: canStock, onClick: onOpenStockHistory },
+    { key: "neia-history", title: "Histórico Neia", detail: "Todos os pedidos feitos pela Neia", enabled: canCleaning, onClick: onOpenNeiaHistory },
+    { key: "order-history", title: "Histórico / Auditoria", detail: "Concluídos e excluídos", enabled: canReports, onClick: onOpenOrderHistory },
+    { key: "profiles", title: "Perfis da equipe", detail: "Acessar telas da Neia, Selma e Helena", enabled: canCleaning, onClick: onOpenProfiles },
+  ];
 
-  return <section className="screen"><TopBar title="Gestão de Limpeza" subtitle="Neia, Selma, Helena, pedidos, estoque e auditoria" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}>Voltar</button>{canCleaning && newOrdersCount > 0 && <button className="alert-banner cleaning-alert-banner" type="button" onClick={onOpenOrders}>🔔 Pedido novo da Neia — precisa de atenção</button>}<section className="admin-grid cleaning-dashboard-grid">{canCleaning && <button className={`admin-card action-card cleaning-control-card ${newOrdersCount > 0 ? "needs-attention" : ""}`} type="button" onClick={onOpenOrders}><span>Pedidos Sinval</span><strong>{newOrdersCount > 0 ? `${newOrdersCount} pedido(s) pendente(s)` : "Nenhum pedido pendente"}</strong>{newOrdersCount > 0 && <small className="attention-pill">⚠ Verificar agora</small>}</button>}{canStockExit && <button className="admin-card action-card cleaning-control-card" type="button" onClick={onOpenStockExit}><span>Saída de Produto</span><strong>Bipar retirada do estoque</strong></button>}{canStock && <button className="admin-card action-card cleaning-control-card" type="button" onClick={onOpenBarcodeRegister}><span>Cadastro de Produtos</span><strong>Código de barras e foto</strong></button>}{canStock && <button className="admin-card action-card cleaning-control-card" type="button" onClick={onOpenCurrentStock}><span>Estoque Atual</span><strong>Produtos e códigos cadastrados</strong></button>}{canStock && <button className="admin-card action-card cleaning-control-card" type="button" onClick={onOpenStockHistory}><span>Histórico de Saídas</span><strong>Quem usou, quando e quanto</strong></button>}{canCleaning && <button className="admin-card action-card cleaning-control-card" type="button" onClick={onOpenNeiaHistory}><span>Histórico Neia</span><strong>Todos os pedidos feitos pela Neia</strong></button>}{canReports && <button className="admin-card action-card cleaning-control-card" type="button" onClick={onOpenOrderHistory}><span>Histórico / Auditoria</span><strong>Concluídos e excluídos</strong></button>}{canCleaning && <button className="admin-card action-card cleaning-control-card" type="button" onClick={onOpenProfiles}><span>Perfis da equipe</span><strong>Acessar telas da Neia, Selma e Helena</strong></button>}</section></section>;
+  return <section className="screen"><TopBar title="Gestão de Limpeza" subtitle="Neia, Selma, Helena, pedidos, estoque e auditoria" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}>Voltar</button>{canCleaning && newOrdersCount > 0 && <button className="alert-banner cleaning-alert-banner" type="button" onClick={onOpenOrders}>Pedido novo da Neia — precisa de atenção</button>}<section className="admin-grid cleaning-dashboard-grid">{cards.map((card) => <ModuleCard key={card.key} title={card.title} detail={card.detail} enabled={card.enabled} onClick={card.onClick} className="cleaning-control-card" attention={card.attention} />)}</section></section>;
 }
 
 function ProfilesScreen({ profiles, notice, onBack, onLogout, onPreviewEmployee, onProfilePhotoChange }: { profiles: Record<EmployeeId, EmployeeProfile>; notice: string; onBack: () => void; onLogout: () => void; onPreviewEmployee: (employeeId: EmployeeId) => void; onProfilePhotoChange: (employeeId: EmployeeId, file: File | null) => void }) {
-  return <section className="screen"><TopBar title="Perfis da Equipe de Limpeza" subtitle="Visualizar telas sem digitar senha" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}>Voltar para Limpeza</button>{notice && <p className="success-message">{notice}</p>}<section className="profile-grid">{employeeIds.map((employeeId) => { const employee = employees[employeeId]; const profile = profiles[employeeId]; return <article className="profile-card" key={employeeId}><div className="employee-photo-box profile-photo-box">{profile?.photoData ? <img src={profile.photoData} alt={`Foto de ${employee.name}`} /> : <span>{employee.name.slice(0, 1)}</span>}</div><div><h2>{employee.name}</h2><p>{employee.schedule}</p></div><label className="photo-button">Cadastrar / alterar foto<input type="file" accept="image/*" capture="environment" onChange={(event) => { onProfilePhotoChange(employeeId, event.target.files?.[0] ?? null); event.target.value = ""; }} /></label><button className="primary-button" type="button" onClick={() => onPreviewEmployee(employeeId)}>Ver tela da usuária</button></article>; })}</section></section>;
+  return <section className="screen"><TopBar title="Perfis da Equipe de Limpeza" subtitle="Visualizar telas sem digitar senha" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}>Voltar para Limpeza</button>{notice && <p className="success-message">{notice}</p>}<section className="profile-grid">{employeeIds.map((employeeId) => { const employee = employees[employeeId]; const profile = profiles[employeeId]; return <article className="profile-card" key={employeeId}><ProfileAvatar name={employee.name} photoData={profile?.photoData} large /><div className="profile-card-copy"><p className="card-kicker">Limpeza</p><h2>{employee.name}</h2><p>Limpeza — {employee.schedule}</p></div><div className="profile-card-actions"><label className="photo-button">Cadastrar / alterar foto<input type="file" accept="image/*" capture="environment" onChange={(event) => { onProfilePhotoChange(employeeId, event.target.files?.[0] ?? null); event.target.value = ""; }} /></label><button className="primary-button" type="button" onClick={() => onPreviewEmployee(employeeId)}>Ver tela da usuária</button></div></article>; })}</section></section>;
 }
 
 function OrdersScreen({ orders, notice, editingOrderId, editDraft, onBack, onLogout, onCopyOrder, onStartEdit, onCancelEdit, onUpdateDraftItem, onRemoveDraftItem, onSaveEdit, onMarkDone, onRequestDelete }: { orders: CleaningOrder[]; notice: string; editingOrderId: string | null; editDraft: OrderItem[]; onBack: () => void; onLogout: () => void; onCopyOrder: (order: CleaningOrder) => void; onStartEdit: (order: CleaningOrder) => void; onCancelEdit: () => void; onUpdateDraftItem: (itemId: string, field: keyof OrderItem, value: string) => void; onRemoveDraftItem: (itemId: string) => void; onSaveEdit: (order: CleaningOrder) => void; onMarkDone: (order: CleaningOrder) => void; onRequestDelete: (order: CleaningOrder) => void }) {
@@ -1564,7 +1661,7 @@ function InfoCard({ title, value }: { title: string; value: string }) {
 }
 
 function AdminCard({ title, detail }: { title: string; detail: string }) {
-  return <article className="admin-card module-card"><span>{title}</span><strong>{detail}</strong></article>;
+  return <ModuleCard title={title} detail={detail} enabled />;
 }
 
 function OrderHeader({ order }: { order: CleaningOrder }) {
@@ -2147,6 +2244,12 @@ function waitForNextFrame(): Promise<void> {
 function createId() {
   if (crypto.randomUUID) return crypto.randomUUID();
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function getInitials(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  return parts.slice(0, 2).map((part) => part[0]?.toUpperCase() ?? "").join("");
 }
 
 export default App;
