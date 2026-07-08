@@ -89,6 +89,30 @@ const INVENTORY_KEY = "hub-sm-inventory-products";
 const STOCK_MOVEMENTS_KEY = "hub-sm-stock-movements";
 const USERS_KEY = "hub-sm-users-permissions";
 const LEGACY_PRODUCT_PHOTOS_KEY = "hub-sm-product-photos";
+const PRODUCT_PHOTO_SOURCE_MAX_BYTES = 10 * 1024 * 1024;
+const PRODUCT_PHOTO_SOURCE_MAX_DATA_URL_LENGTH = 14 * 1024 * 1024;
+const PRODUCT_PHOTO_MAX_DATA_URL_LENGTH = 70 * 1024;
+const INVENTORY_STORAGE_MAX_CHARS = 4_000_000;
+const PRODUCT_PHOTO_TOO_HEAVY_MESSAGE = "Foto muito pesada. Tire outra foto mais simples ou reduza a imagem.";
+const PRODUCT_PHOTO_COMPRESSION_STEPS = [
+  { maxSide: 360, quality: 0.62 },
+  { maxSide: 300, quality: 0.52 },
+  { maxSide: 240, quality: 0.45 },
+];
+
+class ProductPhotoTooHeavyError extends Error {
+  constructor() {
+    super("PRODUCT_PHOTO_TOO_HEAVY");
+    this.name = "ProductPhotoTooHeavyError";
+  }
+}
+
+class InventoryStorageTooLargeError extends Error {
+  constructor() {
+    super("INVENTORY_STORAGE_TOO_LARGE");
+    this.name = "InventoryStorageTooLargeError";
+  }
+}
 
 const emptyManualDraft: ManualDraft = {
   name: "",
@@ -288,6 +312,7 @@ function App() {
   const [barcodeProductId, setBarcodeProductId] = useState(products[0]?.id ?? "");
   const [barcodeValue, setBarcodeValue] = useState("");
   const [productPhotoData, setProductPhotoData] = useState("");
+  const [productSaving, setProductSaving] = useState(false);
   const [barcodeMessage, setBarcodeMessage] = useState("");
   const [notice, setNotice] = useState("");
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
@@ -611,11 +636,12 @@ function App() {
   async function handleProductPhotoFile(file: File | null) {
     if (!file) return;
     try {
-      const photoData = await imageFileToDataUrl(file);
+      setBarcodeMessage("Preparando foto...");
+      const photoData = await imageFileToProductThumbnail(file);
       setProductPhotoData(photoData);
-      setBarcodeMessage("Foto carregada. Salve o produto para confirmar.");
-    } catch {
-      setBarcodeMessage("Não foi possível carregar a foto.");
+      setBarcodeMessage("Foto compactada. Salve o produto para confirmar.");
+    } catch (error) {
+      setBarcodeMessage(getProductPhotoErrorMessage(error));
     }
   }
 
@@ -640,14 +666,26 @@ function App() {
     setView("product-register");
   }
 
-  function saveProductRegister() {
+  async function saveProductRegister() {
+    if (productSaving) return;
     if (!barcodeProductId) {
       setBarcodeMessage("Selecione um produto.");
       return;
     }
-    saveLocalProductDetails(barcodeProductId, { barcode: barcodeValue.trim(), photoData: productPhotoData });
-    refreshInventory();
-    setBarcodeMessage("Produto salvo.");
+
+    setProductSaving(true);
+    setBarcodeMessage("Salvando...");
+    try {
+      await waitForNextFrame();
+      const nextProducts = await prepareLocalProductDetails(barcodeProductId, { barcode: barcodeValue.trim(), photoData: productPhotoData });
+      saveLocalProductDetails(nextProducts);
+      setInventoryProducts(nextProducts);
+      setBarcodeMessage("Produto salvo.");
+    } catch (error) {
+      setBarcodeMessage(getProductSaveErrorMessage(error));
+    } finally {
+      setProductSaving(false);
+    }
   }
 
   async function copyOrder(order: CleaningOrder) {
@@ -986,6 +1024,7 @@ function App() {
           barcode={barcodeValue}
           photoData={productPhotoData}
           message={barcodeMessage}
+          saving={productSaving}
           onBack={() => setView("cleaning-dashboard")}
           onLogout={goToLogin}
           onProductChange={selectProductForRegister}
@@ -1210,8 +1249,43 @@ function StockExitScreen({ inventoryProducts, selectedProduct, userId, barcode, 
   );
 }
 
-function ProductRegisterScreen({ inventoryProducts, selectedProduct, productId, barcode, photoData, message, onBack, onLogout, onProductChange, onBarcodeChange, onBarcodeFileChange, onPhotoFileChange, onRemovePhoto, onSave }: { inventoryProducts: InventoryProduct[]; selectedProduct: InventoryProduct | null; productId: string; barcode: string; photoData: string; message: string; onBack: () => void; onLogout: () => void; onProductChange: (productId: string) => void; onBarcodeChange: (barcode: string) => void; onBarcodeFileChange: (file: File | null) => void; onPhotoFileChange: (file: File | null) => void; onRemovePhoto: () => void; onSave: () => void }) {
-  return <section className="screen"><TopBar title="Cadastro de Produtos" subtitle="Edite código de barras e foto do produto" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}>Voltar para Limpeza</button>{message && <p className={message.includes("salvo") ? "success-message" : "notice-message"}>{message}</p>}<section className="manual-form inventory-form product-register-form"><label>Produto<select value={productId} onChange={(event) => onProductChange(event.target.value)}>{inventoryProducts.map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}</select></label><article className="product-register-card"><ProductPhoto productName={selectedProduct?.name ?? "Produto"} photoData={photoData} /><div><strong>{selectedProduct?.name ?? "Produto"}</strong><small>{selectedProduct ? formatStockQuantity(selectedProduct.currentStock, selectedProduct.unit) : "Sem estoque"}</small><label className="photo-button product-photo-edit">Alterar foto<input type="file" accept="image/*" capture="environment" onChange={(event) => { onPhotoFileChange(event.target.files?.[0] ?? null); event.target.value = ""; }} /></label>{photoData && <button className="ghost-button product-photo-remove" type="button" onClick={onRemovePhoto}>Remover foto</button>}</div></article><label className="scan-button">Abrir câmera / ler código<input type="file" accept="image/*" capture="environment" onChange={(event) => { onBarcodeFileChange(event.target.files?.[0] ?? null); event.target.value = ""; }} /></label><label>Código de barras<input type="text" inputMode="numeric" value={barcode} placeholder="Bipe ou digite o código" onChange={(event) => onBarcodeChange(event.target.value)} /></label><button className="primary-button wide-button" type="button" onClick={onSave}>Salvar Produto</button></section></section>;
+function ProductRegisterScreen({ inventoryProducts, selectedProduct, productId, barcode, photoData, message, saving, onBack, onLogout, onProductChange, onBarcodeChange, onBarcodeFileChange, onPhotoFileChange, onRemovePhoto, onSave }: { inventoryProducts: InventoryProduct[]; selectedProduct: InventoryProduct | null; productId: string; barcode: string; photoData: string; message: string; saving: boolean; onBack: () => void; onLogout: () => void; onProductChange: (productId: string) => void; onBarcodeChange: (barcode: string) => void; onBarcodeFileChange: (file: File | null) => void; onPhotoFileChange: (file: File | null) => void; onRemovePhoto: () => void; onSave: () => void | Promise<void> }) {
+  return (
+    <section className="screen">
+      <TopBar title="Cadastro de Produtos" subtitle="Edite código de barras e foto do produto" onLogout={onLogout} />
+      <button className="ghost-button" type="button" onClick={onBack} disabled={saving}>Voltar para Limpeza</button>
+      {message && <p className={message.includes("salvo") ? "success-message" : "notice-message"}>{message}</p>}
+      <section className="manual-form inventory-form product-register-form">
+        <label>
+          Produto
+          <select value={productId} disabled={saving} onChange={(event) => onProductChange(event.target.value)}>
+            {inventoryProducts.map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}
+          </select>
+        </label>
+        <article className="product-register-card">
+          <ProductPhoto productName={selectedProduct?.name ?? "Produto"} photoData={photoData} />
+          <div>
+            <strong>{selectedProduct?.name ?? "Produto"}</strong>
+            <small>{selectedProduct ? formatStockQuantity(selectedProduct.currentStock, selectedProduct.unit) : "Sem estoque"}</small>
+            <label className="photo-button product-photo-edit">
+              Alterar foto
+              <input type="file" accept="image/*" capture="environment" disabled={saving} onChange={(event) => { onPhotoFileChange(event.target.files?.[0] ?? null); event.target.value = ""; }} />
+            </label>
+            {photoData && <button className="ghost-button product-photo-remove" type="button" disabled={saving} onClick={onRemovePhoto}>Remover foto</button>}
+          </div>
+        </article>
+        <label className="scan-button">
+          Abrir câmera / ler código
+          <input type="file" accept="image/*" capture="environment" disabled={saving} onChange={(event) => { onBarcodeFileChange(event.target.files?.[0] ?? null); event.target.value = ""; }} />
+        </label>
+        <label>
+          Código de barras
+          <input type="text" inputMode="numeric" value={barcode} placeholder="Bipe ou digite o código" disabled={saving} onChange={(event) => onBarcodeChange(event.target.value)} />
+        </label>
+        <button className="primary-button wide-button" type="button" disabled={saving} onClick={() => { void onSave(); }}>{saving ? "Salvando..." : "Salvar Produto"}</button>
+      </section>
+    </section>
+  );
 }
 
 function StockExitHistoryScreen({ movements, onBack, onLogout }: { movements: StockMovement[]; onBack: () => void; onLogout: () => void }) {
@@ -1690,8 +1764,55 @@ function saveLocalInventoryProducts(inventoryProducts: InventoryProduct[]) {
   window.localStorage.setItem(INVENTORY_KEY, JSON.stringify(inventoryProducts));
 }
 
-function saveLocalProductDetails(productId: string, details: { barcode: string; photoData: string }) {
-  saveLocalInventoryProducts(getLocalInventoryProducts().map((product) => product.id === productId ? { ...product, barcode: details.barcode || undefined, photoData: details.photoData } : product));
+async function prepareLocalProductDetails(productId: string, details: { barcode: string; photoData: string }) {
+  const nextProducts = getLocalInventoryProducts().map((product) => product.id === productId ? { ...product, barcode: details.barcode || undefined, photoData: details.photoData || undefined } : product);
+  return compactInventoryProductPhotos(nextProducts);
+}
+
+function saveLocalProductDetails(inventoryProducts: InventoryProduct[]) {
+  const serializedProducts = JSON.stringify(inventoryProducts);
+  if (serializedProducts.length > INVENTORY_STORAGE_MAX_CHARS) {
+    throw new InventoryStorageTooLargeError();
+  }
+  window.localStorage.setItem(INVENTORY_KEY, serializedProducts);
+}
+
+async function compactInventoryProductPhotos(inventoryProducts: InventoryProduct[]) {
+  const compactProducts: InventoryProduct[] = [];
+  for (const product of inventoryProducts) {
+    if (!product.photoData || product.photoData.length <= PRODUCT_PHOTO_MAX_DATA_URL_LENGTH) {
+      compactProducts.push(product);
+      continue;
+    }
+
+    const photoData = await dataUrlToProductThumbnail(product.photoData);
+    compactProducts.push({ ...product, photoData });
+    await waitForNextFrame();
+  }
+
+  return compactProducts;
+}
+
+function getProductPhotoErrorMessage(error: unknown) {
+  if (isProductPhotoTooHeavyError(error)) return PRODUCT_PHOTO_TOO_HEAVY_MESSAGE;
+  return "Não foi possível carregar a foto. Tente outra imagem.";
+}
+
+function getProductSaveErrorMessage(error: unknown) {
+  if (isProductPhotoTooHeavyError(error) || error instanceof InventoryStorageTooLargeError || isStorageQuotaError(error)) {
+    return PRODUCT_PHOTO_TOO_HEAVY_MESSAGE;
+  }
+  return "Não foi possível salvar o produto. Tente novamente.";
+}
+
+function isProductPhotoTooHeavyError(error: unknown) {
+  return error instanceof ProductPhotoTooHeavyError;
+}
+
+function isStorageQuotaError(error: unknown) {
+  if (!error || typeof error !== "object") return false;
+  const quotaError = error as { name?: string; code?: number };
+  return quotaError.name === "QuotaExceededError" || quotaError.name === "NS_ERROR_DOM_QUOTA_REACHED" || quotaError.code === 22 || quotaError.code === 1014;
 }
 
 function getLegacyProductPhotos(): Record<string, string> {
@@ -1742,18 +1863,74 @@ async function decodeBarcodeFromFile(file: File): Promise<string> {
 async function imageFileToDataUrl(file: File): Promise<string> {
   const rawDataUrl = await readFileAsDataUrl(file);
   const image = await loadImage(rawDataUrl);
-  const maxSize = 520;
+  try {
+    return await resizeImageElementToDataUrl(image, 520, 0.78);
+  } catch {
+    return rawDataUrl;
+  }
+}
+
+async function imageFileToProductThumbnail(file: File): Promise<string> {
+  if (file.size > PRODUCT_PHOTO_SOURCE_MAX_BYTES) {
+    throw new ProductPhotoTooHeavyError();
+  }
+
+  const imageUrl = URL.createObjectURL(file);
+  try {
+    const image = await loadImage(imageUrl);
+    return createProductThumbnailDataUrl(image);
+  } finally {
+    URL.revokeObjectURL(imageUrl);
+  }
+}
+
+async function dataUrlToProductThumbnail(dataUrl: string): Promise<string> {
+  if (dataUrl.length > PRODUCT_PHOTO_SOURCE_MAX_DATA_URL_LENGTH) {
+    throw new ProductPhotoTooHeavyError();
+  }
+
+  const image = await loadImage(dataUrl);
+  return createProductThumbnailDataUrl(image);
+}
+
+async function createProductThumbnailDataUrl(image: HTMLImageElement): Promise<string> {
+  for (const step of PRODUCT_PHOTO_COMPRESSION_STEPS) {
+    const photoData = await resizeImageElementToDataUrl(image, step.maxSide, step.quality);
+    if (photoData.length <= PRODUCT_PHOTO_MAX_DATA_URL_LENGTH) {
+      return photoData;
+    }
+    await waitForNextFrame();
+  }
+
+  throw new ProductPhotoTooHeavyError();
+}
+
+async function resizeImageElementToDataUrl(image: HTMLImageElement, maxSize: number, quality: number): Promise<string> {
   const scale = Math.min(1, maxSize / Math.max(image.width, image.height));
   const canvas = document.createElement("canvas");
   canvas.width = Math.max(1, Math.round(image.width * scale));
   canvas.height = Math.max(1, Math.round(image.height * scale));
   const context = canvas.getContext("2d");
-  if (!context) return rawDataUrl;
+  if (!context) throw new Error("Canvas indisponível");
+  context.fillStyle = "#ffffff";
+  context.fillRect(0, 0, canvas.width, canvas.height);
   context.drawImage(image, 0, 0, canvas.width, canvas.height);
-  return canvas.toDataURL("image/jpeg", 0.78);
+  return canvasToDataUrl(canvas, "image/jpeg", quality);
 }
 
-function readFileAsDataUrl(file: File): Promise<string> {
+function canvasToDataUrl(canvas: HTMLCanvasElement, type: string, quality: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        reject(new Error("Não foi possível compactar a imagem."));
+        return;
+      }
+      readFileAsDataUrl(blob).then(resolve).catch(reject);
+    }, type, quality);
+  });
+}
+
+function readFileAsDataUrl(file: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result));
@@ -1769,6 +1946,10 @@ function loadImage(src: string): Promise<HTMLImageElement> {
     image.onerror = reject;
     image.src = src;
   });
+}
+
+function waitForNextFrame(): Promise<void> {
+  return new Promise((resolve) => window.requestAnimationFrame(() => resolve()));
 }
 
 function createId() {
