@@ -2,7 +2,9 @@ import { ChangeEvent, FormEvent, ReactNode, useEffect, useMemo, useState } from 
 import { activities, employees, products } from "./data";
 import { GuardShiftPanel, GuardSyncDiagnosticPanel } from "./modules/security/components/GuardShift";
 import { signInAdminSupabaseAuth, signInGuardSupabaseAuth } from "./modules/security/services/guardAuthBridge";
+import { loadGuardMonitoringEntries } from "./modules/security/services/shiftService";
 import { signOutSupabaseAuth } from "./modules/security/services/supabaseClient";
+import type { GuardMonitoringEntry, GuardMonitoringLoadState, GuardShiftStatus } from "./modules/security/types/shift.types";
 import {
   addOrder,
   addStockCheck,
@@ -55,6 +57,7 @@ type View =
   | "users-permissions"
   | "security-menu"
   | "security-guards"
+  | "security-monitoring"
   | "security-guard-detail";
 
 type ManualDraft = {
@@ -64,6 +67,11 @@ type ManualDraft = {
 };
 
 type GuardName = "Carlos Clemente" | "Salomão";
+
+type MonitoringTab = "entries" | "rounds";
+type MonitoringGuardFilter = "all" | GuardName;
+type MonitoringStatusFilter = "all" | GuardShiftStatus;
+type MonitoringPeriodFilter = "today" | "7d" | "all";
 
 type StockExitUserId = string;
 
@@ -928,6 +936,17 @@ function App() {
     setView("security-guards");
   }
 
+  function openSecurityMonitoring() {
+    if (currentUser !== "tezzei" || !hasCurrentPermission("painel-admin")) {
+      setNotice("Sem permissão para acessar Monitoramento.");
+      return;
+    }
+
+    setNotice("");
+    setSelectedGuardName(null);
+    setView("security-monitoring");
+  }
+
   function openGuardDetail(guardName: GuardName) {
     setNotice("");
     setSelectedGuardName(guardName);
@@ -1169,9 +1188,11 @@ function App() {
         />
       )}
 
-      {view === "security-menu" && <SecurityMenuScreen permissions={getManagedUserPermissions(currentUser, managedUsers)} onBack={() => setView(getCurrentHomeView())} onLogout={goToLogin} onOpenGuards={openSecurityGuards} />}
+      {view === "security-menu" && <SecurityMenuScreen permissions={getManagedUserPermissions(currentUser, managedUsers)} isAdmin={currentUser === "tezzei"} onBack={() => setView(getCurrentHomeView())} onLogout={goToLogin} onOpenGuards={openSecurityGuards} onOpenMonitoring={openSecurityMonitoring} />}
 
       {view === "security-guards" && <SecurityGuardsScreen onBack={openSecurityMenu} onLogout={goToLogin} onOpenGuard={openGuardDetail} />}
+
+      {view === "security-monitoring" && currentUser === "tezzei" && <SecurityMonitoringScreen onBack={openSecurityMenu} onLogout={goToLogin} />}
 
       {view === "security-guard-detail" && selectedGuardName && (
         <SecurityGuardDetailScreen guardLocalId={getGuardIdFromName(selectedGuardName)} guardName={selectedGuardName} onBack={openSecurityGuards} onLogout={goToLogin} />
@@ -1594,9 +1615,192 @@ function AdminScreen({ newOrdersCount, onlineEnabled, permissions, onLogout, onO
   );
 }
 
-function SecurityMenuScreen({ permissions, onBack, onLogout, onOpenGuards }: { permissions: UserPermission[]; onBack: () => void; onLogout: () => void; onOpenGuards: () => void }) {
+function SecurityMenuScreen({ permissions, isAdmin, onBack, onLogout, onOpenGuards, onOpenMonitoring }: { permissions: UserPermission[]; isAdmin: boolean; onBack: () => void; onLogout: () => void; onOpenGuards: () => void; onOpenMonitoring: () => void }) {
   const canGuards = permissions.includes("guardas");
-  return <section className="screen"><TopBar title="Segurança" subtitle="Controle de segurança" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}>Voltar</button><section className="admin-grid security-grid"><ModuleCard title="Guardas" detail="Controle dos guardas" enabled={canGuards} onClick={onOpenGuards} className="security-card" /></section></section>;
+  const canMonitoring = isAdmin && permissions.includes("painel-admin");
+  return <section className="screen"><TopBar title="Segurança" subtitle="Controle de segurança" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}>Voltar</button><section className="admin-grid security-grid"><ModuleCard title="Guardas" detail="Controle dos guardas" enabled={canGuards} onClick={onOpenGuards} className="security-card" />{isAdmin && <ModuleCard title="Monitoramento" detail="Entradas, saídas e rondas" enabled={canMonitoring} onClick={onOpenMonitoring} className="security-card" />}</section></section>;
+}
+
+function SecurityMonitoringScreen({ onBack, onLogout }: { onBack: () => void; onLogout: () => void }) {
+  const [activeTab, setActiveTab] = useState<MonitoringTab>("entries");
+  const [guardFilter, setGuardFilter] = useState<MonitoringGuardFilter>("all");
+  const [statusFilter, setStatusFilter] = useState<MonitoringStatusFilter>("all");
+  const [periodFilter, setPeriodFilter] = useState<MonitoringPeriodFilter>("7d");
+  const [monitoringState, setMonitoringState] = useState<GuardMonitoringLoadState>({
+    entries: [],
+    remoteReadable: false,
+    remoteProtected: false,
+    message: "Carregando registros de entrada e encerramento...",
+  });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    loadGuardMonitoringEntries()
+      .then((state) => {
+        if (active) setMonitoringState(state);
+      })
+      .catch(() => {
+        if (!active) return;
+        setMonitoringState({
+          entries: [],
+          remoteReadable: false,
+          remoteProtected: false,
+          message: "Não foi possível carregar os registros de monitoramento.",
+        });
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const filteredEntries = useMemo(() => monitoringState.entries.filter((entry) => (
+    matchesMonitoringGuard(entry, guardFilter)
+    && matchesMonitoringStatus(entry, statusFilter)
+    && matchesMonitoringPeriod(entry, periodFilter)
+  )), [guardFilter, monitoringState.entries, periodFilter, statusFilter]);
+
+  return (
+    <section className="screen monitoring-screen">
+      <TopBar title="Monitoramento de Guardas" subtitle="Relatórios de entrada, saída e rondas" onLogout={onLogout} />
+      <button className="ghost-button" type="button" onClick={onBack}>Voltar para Segurança</button>
+      <div className="monitoring-tabs" role="tablist" aria-label="Relatórios de monitoramento">
+        <button className={activeTab === "entries" ? "active" : ""} type="button" onClick={() => setActiveTab("entries")}>Entrada / Ativação de Serviço</button>
+        <button className={activeTab === "rounds" ? "active" : ""} type="button" onClick={() => setActiveTab("rounds")}>Rondas</button>
+      </div>
+
+      {activeTab === "entries" && (
+        <section className="monitoring-panel">
+          <div className="monitoring-filters">
+            <label>Guarda<select value={guardFilter} onChange={(event) => setGuardFilter(event.target.value as MonitoringGuardFilter)}><option value="all">Todos</option>{guardNames.map((guardName) => <option key={guardName} value={guardName}>{guardName}</option>)}</select></label>
+            <label>Status<select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as MonitoringStatusFilter)}><option value="all">Todos</option><option value="active">Ativo</option><option value="ended">Encerrado</option><option value="pending">Pendente</option><option value="auto_ended">Encerrado automático</option></select></label>
+            <label>Período<select value={periodFilter} onChange={(event) => setPeriodFilter(event.target.value as MonitoringPeriodFilter)}><option value="today">Hoje</option><option value="7d">Últimos 7 dias</option><option value="all">Todos</option></select></label>
+          </div>
+
+          {monitoringState.message && <p className={monitoringState.remoteReadable ? "success-message" : "notice-message"}>{monitoringState.message}</p>}
+          {loading && <article className="monitoring-card"><strong>Carregando registros...</strong></article>}
+          {!loading && filteredEntries.length === 0 && <article className="empty-state">Nenhum registro de ativação encontrado.</article>}
+          {!loading && filteredEntries.length > 0 && (
+            <div className="monitoring-list">
+              {filteredEntries.map((entry) => <MonitoringEntryCard key={entry.id} entry={entry} />)}
+            </div>
+          )}
+        </section>
+      )}
+
+      {activeTab === "rounds" && (
+        <section className="monitoring-panel">
+          <article className="monitoring-card rounds-placeholder">
+            <span>RONDAS</span>
+            <strong>Relatório de rondas ainda não ativado.</strong>
+            <p>A próxima fase criará os pontos físicos, QR Code e batidas de ronda.</p>
+            <div className="monitoring-meta-grid">
+              {["Data/hora da ronda", "Guarda", "Ponto de ronda", "Status", "Foto", "Localização"].map((item) => <small key={item}>{item}<b>Fase futura</b></small>)}
+            </div>
+          </article>
+        </section>
+      )}
+    </section>
+  );
+}
+
+function MonitoringEntryCard({ entry }: { entry: GuardMonitoringEntry }) {
+  return (
+    <article className="monitoring-card">
+      <div className="monitoring-card-head">
+        <div>
+          <span>{formatDateOnly(entry.scheduledDate)}</span>
+          <strong>{entry.guardName}</strong>
+        </div>
+        <em className={`monitoring-status ${entry.status}`}>{formatMonitoringStatus(entry.status)}</em>
+      </div>
+      <div className="monitoring-meta-grid">
+        <small>Previsto entrada<b>{entry.scheduledStart}</b></small>
+        <small>Previsto saída<b>{entry.scheduledEnd}</b></small>
+        <small>Ativação real<b>{formatDateTimeShort(entry.startedAt)}</b></small>
+        <small>Encerramento real<b>{formatDateTimeShort(entry.endedAt)}</b></small>
+        <small>Duração<b>{formatMonitoringDuration(entry.startedAt, entry.endedAt)}</b></small>
+        <small>Fonte<b>{entry.source}</b></small>
+        <small>Localização inicial<b>{entry.startLocation ? "Sim" : "Não"}</b></small>
+        <small>Localização final<b>{entry.endLocation ? "Sim" : "Não"}</b></small>
+      </div>
+      {(entry.startLocation || entry.endLocation) && (
+        <details className="monitoring-location">
+          <summary>Ver localização</summary>
+          {entry.startLocation && <p>Inicial: {formatLocation(entry.startLocation.latitude)}, {formatLocation(entry.startLocation.longitude)}{entry.startLocation.accuracy ? ` (${Math.round(entry.startLocation.accuracy)}m)` : ""}</p>}
+          {entry.endLocation && <p>Final: {formatLocation(entry.endLocation.latitude)}, {formatLocation(entry.endLocation.longitude)}{entry.endLocation.accuracy ? ` (${Math.round(entry.endLocation.accuracy)}m)` : ""}</p>}
+        </details>
+      )}
+    </article>
+  );
+}
+
+function matchesMonitoringGuard(entry: GuardMonitoringEntry, guardFilter: MonitoringGuardFilter) {
+  return guardFilter === "all" || entry.guardName === guardFilter;
+}
+
+function matchesMonitoringStatus(entry: GuardMonitoringEntry, statusFilter: MonitoringStatusFilter) {
+  return statusFilter === "all" || entry.status === statusFilter;
+}
+
+function matchesMonitoringPeriod(entry: GuardMonitoringEntry, periodFilter: MonitoringPeriodFilter) {
+  if (periodFilter === "all") return true;
+  const scheduledDate = parseDateOnly(entry.scheduledDate);
+  if (!scheduledDate) return false;
+  const today = parseDateOnly(getTodayIso());
+  if (!today) return false;
+  if (periodFilter === "today") return entry.scheduledDate === getTodayIso();
+  const weekStart = new Date(today);
+  weekStart.setDate(today.getDate() - 6);
+  return scheduledDate >= weekStart && scheduledDate <= today;
+}
+
+function formatMonitoringStatus(status: GuardShiftStatus) {
+  const labels: Record<GuardShiftStatus, string> = {
+    pending: "Pendente",
+    active: "Ativo",
+    ended: "Encerrado",
+    auto_ended: "Encerrado automático",
+  };
+  return labels[status];
+}
+
+function formatDateOnly(value: string) {
+  const date = parseDateOnly(value);
+  if (!date) return "--";
+  return date.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" });
+}
+
+function formatDateTimeShort(value: string | undefined) {
+  if (!value) return "--";
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "--";
+  return date.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+}
+
+function formatMonitoringDuration(startedAt?: string, endedAt?: string) {
+  if (!startedAt || !endedAt) return "--";
+  const durationMs = new Date(endedAt).getTime() - new Date(startedAt).getTime();
+  if (!Number.isFinite(durationMs) || durationMs < 0) return "--";
+  const totalMinutes = Math.round(durationMs / 60000);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (hours === 0) return `${minutes} min`;
+  return `${hours}h ${String(minutes).padStart(2, "0")}min`;
+}
+
+function formatLocation(value: number) {
+  return value.toFixed(5);
+}
+
+function parseDateOnly(value: string) {
+  const date = new Date(`${value}T00:00:00`);
+  return Number.isFinite(date.getTime()) ? date : null;
 }
 
 function SecurityGuardsScreen({ onBack, onLogout, onOpenGuard }: { onBack: () => void; onLogout: () => void; onOpenGuard: (guardName: GuardName) => void }) {

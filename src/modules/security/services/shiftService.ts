@@ -2,6 +2,9 @@ import type { GuardId } from "../../../types";
 import {
   GuardShiftDuplicateActiveError,
   GuardShiftNoTodayError,
+  type GuardMonitoringEntry,
+  type GuardMonitoringLoadState,
+  type GuardMonitoringLocation,
   type GuardScheduleShift,
   type GuardRemoteSyncDiagnostic,
   type GuardShiftActionResult,
@@ -382,6 +385,44 @@ export async function loadGuardRemoteSyncDiagnostic(): Promise<GuardRemoteSyncDi
   });
 }
 
+export async function loadGuardMonitoringEntries(): Promise<GuardMonitoringLoadState> {
+  if (!supabaseConfigured) {
+    return {
+      entries: getLocalMonitoringEntries(),
+      remoteReadable: false,
+      remoteProtected: false,
+      message: "Supabase não configurado. Exibindo registros salvos neste aparelho.",
+    };
+  }
+
+  try {
+    const response = await publicHistoryRequest("shift_sessions?select=id,guard_id,scheduled_date,scheduled_start,scheduled_end,status,started_at,start_latitude,start_longitude,start_accuracy,ended_at,end_latitude,end_longitude,end_accuracy,created_at&order=created_at.desc&limit=100");
+    const rows = (await response.json()) as ShiftSessionRow[];
+    return {
+      entries: rows.map(mapShiftRowToMonitoringEntry),
+      remoteReadable: true,
+      remoteProtected: false,
+      message: rows.length > 0 ? "Registros carregados do Supabase." : undefined,
+    };
+  } catch (error) {
+    if (isRemoteHistoryProtectedError(error)) {
+      return {
+        entries: getLocalMonitoringEntries(),
+        remoteReadable: false,
+        remoteProtected: true,
+        message: "Histórico remoto protegido por RLS. Verifique sessão Auth do Admin.",
+      };
+    }
+
+    return {
+      entries: getLocalMonitoringEntries(),
+      remoteReadable: false,
+      remoteProtected: false,
+      message: "Não foi possível consultar o histórico remoto agora. Exibindo registros salvos neste aparelho.",
+    };
+  }
+}
+
 export function getGuardSupabaseUserId(guardLocalId: GuardId) {
   return getGuardSupabaseUserBinding(guardLocalId).userId;
 }
@@ -650,8 +691,68 @@ function getGuardNameFromSupabaseUserId(userId: string | null) {
   return "Guarda não identificado";
 }
 
+function getGuardLocalIdFromSupabaseUserId(userId: string | null): GuardId | undefined {
+  if (!userId) return undefined;
+  if (getGuardSupabaseUserBinding("carlos-clemente").userId === userId) return "carlos-clemente";
+  if (getGuardSupabaseUserBinding("salomao").userId === userId) return "salomao";
+  return undefined;
+}
+
 function getGuardNameFromLocalId(guardLocalId: GuardId) {
   return guardLocalId === "carlos-clemente" ? "Carlos Clemente" : "Salomão";
+}
+
+function mapShiftRowToMonitoringEntry(row: ShiftSessionRow): GuardMonitoringEntry {
+  return {
+    id: row.id,
+    guardName: getGuardNameFromSupabaseUserId(row.guard_id) ?? "Guarda não identificado",
+    guardLocalId: getGuardLocalIdFromSupabaseUserId(row.guard_id),
+    guardId: row.guard_id ?? undefined,
+    scheduledDate: row.scheduled_date,
+    scheduledStart: normalizeTime(row.scheduled_start),
+    scheduledEnd: normalizeTime(row.scheduled_end),
+    status: row.status,
+    startedAt: row.started_at ?? undefined,
+    endedAt: row.ended_at ?? undefined,
+    source: "Supabase",
+    startLocation: getMonitoringLocation(row.start_latitude, row.start_longitude, row.start_accuracy),
+    endLocation: getMonitoringLocation(row.end_latitude, row.end_longitude, row.end_accuracy),
+  };
+}
+
+function getLocalMonitoringEntries(): GuardMonitoringEntry[] {
+  return getLocalShiftSessions()
+    .map((session) => ({
+      id: session.id,
+      guardName: session.guardName,
+      guardLocalId: session.guardLocalId,
+      guardId: session.guardId,
+      scheduledDate: session.scheduledDate,
+      scheduledStart: session.scheduledStart,
+      scheduledEnd: session.scheduledEnd,
+      status: session.status,
+      startedAt: session.startedAt,
+      endedAt: session.endedAt,
+      source: "Local" as const,
+      startLocation: getMonitoringLocation(session.startLatitude, session.startLongitude, session.startAccuracy),
+      endLocation: getMonitoringLocation(session.endLatitude, session.endLongitude, session.endAccuracy),
+    }))
+    .sort((first, second) => {
+      const firstTime = new Date(first.startedAt ?? first.endedAt ?? first.scheduledDate).getTime();
+      const secondTime = new Date(second.startedAt ?? second.endedAt ?? second.scheduledDate).getTime();
+      return secondTime - firstTime;
+    });
+}
+
+function getMonitoringLocation(latitude: number | string | null | undefined, longitude: number | string | null | undefined, accuracy?: number | string | null): GuardMonitoringLocation | undefined {
+  const parsedLatitude = toOptionalNumber(latitude ?? null);
+  const parsedLongitude = toOptionalNumber(longitude ?? null);
+  if (parsedLatitude === undefined || parsedLongitude === undefined) return undefined;
+  return {
+    latitude: parsedLatitude,
+    longitude: parsedLongitude,
+    accuracy: toOptionalNumber(accuracy ?? null),
+  };
 }
 
 function formatDateTimeShort(value: string | undefined) {
