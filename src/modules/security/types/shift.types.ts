@@ -57,8 +57,10 @@ export type GuardSyncDiagnosticItem = {
 
 export type GuardSyncDiagnostic = {
   supabaseConfigured: boolean;
+  adminUuidConfigured: boolean;
   carlosUuidConfigured: boolean;
   salomaoUuidConfigured: boolean;
+  adminAuthEmailConfigured: boolean;
   carlosAuthEmailConfigured: boolean;
   salomaoAuthEmailConfigured: boolean;
   authSessionActive: boolean;

@@ -10,6 +10,9 @@ const GUARD_SUPABASE_AUTH_EMAIL_ENV: Record<GuardId, string> = {
   salomao: "VITE_GUARD_SALOMAO_AUTH_EMAIL",
 };
 
+const ADMIN_SUPABASE_USER_ENV = "VITE_ADMIN_USER_ID";
+const ADMIN_SUPABASE_AUTH_EMAIL_ENV = "VITE_ADMIN_AUTH_EMAIL";
+
 const LEGACY_GUARD_USER_ENV: Record<GuardId, string[]> = {
   "carlos-clemente": ["VITE_CARLOS_CLEMENTE_USER_ID"],
   salomao: ["VITE_SALOMAO_USER_ID"],
@@ -21,6 +24,16 @@ export type GuardSupabaseUserBinding = {
 };
 
 export type GuardSupabaseAuthEmailBinding = {
+  envName: string;
+  email?: string;
+};
+
+export type AdminSupabaseUserBinding = {
+  envName: string;
+  userId?: string;
+};
+
+export type AdminSupabaseAuthEmailBinding = {
   envName: string;
   email?: string;
 };
@@ -37,4 +50,16 @@ export function getGuardSupabaseAuthEmailBinding(guardLocalId: GuardId): GuardSu
   const envName = GUARD_SUPABASE_AUTH_EMAIL_ENV[guardLocalId];
   const email = env[envName]?.trim();
   return { envName, email: email || undefined };
+}
+
+export function getAdminSupabaseUserBinding(): AdminSupabaseUserBinding {
+  const env = import.meta.env as Record<string, string | undefined>;
+  const userId = env[ADMIN_SUPABASE_USER_ENV]?.trim();
+  return { envName: ADMIN_SUPABASE_USER_ENV, userId: userId || undefined };
+}
+
+export function getAdminSupabaseAuthEmailBinding(): AdminSupabaseAuthEmailBinding {
+  const env = import.meta.env as Record<string, string | undefined>;
+  const email = env[ADMIN_SUPABASE_AUTH_EMAIL_ENV]?.trim();
+  return { envName: ADMIN_SUPABASE_AUTH_EMAIL_ENV, email: email || undefined };
 }

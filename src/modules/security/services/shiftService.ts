@@ -11,8 +11,10 @@ import {
   type GuardShiftStatus,
   type GuardSyncDiagnostic,
 } from "../types/shift.types";
-import { getGuardAuthBridgeStatus, type GuardAuthBridgeStatus } from "./guardAuthBridge";
+import { getAdminAuthBridgeStatus, getGuardAuthBridgeStatus, type GuardAuthBridgeStatus } from "./guardAuthBridge";
 import {
+  getAdminSupabaseAuthEmailBinding,
+  getAdminSupabaseUserBinding,
   getGuardSupabaseAuthEmailBinding,
   getGuardSupabaseUserBinding,
   type GuardSupabaseUserBinding,
@@ -214,37 +216,48 @@ export async function endGuardShift(input: {
 }
 
 export function getGuardSyncDiagnostic(): GuardSyncDiagnostic {
+  const admin = getAdminSupabaseUserBinding();
   const carlos = getGuardSupabaseUserBinding("carlos-clemente");
   const salomao = getGuardSupabaseUserBinding("salomao");
+  const adminEmail = getAdminSupabaseAuthEmailBinding();
   const carlosEmail = getGuardSupabaseAuthEmailBinding("carlos-clemente");
   const salomaoEmail = getGuardSupabaseAuthEmailBinding("salomao");
   const session = getStoredSupabaseSessionSnapshot();
   const hasAuthSession = Boolean(session.accessToken && session.userId);
-  const sessionMatchesGuard = Boolean(session.userId && [carlos.userId, salomao.userId].includes(session.userId));
-  const currentGuardSessionReady = Boolean(
+  const sessionMatchesKnownUser = Boolean(session.userId && [admin.userId, carlos.userId, salomao.userId].includes(session.userId));
+  const currentAuthSessionReady = Boolean(
     supabaseConfigured
-    && carlos.userId
-    && salomao.userId
-    && carlosEmail.email
-    && salomaoEmail.email
     && hasAuthSession
-    && sessionMatchesGuard,
+    && sessionMatchesKnownUser,
   );
+  const authUserLabel = getCurrentAuthUserLabel(session.userId, admin.userId, carlos.userId, salomao.userId);
 
   return {
     supabaseConfigured,
+    adminUuidConfigured: Boolean(admin.userId),
     carlosUuidConfigured: Boolean(carlos.userId),
     salomaoUuidConfigured: Boolean(salomao.userId),
+    adminAuthEmailConfigured: Boolean(adminEmail.email),
     carlosAuthEmailConfigured: Boolean(carlosEmail.email),
     salomaoAuthEmailConfigured: Boolean(salomaoEmail.email),
     authSessionActive: hasAuthSession,
-    remoteSyncActive: currentGuardSessionReady,
-    fallbackReason: getFallbackReason(carlos, salomao, carlosEmail.email, salomaoEmail.email, session.userId),
+    remoteSyncActive: currentAuthSessionReady,
+    fallbackReason: getFallbackReason(admin, carlos, salomao, adminEmail.email, carlosEmail.email, salomaoEmail.email, session.userId),
     items: [
       {
         label: "Supabase configurado",
         ok: supabaseConfigured,
         detail: supabaseConfigured ? "VITE_DB_URL e VITE_DB_PUBLIC_KEY presentes." : "Configure VITE_DB_URL e VITE_DB_PUBLIC_KEY.",
+      },
+      {
+        label: "Email Auth Admin configurado",
+        ok: Boolean(adminEmail.email),
+        detail: adminEmail.email ? adminEmail.envName : "Defina VITE_ADMIN_AUTH_EMAIL no Vercel.",
+      },
+      {
+        label: "UUID Admin configurado",
+        ok: Boolean(admin.userId),
+        detail: admin.userId ? admin.envName : "Defina VITE_ADMIN_USER_ID no Vercel.",
       },
       {
         label: "Email Auth Carlos configurado",
@@ -269,7 +282,14 @@ export function getGuardSyncDiagnostic(): GuardSyncDiagnostic {
       {
         label: "Sessão Supabase Auth atual",
         ok: hasAuthSession,
-        detail: hasAuthSession ? `JWT Auth disponível para ${session.userId}.` : "Admin local pode não ter sessão Auth. Isso não impede que guardas sincronizem.",
+        detail: hasAuthSession ? `JWT Auth disponível para ${session.userId}.` : "Sem sessão Auth atual. O login local continua funcionando.",
+      },
+      {
+        label: "Usuário Auth atual",
+        ok: Boolean(session.userId && authUserLabel !== "Desconhecido"),
+        value: authUserLabel,
+        tone: !session.userId ? "neutral" : authUserLabel === "Desconhecido" ? "warn" : "ok",
+        detail: session.userId ? "Identificado pelo UUID configurado." : "Nenhum usuário Supabase Auth ativo agora.",
       },
     ],
   };
@@ -281,7 +301,7 @@ export function getPendingGuardRemoteSyncDiagnostic(): GuardRemoteSyncDiagnostic
     remoteReadable: false,
     remoteProtected: false,
     message: "Consultando histórico remoto dos guardas...",
-    statusDetail: "Consultando shift_sessions e audit_logs com a chave pública.",
+    statusDetail: "Consultando shift_sessions e audit_logs com a sessão atual.",
     tone: "neutral",
     value: "Consultando",
   });
@@ -371,6 +391,14 @@ function isGuardRemoteSyncReady(binding: GuardSupabaseUserBinding) {
   return Boolean(supabaseConfigured && binding.userId && session.accessToken && session.userId === binding.userId);
 }
 
+function getCurrentAuthUserLabel(sessionUserId?: string, adminUserId?: string, carlosUserId?: string, salomaoUserId?: string) {
+  if (!sessionUserId) return "Nenhum";
+  if (sessionUserId === adminUserId) return "Admin";
+  if (sessionUserId === carlosUserId) return "Carlos";
+  if (sessionUserId === salomaoUserId) return "Salomão";
+  return "Desconhecido";
+}
+
 function getSyncSetupMessages(guardName: string, binding: GuardSupabaseUserBinding, hasTodayShift: boolean, remoteReady: boolean) {
   if (remoteReady) return {};
 
@@ -390,23 +418,34 @@ function getTechnicalFallbackReason(guardName: string, binding: GuardSupabaseUse
   return NO_AUTH_SESSION_REASON;
 }
 
-function getFallbackReason(carlos: GuardSupabaseUserBinding, salomao: GuardSupabaseUserBinding, carlosEmail?: string, salomaoEmail?: string, sessionUserId?: string) {
+function getFallbackReason(
+  admin: GuardSupabaseUserBinding,
+  carlos: GuardSupabaseUserBinding,
+  salomao: GuardSupabaseUserBinding,
+  adminEmail?: string,
+  carlosEmail?: string,
+  salomaoEmail?: string,
+  sessionUserId?: string,
+) {
   const bridgeStatuses = [
+    getAdminAuthBridgeStatus(),
     getGuardAuthBridgeStatus("carlos-clemente"),
     getGuardAuthBridgeStatus("salomao"),
   ].filter((status): status is GuardAuthBridgeStatus => Boolean(status && !status.ok));
   const pending = [
     !supabaseConfigured ? "configure VITE_DB_URL e VITE_DB_PUBLIC_KEY" : "",
+    !adminEmail ? "configure VITE_ADMIN_AUTH_EMAIL" : "",
     !carlosEmail ? "configure VITE_GUARD_CARLOS_AUTH_EMAIL" : "",
     !salomaoEmail ? "configure VITE_GUARD_SALOMAO_AUTH_EMAIL" : "",
+    !admin.userId ? "configure VITE_ADMIN_USER_ID" : "",
     !carlos.userId ? "configure VITE_GUARD_CARLOS_USER_ID" : "",
     !salomao.userId ? "configure VITE_GUARD_SALOMAO_USER_ID" : "",
     !sessionUserId ? "crie uma sessão Supabase Auth real para assinar as requisições" : "",
-    sessionUserId && ![carlos.userId, salomao.userId].includes(sessionUserId) ? "sessão Auth atual não confere com os UUIDs dos guardas" : "",
+    sessionUserId && ![admin.userId, carlos.userId, salomao.userId].includes(sessionUserId) ? "sessão Auth atual não confere com os UUIDs configurados" : "",
     ...bridgeStatuses.map((status) => status.reason),
   ].filter(Boolean);
 
-  if (pending.length === 0) return "Pronto para testar gravação remota em shift_sessions e audit_logs com RLS ativo.";
+  if (pending.length === 0) return "Pronto para testar leitura e gravação remota em shift_sessions e audit_logs com RLS ativo.";
   return `Fallback local ativo: ${pending.join("; ")}.`;
 }
 
@@ -436,7 +475,7 @@ function publicHistoryRequest(path: string, init: RequestInit = {}) {
     signal: controller.signal,
     headers: {
       [SUPABASE_KEY_HEADER]: SUPABASE_PUBLIC_KEY,
-      Authorization: `Bearer ${SUPABASE_PUBLIC_KEY}`,
+      Authorization: `Bearer ${getRemoteHistoryAuthorization()}`,
       "Content-Type": "application/json",
       ...(init.headers as Record<string, string> | undefined),
     },
@@ -448,6 +487,10 @@ function publicHistoryRequest(path: string, init: RequestInit = {}) {
   }).finally(() => {
     window.clearTimeout(timeout);
   });
+}
+
+function getRemoteHistoryAuthorization() {
+  return getSupabaseAccessToken() ?? SUPABASE_PUBLIC_KEY;
 }
 
 function getRemoteSummaryFromRows(shiftData: RemoteHistoryRead<ShiftSessionRow> | null, auditData: RemoteHistoryRead<AuditLogRow> | null) {
@@ -529,6 +572,17 @@ function buildRemoteSyncDiagnostic(input: {
     remoteProtected: input.remoteProtected,
     message: input.message,
     items: [
+      {
+        label: "Leitura remota do histórico",
+        ok: input.remoteReadable,
+        value: input.remoteReadable ? "Liberada" : input.remoteProtected ? "Protegida por RLS" : input.value ?? "Indisponível",
+        tone: input.remoteReadable ? "ok" : input.remoteProtected ? "warn" : input.tone ?? "neutral",
+        detail: input.remoteReadable
+          ? "Histórico lido com a sessão Supabase Auth atual."
+          : input.remoteProtected
+            ? "Histórico remoto protegido por RLS para a sessão atual."
+            : input.statusDetail,
+      },
       {
         label: "Sincronização remota validada",
         ok: input.validated,
