@@ -1710,32 +1710,33 @@ function SecurityMonitoringScreen({ onBack, onLogout }: { onBack: () => void; on
 }
 
 function MonitoringEntryCard({ entry }: { entry: GuardMonitoringEntry }) {
+  const locationStatus = getMonitoringLocationStatus(entry);
+  const hasLocation = Boolean(entry.startLocation || entry.endLocation);
+
   return (
-    <article className="monitoring-card">
+    <article className="monitoring-card monitoring-entry-card">
       <div className="monitoring-card-head">
-        <div>
-          <span>{formatDateOnly(entry.scheduledDate)}</span>
-          <strong>{entry.guardName}</strong>
-        </div>
+        <span>{formatDateOnly(entry.scheduledDate)}</span>
         <em className={`monitoring-status ${entry.status}`}>{formatMonitoringStatus(entry.status)}</em>
       </div>
-      <div className="monitoring-meta-grid">
-        <small>Previsto entrada<b>{entry.scheduledStart}</b></small>
-        <small>Previsto saída<b>{entry.scheduledEnd}</b></small>
-        <small>Ativação real<b>{formatDateTimeShort(entry.startedAt)}</b></small>
-        <small>Encerramento real<b>{formatDateTimeShort(entry.endedAt)}</b></small>
+      <strong className="monitoring-guard-name">{entry.guardName}</strong>
+      <div className="monitoring-compact-grid">
+        <small>Previsto<b>{entry.scheduledStart}-{entry.scheduledEnd}</b></small>
+        <small>Ativação<b>{formatTimeOnly(entry.startedAt)}</b></small>
+        <small>Encerramento<b>{formatTimeOnly(entry.endedAt)}</b></small>
         <small>Duração<b>{formatMonitoringDuration(entry.startedAt, entry.endedAt)}</b></small>
-        <small>Fonte<b>{entry.source}</b></small>
-        <small>Localização inicial<b>{entry.startLocation ? "Sim" : "Não"}</b></small>
-        <small>Localização final<b>{entry.endLocation ? "Sim" : "Não"}</b></small>
       </div>
-      {(entry.startLocation || entry.endLocation) && (
-        <details className="monitoring-location">
-          <summary>Ver localização</summary>
-          {entry.startLocation && <p>Inicial: {formatLocation(entry.startLocation.latitude)}, {formatLocation(entry.startLocation.longitude)}{entry.startLocation.accuracy ? ` (${Math.round(entry.startLocation.accuracy)}m)` : ""}</p>}
-          {entry.endLocation && <p>Final: {formatLocation(entry.endLocation.latitude)}, {formatLocation(entry.endLocation.longitude)}{entry.endLocation.accuracy ? ` (${Math.round(entry.endLocation.accuracy)}m)` : ""}</p>}
-        </details>
-      )}
+      <div className="monitoring-card-footer">
+        <span className={`monitoring-chip ${entry.source === "Supabase" ? "source-remote" : "source-local"}`}>{entry.source}</span>
+        <span className={`monitoring-chip ${locationStatus.className}`}>{locationStatus.label}</span>
+        {hasLocation && (
+          <details className="monitoring-location">
+            <summary>Ver localização</summary>
+            {entry.startLocation && <p>Inicial: {formatLocation(entry.startLocation.latitude)}, {formatLocation(entry.startLocation.longitude)}{entry.startLocation.accuracy ? ` (${Math.round(entry.startLocation.accuracy)}m)` : ""}</p>}
+            {entry.endLocation && <p>Final: {formatLocation(entry.endLocation.latitude)}, {formatLocation(entry.endLocation.longitude)}{entry.endLocation.accuracy ? ` (${Math.round(entry.endLocation.accuracy)}m)` : ""}</p>}
+          </details>
+        )}
+      </div>
     </article>
   );
 }
@@ -1783,6 +1784,13 @@ function formatDateTimeShort(value: string | undefined) {
   return date.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
 
+function formatTimeOnly(value: string | undefined) {
+  if (!value) return "--";
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "--";
+  return date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+}
+
 function formatMonitoringDuration(startedAt?: string, endedAt?: string) {
   if (!startedAt || !endedAt) return "--";
   const durationMs = new Date(endedAt).getTime() - new Date(startedAt).getTime();
@@ -1796,6 +1804,12 @@ function formatMonitoringDuration(startedAt?: string, endedAt?: string) {
 
 function formatLocation(value: number) {
   return value.toFixed(5);
+}
+
+function getMonitoringLocationStatus(entry: GuardMonitoringEntry) {
+  if (entry.startLocation && entry.endLocation) return { label: "Localização OK", className: "location-ok" };
+  if (entry.startLocation || entry.endLocation) return { label: "Localização parcial", className: "location-partial" };
+  return { label: "Sem localização", className: "location-empty" };
 }
 
 function parseDateOnly(value: string) {
