@@ -1,9 +1,15 @@
 import type { GuardId } from "../../../types";
-import { getGuardSupabaseAuthEmailBinding, getGuardSupabaseUserBinding } from "./guardSupabaseConfig";
+import {
+  getAdminSupabaseAuthEmailBinding,
+  getAdminSupabaseUserBinding,
+  getGuardSupabaseAuthEmailBinding,
+  getGuardSupabaseUserBinding,
+} from "./guardSupabaseConfig";
 import { getSupabaseClient, signOutSupabaseAuth, supabaseConfigured } from "./supabaseClient";
 
 const AUTH_BRIDGE_STATUS_KEY = "hub-sm-guard-auth-bridge-status";
 const AUTH_BRIDGE_TIMEOUT_MS = 5000;
+const ADMIN_AUTH_BRIDGE_ID = "admin";
 
 export type GuardAuthBridgeStatus = {
   ok: boolean;
@@ -13,23 +19,92 @@ export type GuardAuthBridgeStatus = {
 };
 
 type StoredBridgeStatus = Partial<Record<GuardId, GuardAuthBridgeStatus>>;
+type AuthBridgeUserId = GuardId | typeof ADMIN_AUTH_BRIDGE_ID;
+type StoredAuthBridgeStatus = Partial<Record<AuthBridgeUserId, GuardAuthBridgeStatus>>;
 
 export async function signInGuardSupabaseAuth(guardLocalId: GuardId, password: string): Promise<GuardAuthBridgeStatus> {
   const authEmail = getGuardSupabaseAuthEmailBinding(guardLocalId);
   const userBinding = getGuardSupabaseUserBinding(guardLocalId);
+  return signInSupabaseAuthBridge({
+    bridgeId: guardLocalId,
+    password,
+    authEmail,
+    userBinding,
+    unavailableReason: "Supabase não configurado; confira VITE_DB_URL e VITE_DB_PUBLIC_KEY.",
+    missingEmailReason: `${authEmail.envName} não configurada.`,
+    unavailableClientReason: "Cliente Supabase indisponível; fallback local mantido.",
+    missingClientReason: "Cliente Supabase indisponível.",
+    networkReason: "Falha ao contatar Supabase Auth; fallback local mantido.",
+    timeoutReason: "Supabase Auth demorou para responder; fallback local mantido.",
+    noSessionReason: "Supabase Auth não criou sessão para este guarda.",
+    mismatchReason: `${userBinding.envName} não confere com o usuário autenticado no Supabase.`,
+    successReason: "Sessão Supabase Auth criada para o guarda.",
+    signOutOnFailure: false,
+  });
+}
 
+export async function signInAdminSupabaseAuth(password: string): Promise<GuardAuthBridgeStatus> {
+  const authEmail = getAdminSupabaseAuthEmailBinding();
+  const userBinding = getAdminSupabaseUserBinding();
+  return signInSupabaseAuthBridge({
+    bridgeId: ADMIN_AUTH_BRIDGE_ID,
+    password,
+    authEmail,
+    userBinding,
+    unavailableReason: "Supabase não configurado; confira VITE_DB_URL e VITE_DB_PUBLIC_KEY.",
+    missingEmailReason: `${authEmail.envName} não configurada.`,
+    missingUserReason: `${userBinding.envName} não configurada.`,
+    unavailableClientReason: "Cliente Supabase indisponível; sessão Auth do admin não criada.",
+    missingClientReason: "Cliente Supabase indisponível.",
+    networkReason: "Falha ao contatar Supabase Auth; admin local mantido.",
+    timeoutReason: "Supabase Auth demorou para responder; admin local mantido.",
+    noSessionReason: "Supabase Auth não criou sessão para o Admin.",
+    mismatchReason: `${userBinding.envName} não confere com o usuário admin autenticado no Supabase.`,
+    successReason: "Sessão Supabase Auth criada para o Admin.",
+    signOutOnFailure: true,
+  });
+}
+
+async function signInSupabaseAuthBridge(input: {
+  bridgeId: AuthBridgeUserId;
+  password: string;
+  authEmail: { envName: string; email?: string };
+  userBinding: { envName: string; userId?: string };
+  unavailableReason: string;
+  missingEmailReason: string;
+  missingUserReason?: string;
+  unavailableClientReason: string;
+  missingClientReason: string;
+  networkReason: string;
+  timeoutReason: string;
+  noSessionReason: string;
+  mismatchReason: string;
+  successReason: string;
+  signOutOnFailure: boolean;
+}): Promise<GuardAuthBridgeStatus> {
   if (!supabaseConfigured) {
-    return saveGuardAuthBridgeStatus(guardLocalId, {
+    return saveAuthBridgeStatus(input.bridgeId, {
       ok: false,
-      reason: "Supabase não configurado; confira VITE_DB_URL e VITE_DB_PUBLIC_KEY.",
+      reason: input.unavailableReason,
       checkedAt: new Date().toISOString(),
     });
   }
 
-  if (!authEmail.email) {
-    return saveGuardAuthBridgeStatus(guardLocalId, {
+  if (!input.authEmail.email) {
+    if (input.signOutOnFailure) await signOutSupabaseAuth();
+    return saveAuthBridgeStatus(input.bridgeId, {
       ok: false,
-      reason: `${authEmail.envName} não configurada.`,
+      reason: input.missingEmailReason,
+      checkedAt: new Date().toISOString(),
+    });
+  }
+  const email = input.authEmail.email;
+
+  if (input.missingUserReason && !input.userBinding.userId) {
+    if (input.signOutOnFailure) await signOutSupabaseAuth();
+    return saveAuthBridgeStatus(input.bridgeId, {
+      ok: false,
+      reason: input.missingUserReason,
       checkedAt: new Date().toISOString(),
     });
   }
@@ -38,17 +113,19 @@ export async function signInGuardSupabaseAuth(guardLocalId: GuardId, password: s
   try {
     supabase = await getSupabaseClient();
   } catch {
-    return saveGuardAuthBridgeStatus(guardLocalId, {
+    if (input.signOutOnFailure) await signOutSupabaseAuth();
+    return saveAuthBridgeStatus(input.bridgeId, {
       ok: false,
-      reason: "Cliente Supabase indisponível; fallback local mantido.",
+      reason: input.unavailableClientReason,
       checkedAt: new Date().toISOString(),
     });
   }
 
   if (!supabase) {
-    return saveGuardAuthBridgeStatus(guardLocalId, {
+    if (input.signOutOnFailure) await signOutSupabaseAuth();
+    return saveAuthBridgeStatus(input.bridgeId, {
       ok: false,
-      reason: "Cliente Supabase indisponível.",
+      reason: input.missingClientReason,
       checkedAt: new Date().toISOString(),
     });
   }
@@ -57,23 +134,25 @@ export async function signInGuardSupabaseAuth(guardLocalId: GuardId, password: s
 
   try {
     const signInPromise = supabase.auth.signInWithPassword({
-      email: authEmail.email,
-      password,
+      email,
+      password: input.password,
     });
     signInPromise.catch(() => undefined);
     signInResult = await Promise.race([signInPromise, createAuthBridgeTimeout()]);
   } catch {
-    return saveGuardAuthBridgeStatus(guardLocalId, {
+    if (input.signOutOnFailure) await signOutSupabaseAuth();
+    return saveAuthBridgeStatus(input.bridgeId, {
       ok: false,
-      reason: "Falha ao contatar Supabase Auth; fallback local mantido.",
+      reason: input.networkReason,
       checkedAt: new Date().toISOString(),
     });
   }
 
   if ("timedOut" in signInResult) {
-    return saveGuardAuthBridgeStatus(guardLocalId, {
+    if (input.signOutOnFailure) await signOutSupabaseAuth();
+    return saveAuthBridgeStatus(input.bridgeId, {
       ok: false,
-      reason: "Supabase Auth demorou para responder; fallback local mantido.",
+      reason: input.timeoutReason,
       checkedAt: new Date().toISOString(),
     });
   }
@@ -81,27 +160,28 @@ export async function signInGuardSupabaseAuth(guardLocalId: GuardId, password: s
   const { data, error } = signInResult;
 
   if (error || !data.session?.user.id) {
-    return saveGuardAuthBridgeStatus(guardLocalId, {
+    if (input.signOutOnFailure) await signOutSupabaseAuth();
+    return saveAuthBridgeStatus(input.bridgeId, {
       ok: false,
-      reason: "Supabase Auth não criou sessão para este guarda.",
+      reason: input.noSessionReason,
       checkedAt: new Date().toISOString(),
     });
   }
 
   const authUserId = data.session.user.id;
-  if (userBinding.userId && userBinding.userId !== authUserId) {
+  if (input.userBinding.userId && input.userBinding.userId !== authUserId) {
     await signOutSupabaseAuth();
-    return saveGuardAuthBridgeStatus(guardLocalId, {
+    return saveAuthBridgeStatus(input.bridgeId, {
       ok: false,
-      reason: `${userBinding.envName} não confere com o usuário autenticado no Supabase.`,
+      reason: input.mismatchReason,
       checkedAt: new Date().toISOString(),
       userId: authUserId,
     });
   }
 
-  return saveGuardAuthBridgeStatus(guardLocalId, {
+  return saveAuthBridgeStatus(input.bridgeId, {
     ok: true,
-    reason: "Sessão Supabase Auth criada para o guarda.",
+    reason: input.successReason,
     checkedAt: new Date().toISOString(),
     userId: authUserId,
   });
@@ -111,11 +191,15 @@ export function getGuardAuthBridgeStatus(guardLocalId: GuardId) {
   return getStoredBridgeStatus()[guardLocalId];
 }
 
-function saveGuardAuthBridgeStatus(guardLocalId: GuardId, status: GuardAuthBridgeStatus) {
+export function getAdminAuthBridgeStatus() {
+  return getStoredAuthBridgeStatus()[ADMIN_AUTH_BRIDGE_ID];
+}
+
+function saveAuthBridgeStatus(bridgeId: AuthBridgeUserId, status: GuardAuthBridgeStatus) {
   if (typeof window !== "undefined") {
-    const current = getStoredBridgeStatus();
+    const current = getStoredAuthBridgeStatus();
     try {
-      window.localStorage.setItem(AUTH_BRIDGE_STATUS_KEY, JSON.stringify({ ...current, [guardLocalId]: status }));
+      window.localStorage.setItem(AUTH_BRIDGE_STATUS_KEY, JSON.stringify({ ...current, [bridgeId]: status }));
     } catch {
       // O status e apenas diagnostico tecnico; o login local nao deve depender dele.
     }
@@ -125,12 +209,16 @@ function saveGuardAuthBridgeStatus(guardLocalId: GuardId, status: GuardAuthBridg
 }
 
 function getStoredBridgeStatus(): StoredBridgeStatus {
+  return getStoredAuthBridgeStatus();
+}
+
+function getStoredAuthBridgeStatus(): StoredAuthBridgeStatus {
   if (typeof window === "undefined") return {};
   const raw = window.localStorage.getItem(AUTH_BRIDGE_STATUS_KEY);
   if (!raw) return {};
 
   try {
-    const parsed = JSON.parse(raw) as StoredBridgeStatus;
+    const parsed = JSON.parse(raw) as StoredAuthBridgeStatus;
     return parsed && typeof parsed === "object" ? parsed : {};
   } catch {
     return {};

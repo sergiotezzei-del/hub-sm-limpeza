@@ -1,7 +1,7 @@
 import { ChangeEvent, FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
 import { activities, employees, products } from "./data";
 import { GuardShiftPanel, GuardSyncDiagnosticPanel } from "./modules/security/components/GuardShift";
-import { signInGuardSupabaseAuth } from "./modules/security/services/guardAuthBridge";
+import { signInAdminSupabaseAuth, signInGuardSupabaseAuth } from "./modules/security/services/guardAuthBridge";
 import { signOutSupabaseAuth } from "./modules/security/services/supabaseClient";
 import {
   addOrder,
@@ -460,6 +460,8 @@ function App() {
 
     if (user.linkedGuardId) {
       await signInGuardSupabaseAuth(user.linkedGuardId, cleanPassword);
+    } else if (user.id === "tezzei") {
+      await signInAdminSupabaseAuth(cleanPassword);
     } else {
       void signOutSupabaseAuth();
     }
