@@ -985,6 +985,10 @@ select:disabled {
   border-radius: 8px;
 }
 
+.guard-sync-item > div {
+  min-width: 0;
+}
+
 .guard-sync-item p,
 .guard-sync-item small {
   margin: 0;
@@ -1006,12 +1010,14 @@ select:disabled {
 .sync-pill {
   flex: 0 0 auto;
   min-width: 44px;
+  max-width: 46%;
   padding: 5px 8px;
   border-radius: 8px;
   font-size: 0.78rem;
   font-style: normal;
   font-weight: 900;
   text-align: center;
+  overflow-wrap: anywhere;
 }
 
 .sync-pill.ok {
@@ -1022,6 +1028,11 @@ select:disabled {
 .sync-pill.warn {
   color: #7c2d12;
   background: #ffedd5;
+}
+
+.sync-pill.neutral {
+  color: #334155;
+  background: #e2e8f0;
 }
 
 .guard-shift-card span,

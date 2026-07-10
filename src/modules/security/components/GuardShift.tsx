@@ -4,11 +4,14 @@ import {
   activateGuardShift,
   endGuardShift,
   getGuardSyncDiagnostic,
+  getPendingGuardRemoteSyncDiagnostic,
   loadGuardShiftState,
+  loadGuardRemoteSyncDiagnostic,
 } from "../services/shiftService";
 import {
   GuardShiftDuplicateActiveError,
   type GuardScheduleShift,
+  type GuardSyncDiagnosticItem,
   type GuardShiftLocation,
   type GuardShiftSession,
 } from "../types/shift.types";
@@ -24,25 +27,64 @@ type GuardShiftPanelProps = {
 
 export function GuardSyncDiagnosticPanel() {
   const diagnostic = getGuardSyncDiagnostic();
+  const [remoteDiagnostic, setRemoteDiagnostic] = useState(() => getPendingGuardRemoteSyncDiagnostic());
+  const diagnosticItems = [...diagnostic.items, ...remoteDiagnostic.items];
+
+  useEffect(() => {
+    let active = true;
+    loadGuardRemoteSyncDiagnostic()
+      .then((remoteState) => {
+        if (active) setRemoteDiagnostic(remoteState);
+      })
+      .catch(() => {
+        if (!active) return;
+        setRemoteDiagnostic({
+          validated: false,
+          remoteReadable: false,
+          remoteProtected: false,
+          message: "Não foi possível consultar o histórico remoto agora.",
+          items: [
+            {
+              label: "Sincronização remota validada",
+              ok: false,
+              value: "Não",
+              detail: "Falha ao consultar shift_sessions e audit_logs.",
+            },
+          ],
+        });
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   return (
     <section className="guard-sync-diagnostic">
       <span>DIAGNÓSTICO SUPABASE</span>
       <strong>Sincronização dos guardas</strong>
       <div className="guard-sync-grid">
-        {diagnostic.items.map((item) => (
+        {diagnosticItems.map((item) => (
           <article className="guard-sync-item" key={item.label}>
             <div>
               <p>{item.label}</p>
               {item.detail && <small>{item.detail}</small>}
             </div>
-            <em className={item.ok ? "sync-pill ok" : "sync-pill warn"}>{item.ok ? "Sim" : "Não"}</em>
+            <em className={getSyncPillClass(item)}>{getSyncPillValue(item)}</em>
           </article>
         ))}
       </div>
-      <p>{diagnostic.fallbackReason}</p>
+      <p>{remoteDiagnostic.message}</p>
     </section>
   );
+}
+
+function getSyncPillClass(item: GuardSyncDiagnosticItem) {
+  return `sync-pill ${item.tone ?? (item.ok ? "ok" : "warn")}`;
+}
+
+function getSyncPillValue(item: GuardSyncDiagnosticItem) {
+  return item.value ?? (item.ok ? "Sim" : "Não");
 }
 
 export function GuardShiftPanel({ guardLocalId, guardName, todayShift, nextShift, canManage, showTechnicalSync = false }: GuardShiftPanelProps) {
