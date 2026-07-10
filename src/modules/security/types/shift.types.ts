@@ -40,6 +40,37 @@ export type GuardShiftSession = {
   syncStatus: "local" | "supabase";
 };
 
+export type GuardMonitoringSource = "Supabase" | "Local";
+
+export type GuardMonitoringLocation = {
+  latitude: number;
+  longitude: number;
+  accuracy?: number;
+};
+
+export type GuardMonitoringEntry = {
+  id: string;
+  guardName: string;
+  guardLocalId?: GuardId;
+  guardId?: string;
+  scheduledDate: string;
+  scheduledStart: string;
+  scheduledEnd: string;
+  status: GuardShiftStatus;
+  startedAt?: string;
+  endedAt?: string;
+  source: GuardMonitoringSource;
+  startLocation?: GuardMonitoringLocation;
+  endLocation?: GuardMonitoringLocation;
+};
+
+export type GuardMonitoringLoadState = {
+  entries: GuardMonitoringEntry[];
+  remoteReadable: boolean;
+  remoteProtected: boolean;
+  message?: string;
+};
+
 export type GuardShiftState = {
   todaySession: GuardShiftSession | null;
   nextShift: GuardScheduleShift | null;
