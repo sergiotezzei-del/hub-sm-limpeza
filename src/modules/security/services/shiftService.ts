@@ -3,6 +3,7 @@ import {
   GuardShiftDuplicateActiveError,
   GuardShiftNoTodayError,
   type GuardScheduleShift,
+  type GuardRemoteSyncDiagnostic,
   type GuardShiftActionResult,
   type GuardShiftLocation,
   type GuardShiftSession,
@@ -30,6 +31,7 @@ const AUDIT_LOGS_KEY = "hub-sm-audit-logs";
 const LOCAL_SYNC_MESSAGE = "Registro salvo neste aparelho.";
 const CENTRAL_SYNC_PENDING_MESSAGE = "Registro salvo. Sincronização central ainda não ativada.";
 const NO_AUTH_SESSION_REASON = "UUIDs configurados, mas falta uma sessão real do Supabase Auth; o RLS bloqueia gravações sem auth.uid().";
+const REMOTE_HISTORY_TIMEOUT_MS = 8000;
 
 type ShiftSessionRow = {
   id: string;
@@ -58,6 +60,35 @@ type LocalAuditLog = {
   details: Record<string, unknown>;
   createdAt: string;
 };
+
+type AuditLogRow = {
+  id: string;
+  user_id: string | null;
+  action: string;
+  entity_type: string;
+  entity_id: string | null;
+  details: Record<string, unknown> | null;
+  created_at: string;
+};
+
+type RemoteHistoryRead<T> = {
+  rows: T[];
+  count: number | null;
+};
+
+type RemoteHistoryReadResult<T> =
+  | { ok: true; data: RemoteHistoryRead<T> }
+  | { ok: false; error: unknown };
+
+class RemoteHistoryError extends Error {
+  constructor(
+    public readonly status: number,
+    public readonly details: string,
+  ) {
+    super(details || `REMOTE_HISTORY_ERROR_${status}`);
+    this.name = "RemoteHistoryError";
+  }
+}
 
 export async function loadGuardShiftState(input: {
   guardLocalId: GuardId;
@@ -190,7 +221,7 @@ export function getGuardSyncDiagnostic(): GuardSyncDiagnostic {
   const session = getStoredSupabaseSessionSnapshot();
   const hasAuthSession = Boolean(session.accessToken && session.userId);
   const sessionMatchesGuard = Boolean(session.userId && [carlos.userId, salomao.userId].includes(session.userId));
-  const remoteSyncActive = Boolean(
+  const currentGuardSessionReady = Boolean(
     supabaseConfigured
     && carlos.userId
     && salomao.userId
@@ -207,7 +238,7 @@ export function getGuardSyncDiagnostic(): GuardSyncDiagnostic {
     carlosAuthEmailConfigured: Boolean(carlosEmail.email),
     salomaoAuthEmailConfigured: Boolean(salomaoEmail.email),
     authSessionActive: hasAuthSession,
-    remoteSyncActive,
+    remoteSyncActive: currentGuardSessionReady,
     fallbackReason: getFallbackReason(carlos, salomao, carlosEmail.email, salomaoEmail.email, session.userId),
     items: [
       {
@@ -236,17 +267,99 @@ export function getGuardSyncDiagnostic(): GuardSyncDiagnostic {
         detail: salomao.userId ? salomao.envName : "Defina VITE_GUARD_SALOMAO_USER_ID no Vercel.",
       },
       {
-        label: "Sessão Supabase Auth",
+        label: "Sessão Supabase Auth atual",
         ok: hasAuthSession,
-        detail: hasAuthSession ? `JWT Auth disponível para ${session.userId}.` : "Login local ainda não criou JWT do Supabase Auth.",
-      },
-      {
-        label: "Registro remoto ativo",
-        ok: remoteSyncActive,
-        detail: remoteSyncActive ? "Sessão Auth confere com UUID de guarda." : "Fallback local ativo.",
+        detail: hasAuthSession ? `JWT Auth disponível para ${session.userId}.` : "Admin local pode não ter sessão Auth. Isso não impede que guardas sincronizem.",
       },
     ],
   };
+}
+
+export function getPendingGuardRemoteSyncDiagnostic(): GuardRemoteSyncDiagnostic {
+  return buildRemoteSyncDiagnostic({
+    validated: false,
+    remoteReadable: false,
+    remoteProtected: false,
+    message: "Consultando histórico remoto dos guardas...",
+    statusDetail: "Consultando shift_sessions e audit_logs com a chave pública.",
+    tone: "neutral",
+    value: "Consultando",
+  });
+}
+
+export async function loadGuardRemoteSyncDiagnostic(): Promise<GuardRemoteSyncDiagnostic> {
+  if (!supabaseConfigured) {
+    return buildRemoteSyncDiagnostic({
+      validated: false,
+      remoteReadable: false,
+      remoteProtected: false,
+      message: "Supabase não configurado para consultar histórico remoto.",
+      statusDetail: "Configure VITE_DB_URL e VITE_DB_PUBLIC_KEY.",
+    });
+  }
+
+  const [shiftResult, auditResult] = await Promise.all([
+    readRemoteHistory<ShiftSessionRow>("shift_sessions", "id,guard_id,status,created_at,started_at,ended_at"),
+    readRemoteHistory<AuditLogRow>("audit_logs", "id,user_id,action,entity_type,entity_id,details,created_at"),
+  ]);
+  const successfulReads = [shiftResult, auditResult].filter((result) => result.ok);
+  const protectedReads = [shiftResult, auditResult].filter((result) => !result.ok && isRemoteHistoryProtectedError(result.error));
+
+  if (successfulReads.length > 0) {
+    const shiftData = shiftResult.ok ? shiftResult.data : null;
+    const auditData = auditResult.ok ? auditResult.data : null;
+    const remoteSummary = getRemoteSummaryFromRows(shiftData, auditData);
+    const validated = (remoteSummary.totalShiftSessions ?? 0) > 0 || (remoteSummary.totalAuditLogs ?? 0) > 0;
+    const localProof = getLocalRemoteSyncProof();
+    const protectedDetail = protectedReads.length > 0 ? " Parte do histórico remoto está protegida por RLS." : "";
+
+    if (!validated && localProof.validated) {
+      return buildRemoteSyncDiagnostic({
+        ...localProof,
+        validated: true,
+        remoteReadable: false,
+        remoteProtected: true,
+        message: "Histórico remoto não está visível para o admin local. Há sincronização confirmada neste aparelho.",
+        statusDetail: "Histórico remoto protegido por RLS.",
+      });
+    }
+
+    return buildRemoteSyncDiagnostic({
+      ...remoteSummary,
+      validated,
+      remoteReadable: protectedReads.length === 0,
+      remoteProtected: protectedReads.length > 0,
+      message: validated
+        ? `Sincronização remota validada.${protectedDetail}`
+        : `Nenhum turno remoto encontrado ainda.${protectedDetail}`,
+      statusDetail: validated ? "Dados lidos diretamente do Supabase." : "Consulta remota concluída sem registros.",
+    });
+  }
+
+  const localProof = getLocalRemoteSyncProof();
+  if (protectedReads.length > 0) {
+    return buildRemoteSyncDiagnostic({
+      ...localProof,
+      validated: localProof.validated,
+      remoteReadable: false,
+      remoteProtected: true,
+      message: localProof.validated
+        ? "Histórico remoto protegido por RLS. Há sincronização confirmada neste aparelho."
+        : "Histórico remoto protegido por RLS. Consulte Supabase.",
+      statusDetail: "Histórico remoto protegido por RLS.",
+    });
+  }
+
+  return buildRemoteSyncDiagnostic({
+    ...localProof,
+    validated: localProof.validated,
+    remoteReadable: false,
+    remoteProtected: false,
+    message: localProof.validated
+      ? "Não foi possível consultar o histórico remoto agora. Há sincronização confirmada neste aparelho."
+      : "Não foi possível consultar o histórico remoto agora.",
+    statusDetail: "Falha ao consultar shift_sessions e audit_logs.",
+  });
 }
 
 export function getGuardSupabaseUserId(guardLocalId: GuardId) {
@@ -295,6 +408,216 @@ function getFallbackReason(carlos: GuardSupabaseUserBinding, salomao: GuardSupab
 
   if (pending.length === 0) return "Pronto para testar gravação remota em shift_sessions e audit_logs com RLS ativo.";
   return `Fallback local ativo: ${pending.join("; ")}.`;
+}
+
+async function readRemoteHistory<T>(tableName: "shift_sessions" | "audit_logs", select: string): Promise<RemoteHistoryReadResult<T>> {
+  try {
+    const response = await publicHistoryRequest(`${tableName}?select=${select}&order=created_at.desc&limit=1`, {
+      headers: { Prefer: "count=exact" },
+    });
+    return {
+      ok: true,
+      data: {
+        rows: (await response.json()) as T[],
+        count: parseContentRangeCount(response.headers.get("content-range")),
+      },
+    };
+  } catch (error) {
+    return { ok: false, error };
+  }
+}
+
+function publicHistoryRequest(path: string, init: RequestInit = {}) {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), REMOTE_HISTORY_TIMEOUT_MS);
+
+  return fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+    ...init,
+    signal: controller.signal,
+    headers: {
+      [SUPABASE_KEY_HEADER]: SUPABASE_PUBLIC_KEY,
+      Authorization: `Bearer ${SUPABASE_PUBLIC_KEY}`,
+      "Content-Type": "application/json",
+      ...(init.headers as Record<string, string> | undefined),
+    },
+  }).then(async (response) => {
+    if (!response.ok) {
+      throw new RemoteHistoryError(response.status, await response.text());
+    }
+    return response;
+  }).finally(() => {
+    window.clearTimeout(timeout);
+  });
+}
+
+function getRemoteSummaryFromRows(shiftData: RemoteHistoryRead<ShiftSessionRow> | null, auditData: RemoteHistoryRead<AuditLogRow> | null) {
+  const latestShift = shiftData?.rows[0];
+  const latestAudit = auditData?.rows[0];
+  const latestEvents = [
+    latestShift
+      ? {
+        at: latestShift.ended_at ?? latestShift.started_at ?? latestShift.created_at,
+        guardName: getGuardNameFromSupabaseUserId(latestShift.guard_id),
+      }
+      : null,
+    latestAudit
+      ? {
+        at: latestAudit.created_at,
+        guardName: getAuditGuardName(latestAudit),
+      }
+      : null,
+  ].filter((event): event is { at: string; guardName: string | undefined } => Boolean(event?.at));
+  latestEvents.sort((first, second) => new Date(second.at).getTime() - new Date(first.at).getTime());
+
+  return {
+    lastSyncedAt: latestEvents[0]?.at,
+    lastGuardName: latestEvents[0]?.guardName,
+    totalShiftSessions: shiftData ? shiftData.count ?? shiftData.rows.length : undefined,
+    totalAuditLogs: auditData ? auditData.count ?? auditData.rows.length : undefined,
+  };
+}
+
+function getLocalRemoteSyncProof() {
+  const remoteSessions = getLocalShiftSessions().filter((session) => session.syncStatus === "supabase");
+  const remoteLogs = getLocalAuditLogs().filter((log) => log.details.syncStatus === "supabase");
+  const latestEvents = [
+    ...remoteSessions.map((session) => ({
+      at: session.endedAt ?? session.startedAt ?? session.createdAt,
+      guardName: session.guardName,
+    })),
+    ...remoteLogs.map((log) => ({
+      at: log.createdAt,
+      guardName: readString(log.details.guardName) ?? getGuardNameFromLocalId(log.userId),
+    })),
+  ].filter((event) => Boolean(event.at));
+  latestEvents.sort((first, second) => new Date(second.at).getTime() - new Date(first.at).getTime());
+
+  return {
+    validated: remoteSessions.length > 0 || remoteLogs.length > 0,
+    lastSyncedAt: latestEvents[0]?.at,
+    lastGuardName: latestEvents[0]?.guardName,
+    totalShiftSessions: remoteSessions.length || undefined,
+    totalAuditLogs: remoteLogs.length || undefined,
+  };
+}
+
+function buildRemoteSyncDiagnostic(input: {
+  validated: boolean;
+  remoteReadable: boolean;
+  remoteProtected: boolean;
+  message: string;
+  statusDetail: string;
+  lastSyncedAt?: string;
+  lastGuardName?: string;
+  totalShiftSessions?: number;
+  totalAuditLogs?: number;
+  value?: string;
+  tone?: "ok" | "warn" | "neutral";
+}): GuardRemoteSyncDiagnostic {
+  const metricDetail = input.remoteReadable
+    ? "Total lido do Supabase."
+    : input.remoteProtected
+      ? "Histórico remoto protegido por RLS."
+      : "Total remoto indisponível.";
+  const localProofDetail = input.remoteProtected && input.validated
+    ? " Confirmado pelo cache local deste aparelho."
+    : "";
+
+  return {
+    validated: input.validated,
+    remoteReadable: input.remoteReadable,
+    remoteProtected: input.remoteProtected,
+    message: input.message,
+    items: [
+      {
+        label: "Sincronização remota validada",
+        ok: input.validated,
+        value: input.value ?? (input.validated ? "Sim" : "Não"),
+        tone: input.tone ?? (input.validated ? "ok" : "warn"),
+        detail: `${input.statusDetail}${localProofDetail}`,
+      },
+      {
+        label: "Última sincronização remota",
+        ok: Boolean(input.lastSyncedAt),
+        value: formatDateTimeShort(input.lastSyncedAt),
+        tone: input.lastSyncedAt ? "ok" : "neutral",
+        detail: input.lastSyncedAt ? metricDetail : "Ainda sem data disponível.",
+      },
+      {
+        label: "Último guarda sincronizado",
+        ok: Boolean(input.lastGuardName),
+        value: input.lastGuardName ?? "--",
+        tone: input.lastGuardName ? "ok" : "neutral",
+        detail: input.lastGuardName ? metricDetail : "Ainda sem guarda disponível.",
+      },
+      {
+        label: "Total de turnos sincronizados",
+        ok: typeof input.totalShiftSessions === "number" && input.totalShiftSessions > 0,
+        value: formatMetric(input.totalShiftSessions),
+        tone: typeof input.totalShiftSessions === "number" ? "ok" : "neutral",
+        detail: metricDetail,
+      },
+      {
+        label: "Total de audit_logs",
+        ok: typeof input.totalAuditLogs === "number" && input.totalAuditLogs > 0,
+        value: formatMetric(input.totalAuditLogs),
+        tone: typeof input.totalAuditLogs === "number" ? "ok" : "neutral",
+        detail: metricDetail,
+      },
+    ],
+  };
+}
+
+function parseContentRangeCount(value: string | null) {
+  const count = value?.split("/")[1];
+  if (!count || count === "*") return null;
+  const parsed = Number(count);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function isRemoteHistoryProtectedError(error: unknown) {
+  if (!(error instanceof RemoteHistoryError)) return false;
+  const details = error.details.toLowerCase();
+  return [401, 403].includes(error.status)
+    || details.includes("42501")
+    || details.includes("permission denied")
+    || details.includes("row-level security")
+    || details.includes("rls");
+}
+
+function getAuditGuardName(row: AuditLogRow) {
+  return readString(row.details?.guardName) ?? getGuardNameFromSupabaseUserId(row.user_id);
+}
+
+function getGuardNameFromSupabaseUserId(userId: string | null) {
+  if (!userId) return undefined;
+  if (getGuardSupabaseUserBinding("carlos-clemente").userId === userId) return "Carlos Clemente";
+  if (getGuardSupabaseUserBinding("salomao").userId === userId) return "Salomão";
+  return "Guarda não identificado";
+}
+
+function getGuardNameFromLocalId(guardLocalId: GuardId) {
+  return guardLocalId === "carlos-clemente" ? "Carlos Clemente" : "Salomão";
+}
+
+function formatDateTimeShort(value: string | undefined) {
+  if (!value) return "--";
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "--";
+  return date.toLocaleString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function formatMetric(value: number | undefined) {
+  return typeof value === "number" ? String(value) : "--";
+}
+
+function readString(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
 function getOrCreateLocalTodaySession(guardLocalId: GuardId, guardName: string, shift: GuardScheduleShift, guardId?: string): GuardShiftSession {

@@ -51,6 +51,8 @@ export type GuardSyncDiagnosticItem = {
   label: string;
   ok: boolean;
   detail?: string;
+  value?: string;
+  tone?: "ok" | "warn" | "neutral";
 };
 
 export type GuardSyncDiagnostic = {
@@ -62,6 +64,14 @@ export type GuardSyncDiagnostic = {
   authSessionActive: boolean;
   remoteSyncActive: boolean;
   fallbackReason: string;
+  items: GuardSyncDiagnosticItem[];
+};
+
+export type GuardRemoteSyncDiagnostic = {
+  validated: boolean;
+  remoteReadable: boolean;
+  remoteProtected: boolean;
+  message: string;
   items: GuardSyncDiagnosticItem[];
 };
 
