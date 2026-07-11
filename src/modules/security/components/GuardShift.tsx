@@ -272,7 +272,7 @@ function GuardRoundCurrentPanel({ guardLocalId, guardName, session }: { guardLoc
       const result = await registerGuardRoundPoint({ guardLocalId, guardName, session, point, location: locationResult.location, checkinSource: "qr" });
       setRoundState(result.state);
       const locationWarning = locationResult.location ? "" : " Localização não capturada.";
-      setMessage(`Ponto registrado com sucesso. ${formatRoundCheckinStatusLabel(result.checkin.status)}.${locationWarning}`);
+      setMessage(`${formatQrCheckinResultMessage(result.checkin.status)}${locationWarning}`);
     } catch (error) {
       if (error instanceof Error && error.message === "ROUND_SEQUENCE_COMPLETE") {
         setMessage("Todas as rondas programadas deste turno foram registradas.");
@@ -512,6 +512,12 @@ function formatRoundCheckinStatusLabel(status: "on_time" | "late" | "out_of_sequ
   if (status === "on_time") return "No horário";
   if (status === "late") return "Atrasado";
   return "Fora da sequência";
+}
+
+function formatQrCheckinResultMessage(status: "on_time" | "late" | "out_of_sequence") {
+  if (status === "late") return "Ponto registrado fora do horário da ronda.";
+  if (status === "out_of_sequence") return "Ponto registrado fora da sequência esperada.";
+  return "Ponto registrado com sucesso. No horário.";
 }
 
 function getSessionSummary(session: GuardShiftSession | null) {
