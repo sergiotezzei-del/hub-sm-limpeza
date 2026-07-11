@@ -6,7 +6,7 @@ import { signInAdminSupabaseAuth, signInGuardSupabaseAuth } from "./modules/secu
 import { DEFAULT_GUARD_ROUND_POINTS, DEFAULT_GUARD_ROUND_SCHEDULES, loadGuardRoundReport } from "./modules/security/services/roundService";
 import { loadGuardMonitoringEntries } from "./modules/security/services/shiftService";
 import { signOutSupabaseAuth } from "./modules/security/services/supabaseClient";
-import type { GuardRoundCheckinSource, GuardRoundCheckinStatus, GuardRoundLoadState, GuardRoundPoint, GuardRoundReportEntry, GuardRoundReportStatus } from "./modules/security/types/round.types";
+import type { GuardRoundCheckin, GuardRoundCheckinSource, GuardRoundCheckinStatus, GuardRoundLoadState, GuardRoundPoint, GuardRoundReportEntry, GuardRoundReportStatus, GuardRoundSchedule } from "./modules/security/types/round.types";
 import type { GuardMonitoringEntry, GuardMonitoringLoadState, GuardShiftStatus } from "./modules/security/types/shift.types";
 import {
   addOrder,
@@ -1739,25 +1739,15 @@ function SecurityMonitoringScreen({ onBack, onLogout }: { onBack: () => void; on
             <span>RONDAS</span>
             <strong>Pontos e horários programados</strong>
             <div className="round-schedule-strip">
-              {roundState.schedules.map((schedule) => <b key={schedule.id}>{schedule.scheduledTime}</b>)}
+              {sortRoundSchedulesForDisplay(roundState.schedules).map((schedule) => <b key={schedule.id}>{schedule.scheduledTime}</b>)}
             </div>
             <ol className="round-point-sequence">
-              {roundState.points.map((point) => <li key={point.id}>{point.name}</li>)}
+              {sortRoundPointsForDisplay(roundState.points).map((point) => <li key={point.id}>{point.name}</li>)}
             </ol>
           </article>
           <RoundQrCodesPanel points={roundState.points} />
           {roundsLoading && <article className="monitoring-card"><strong>Carregando rondas...</strong></article>}
-          {!roundsLoading && roundState.entries.length === 0 && (
-            <article className="empty-state">
-              <h2>Nenhuma batida de ronda registrada</h2>
-              <p>Os pontos e horários já estão preparados. Os registros aparecem aqui quando o guarda bater um ponto.</p>
-            </article>
-          )}
-          {!roundsLoading && roundState.entries.length > 0 && (
-            <div className="monitoring-list">
-              {roundState.entries.map((entry) => <RoundReportCard key={entry.id} entry={entry} />)}
-            </div>
-          )}
+          {!roundsLoading && <RoundScheduleReport entries={roundState.entries} points={roundState.points} schedules={roundState.schedules} />}
         </section>
       )}
     </section>
@@ -1798,19 +1788,38 @@ function MonitoringEntryCard({ entry }: { entry: GuardMonitoringEntry }) {
 
 function RoundQrCodesPanel({ points }: { points: GuardRoundPoint[] }) {
   const [copiedToken, setCopiedToken] = useState("");
+  const sortedPoints = sortRoundPointsForDisplay(points);
+  const totalPoints = sortedPoints.length || 6;
 
   async function handleCopyToken(token: string) {
     const copied = await copyToClipboard(token);
     setCopiedToken(copied ? token : "");
   }
 
+  function handlePrintQrCodes() {
+    const clearPrintMode = () => {
+      document.body.classList.remove("print-round-qrs");
+      window.removeEventListener("afterprint", clearPrintMode);
+    };
+
+    document.body.classList.add("print-round-qrs");
+    window.addEventListener("afterprint", clearPrintMode);
+    window.print();
+    window.setTimeout(clearPrintMode, 1000);
+  }
+
   return (
     <article className="monitoring-card round-qr-panel">
-      <span>QR CODES DOS PONTOS</span>
-      <strong>Tokens para impressão</strong>
-      <p>Use estes QR Codes nos pontos físicos da ronda. Cada código identifica um ponto ativo da sequência.</p>
+      <div className="round-qr-panel-head">
+        <div>
+          <span>QR CODES DOS PONTOS</span>
+          <strong>Etiquetas para operação física</strong>
+          <p>Use estes QR Codes nos pontos físicos da ronda. Cada código identifica um ponto ativo da sequência.</p>
+        </div>
+        <button className="secondary-button round-print-button" type="button" onClick={handlePrintQrCodes}>Imprimir QR Codes</button>
+      </div>
       <div className="round-qr-grid">
-        {points.map((point) => (
+        {sortedPoints.map((point) => (
           <RoundQrCodeCard
             copied={copiedToken === point.qrToken}
             key={point.id}
@@ -1819,6 +1828,17 @@ function RoundQrCodesPanel({ points }: { points: GuardRoundPoint[] }) {
           />
         ))}
       </div>
+      <section className="round-print-sheet" aria-hidden="true">
+        {sortedPoints.map((point) => (
+          <article className="round-print-label" key={`print-${point.id}`}>
+            <h1>SANTA MARIA</h1>
+            <strong>RONDA DE SEGURANÇA</strong>
+            <p>{point.name}</p>
+            <QRCodeSVG value={point.qrToken} size={154} marginSize={1} level="M" />
+            <small>Ponto {point.sequenceOrder} de {totalPoints}</small>
+          </article>
+        ))}
+      </section>
     </article>
   );
 }
@@ -1840,27 +1860,73 @@ function RoundQrCodeCard({ point, copied, onCopy }: { point: GuardRoundPoint; co
   );
 }
 
-function RoundReportCard({ entry }: { entry: GuardRoundReportEntry }) {
+function RoundScheduleReport({ entries, points, schedules }: { entries: GuardRoundReportEntry[]; points: GuardRoundPoint[]; schedules: GuardRoundSchedule[] }) {
+  const sortedSchedules = sortRoundSchedulesForDisplay(schedules);
+  const sortedPoints = sortRoundPointsForDisplay(points);
+
   return (
-    <article className="monitoring-card round-report-card">
+    <section className="round-report-section" aria-label="Relatório de rondas por horário">
+      <div className="round-report-title">
+        <span>RELATÓRIO DE RONDAS</span>
+        <strong>Acompanhamento por horário</strong>
+      </div>
+      {sortedSchedules.map((schedule) => {
+        const scheduleEntries = entries.filter((entry) => entry.schedule.id === schedule.id || entry.schedule.scheduledTime === schedule.scheduledTime);
+        return <RoundScheduleGroup entries={scheduleEntries} key={schedule.id} points={sortedPoints} schedule={schedule} />;
+      })}
+    </section>
+  );
+}
+
+function RoundScheduleGroup({ entries, points, schedule }: { entries: GuardRoundReportEntry[]; points: GuardRoundPoint[]; schedule: GuardRoundSchedule }) {
+  return (
+    <article className="monitoring-card round-schedule-group">
       <div className="monitoring-card-head">
-        <span>{formatDateOnly(entry.scheduledDate)} • {entry.schedule.scheduledTime}</span>
+        <span>Horário de ronda</span>
+        <em className="monitoring-status round-schedule-time">{schedule.scheduledTime}</em>
+      </div>
+      {entries.length === 0 && (
+        <div className="round-report-run empty">
+          <strong>Sem registros lançados</strong>
+          <RoundPointStatusList points={points.map((point) => ({ point }))} />
+        </div>
+      )}
+      {entries.length > 0 && entries.map((entry) => <RoundReportRunCard entry={entry} key={entry.id} />)}
+    </article>
+  );
+}
+
+function RoundReportRunCard({ entry }: { entry: GuardRoundReportEntry }) {
+  return (
+    <section className="round-report-run">
+      <div className="monitoring-card-head">
+        <span>{formatDateOnly(entry.scheduledDate)} • {entry.guardName}</span>
         <em className={`monitoring-status round-${entry.status}`}>{formatRoundReportStatus(entry.status)}</em>
       </div>
-      <strong className="monitoring-guard-name">{entry.guardName}</strong>
       <div className="monitoring-compact-grid round-summary-grid">
         <small>Programado<b>{entry.schedule.scheduledTime}</b></small>
         <small>Pontos batidos<b>{entry.completedPoints}</b></small>
         <small>Pendentes<b>{entry.pendingPoints}</b></small>
         <small>Origem<b>{entry.source}</b></small>
       </div>
-      <ul className="round-checkin-list">
-        {entry.points.map(({ point, checkin }) => (
-          <li className={checkin ? "done" : "pending"} key={point.id}>
-            <span>
-              <b>{point.sequenceOrder}. {point.name}</b>
-              <small>{checkin ? `${formatTimeOnly(checkin.checkedAt)} • ${formatRoundCheckinStatus(checkin.status)} • ${formatRoundCheckinSource(checkin.checkinSource)}` : "Pendente"}</small>
+      <RoundPointStatusList points={entry.points} />
+    </section>
+  );
+}
+
+function RoundPointStatusList({ points }: { points: Array<{ point: GuardRoundPoint; checkin?: GuardRoundCheckin }> }) {
+  return (
+    <ul className="round-checkin-list">
+      {points.map(({ point, checkin }) => {
+        const status = getRoundPointStatus(checkin);
+        return (
+          <li className={`round-point-row ${status.className}`} key={point.id}>
+            <span className="round-point-number">{point.sequenceOrder}</span>
+            <span className="round-point-main">
+              <b>{point.name}</b>
+              <small>{checkin ? `${formatTimeOnly(checkin.checkedAt)} • ${formatRoundCheckinSource(checkin.checkinSource)}` : "Sem batida registrada"}</small>
             </span>
+            <em>{status.label}</em>
             {checkin?.location && (
               <details className="round-point-location">
                 <summary>Ver localização</summary>
@@ -1868,9 +1934,9 @@ function RoundReportCard({ entry }: { entry: GuardRoundReportEntry }) {
               </details>
             )}
           </li>
-        ))}
-      </ul>
-    </article>
+        );
+      })}
+    </ul>
   );
 }
 
@@ -1926,6 +1992,21 @@ function formatRoundCheckinStatus(status: GuardRoundCheckinStatus) {
 
 function formatRoundCheckinSource(source: GuardRoundCheckinSource) {
   return source === "qr" ? "QR Code" : "Manual";
+}
+
+function getRoundPointStatus(checkin?: GuardRoundCheckin) {
+  if (!checkin) return { label: "Pendente", className: "pending" };
+  if (checkin.status === "late") return { label: "Atrasado", className: "problem" };
+  if (checkin.status === "out_of_sequence") return { label: "Fora da sequência", className: "problem" };
+  return { label: "OK", className: "ok" };
+}
+
+function sortRoundPointsForDisplay(points: GuardRoundPoint[]) {
+  return [...points].sort((first, second) => first.sequenceOrder - second.sequenceOrder || first.name.localeCompare(second.name));
+}
+
+function sortRoundSchedulesForDisplay(schedules: GuardRoundSchedule[]) {
+  return [...schedules].sort((first, second) => first.sequenceOrder - second.sequenceOrder || first.scheduledTime.localeCompare(second.scheduledTime));
 }
 
 async function copyToClipboard(value: string) {
