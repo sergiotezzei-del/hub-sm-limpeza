@@ -914,6 +914,7 @@ select:disabled {
 }
 
 .guard-shift-card,
+.guard-round-card,
 .service-today-card,
 .shift-card {
   display: grid;
@@ -929,6 +930,60 @@ select:disabled {
 .guard-shift-card {
   margin-top: 14px;
   background: #ffffff;
+}
+
+.guard-round-card {
+  margin-top: 10px;
+  background: #fff7ed;
+  border-color: #fed7aa;
+}
+
+.guard-round-head {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.guard-round-head em {
+  flex: 0 0 auto;
+  padding: 5px 8px;
+  color: #14532d;
+  background: #dcfce7;
+  border-radius: 8px;
+  font-size: 0.74rem;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.guard-round-progress {
+  display: grid;
+  gap: 6px;
+}
+
+.guard-round-progress span {
+  min-width: 0;
+  padding: 7px 9px;
+  color: #475569;
+  background: #ffffff;
+  border: 1px solid #e5eaf1;
+  border-radius: 8px;
+  font-size: 0.84rem;
+  font-weight: 850;
+  overflow-wrap: anywhere;
+}
+
+.guard-round-progress span.current {
+  color: #7c2d12;
+  background: #ffedd5;
+  border-color: #fdba74;
+}
+
+.guard-round-progress span.done {
+  color: #14532d;
+  background: #dcfce7;
+  border-color: #bbf7d0;
 }
 
 .service-today-card {
@@ -1036,6 +1091,7 @@ select:disabled {
 }
 
 .guard-shift-card span,
+.guard-round-card span,
 .service-today-card span,
 .shift-card span {
   color: var(--orange-dark);
@@ -1045,6 +1101,7 @@ select:disabled {
 }
 
 .guard-shift-card strong,
+.guard-round-card strong,
 .service-today-card strong,
 .shift-card strong {
   color: var(--ink);
@@ -1052,6 +1109,7 @@ select:disabled {
 }
 
 .guard-shift-card p,
+.guard-round-card p,
 .service-today-card p,
 .shift-card p {
   margin-bottom: 0;
@@ -1060,7 +1118,8 @@ select:disabled {
   line-height: 1.45;
 }
 
-.guard-shift-card small {
+.guard-shift-card small,
+.guard-round-card small {
   width: fit-content;
   padding: 6px 8px;
   color: #475569;
@@ -1069,7 +1128,8 @@ select:disabled {
   font-weight: 800;
 }
 
-.guard-shift-card .wide-button {
+.guard-shift-card .wide-button,
+.guard-round-card .wide-button {
   margin-top: 4px;
 }
 
@@ -1140,8 +1200,7 @@ select:disabled {
   align-items: flex-start;
 }
 
-.monitoring-card span,
-.rounds-placeholder span {
+.monitoring-card span {
   color: var(--orange-dark);
   font-size: 0.78rem;
   font-weight: 900;
@@ -1325,8 +1384,121 @@ select:disabled {
   overflow-wrap: anywhere;
 }
 
-.rounds-placeholder {
+.rounds-config-card,
+.round-report-card {
   border-left-color: #64748b;
+}
+
+.round-schedule-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.round-schedule-strip b {
+  padding: 6px 8px;
+  color: #7c2d12;
+  background: #ffedd5;
+  border-radius: 8px;
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
+.round-point-sequence {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 20px;
+  color: var(--ink);
+  font-weight: 850;
+}
+
+.round-point-sequence li {
+  padding: 7px 9px;
+  background: #f8fafc;
+  border: 1px solid #e5eaf1;
+  border-radius: 8px;
+}
+
+.monitoring-status.round-completed {
+  color: #14532d;
+  background: #dcfce7;
+}
+
+.monitoring-status.round-in_progress {
+  color: #7c2d12;
+  background: #ffedd5;
+}
+
+.monitoring-status.round-pending {
+  color: #475569;
+  background: #e2e8f0;
+}
+
+.monitoring-status.round-late,
+.monitoring-status.round-out_of_sequence {
+  color: #991b1b;
+  background: #fee2e2;
+}
+
+.round-summary-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.round-checkin-list {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.round-checkin-list li {
+  display: grid;
+  gap: 6px;
+  padding: 9px 10px;
+  background: #f8fafc;
+  border: 1px solid #e5eaf1;
+  border-radius: 8px;
+}
+
+.round-checkin-list li.done {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+}
+
+.round-checkin-list li > span {
+  display: grid;
+  gap: 2px;
+}
+
+.round-checkin-list b {
+  color: var(--ink);
+  font-size: 0.9rem;
+}
+
+.round-checkin-list small {
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.round-point-location {
+  padding: 0;
+  background: transparent;
+  border: 0;
+}
+
+.round-point-location summary {
+  width: fit-content;
+  color: var(--orange-dark);
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.round-point-location p {
+  margin: 6px 0 0;
+  overflow-wrap: anywhere;
 }
 
 .shift-section {
