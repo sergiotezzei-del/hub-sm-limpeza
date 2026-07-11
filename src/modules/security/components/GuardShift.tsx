@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { GuardId } from "../../../types";
 import {
   activateGuardShift,
@@ -17,6 +17,7 @@ import {
   type GuardShiftLocation,
   type GuardShiftSession,
 } from "../types/shift.types";
+import type { GuardRoundPoint } from "../types/round.types";
 
 type GuardShiftPanelProps = {
   guardLocalId: GuardId;
@@ -200,8 +201,10 @@ export function GuardShiftPanel({ guardLocalId, guardName, todayShift, nextShift
 function GuardRoundCurrentPanel({ guardLocalId, guardName, session }: { guardLocalId: GuardId; guardName: string; session: GuardShiftSession }) {
   const [roundState, setRoundState] = useState<GuardRoundCurrentState | null>(null);
   const [message, setMessage] = useState("");
+  const [scannerMessage, setScannerMessage] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [scannerOpen, setScannerOpen] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -232,14 +235,49 @@ function GuardRoundCurrentPanel({ guardLocalId, guardName, session }: { guardLoc
     setMessage("Capturando localização...");
     try {
       const location = await getCurrentLocation();
-      const result = await registerGuardRoundPoint({ guardLocalId, guardName, session, location });
+      const result = await registerGuardRoundPoint({ guardLocalId, guardName, session, location, checkinSource: "manual" });
       setRoundState(result.state);
-      setMessage(result.message);
+      setMessage(`Ponto registrado manualmente. ${formatRoundCheckinStatusLabel(result.checkin.status)}.`);
     } catch (error) {
       if (error instanceof Error && error.message === "ROUND_SEQUENCE_COMPLETE") {
         setMessage("Todas as rondas programadas deste turno foram registradas.");
       } else {
         setMessage(getShiftErrorMessage(error));
+      }
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleQrTokenRead(rawToken: string) {
+    if (!roundState || saving) return false;
+    const token = extractQrToken(rawToken);
+    const point = roundState.points.find((current) => current.qrToken === token);
+
+    if (!point) {
+      setScannerMessage("QR Code não reconhecido.");
+      return false;
+    }
+
+    setScannerOpen(false);
+    await registerPointFromQr(point);
+    return true;
+  }
+
+  async function registerPointFromQr(point: GuardRoundPoint) {
+    setSaving(true);
+    setMessage("QR Code lido. Capturando localização...");
+    try {
+      const locationResult = await getOptionalCurrentLocation();
+      const result = await registerGuardRoundPoint({ guardLocalId, guardName, session, point, location: locationResult.location, checkinSource: "qr" });
+      setRoundState(result.state);
+      const locationWarning = locationResult.location ? "" : " Localização não capturada.";
+      setMessage(`Ponto registrado com sucesso. ${formatRoundCheckinStatusLabel(result.checkin.status)}.${locationWarning}`);
+    } catch (error) {
+      if (error instanceof Error && error.message === "ROUND_SEQUENCE_COMPLETE") {
+        setMessage("Todas as rondas programadas deste turno foram registradas.");
+      } else {
+        setMessage("Não foi possível registrar o QR Code. Tente novamente.");
       }
     } finally {
       setSaving(false);
@@ -277,11 +315,152 @@ function GuardRoundCurrentPanel({ guardLocalId, guardName, session }: { guardLoc
       </div>
       <small>{roundState.completedPoints}/{roundState.points.length} pontos registrados</small>
       {message && <small>{message}</small>}
-      <button className="secondary-button wide-button" type="button" disabled={saving || !roundState.expectedPoint} onClick={handleRegisterPoint}>
-        {saving ? "Registrando..." : "REGISTRAR PONTO"}
+      <button className="primary-button wide-button guard-qr-button" type="button" disabled={saving || !roundState.expectedPoint} onClick={() => { setScannerMessage(""); setScannerOpen(true); }}>
+        LER QR CODE DA RONDA
       </button>
+      <details className="manual-round-fallback">
+        <summary>Registro manual de contingência</summary>
+        <button className="ghost-button wide-button" type="button" disabled={saving || !roundState.expectedPoint} onClick={handleRegisterPoint}>
+          {saving ? "Registrando..." : "Registrar manualmente"}
+        </button>
+      </details>
+      {scannerOpen && (
+        <QrCodeReaderModal
+          message={scannerMessage}
+          onTokenRead={handleQrTokenRead}
+          onCancel={() => setScannerOpen(false)}
+        />
+      )}
     </section>
   );
+}
+
+function QrCodeReaderModal({ message, onTokenRead, onCancel }: { message: string; onTokenRead: (token: string) => Promise<boolean>; onCancel: () => void }) {
+  const [readerId] = useState(() => `round-qr-reader-${Math.random().toString(16).slice(2)}`);
+  const [status, setStatus] = useState("Solicitando permissão da câmera...");
+  const [tokenDraft, setTokenDraft] = useState("");
+  const scannerRef = useRef<import("html5-qrcode").Html5Qrcode | null>(null);
+  const onTokenReadRef = useRef(onTokenRead);
+  const processingRef = useRef(false);
+  const scannerStartedRef = useRef(false);
+
+  useEffect(() => {
+    onTokenReadRef.current = onTokenRead;
+  }, [onTokenRead]);
+
+  useEffect(() => {
+    function handleCameraTeardownRejection(event: PromiseRejectionEvent) {
+      const message = String(event.reason?.message ?? event.reason ?? "");
+      if (message.includes("play() request was interrupted") && message.includes("media was removed")) {
+        event.preventDefault();
+      }
+    }
+
+    window.addEventListener("unhandledrejection", handleCameraTeardownRejection);
+    return () => window.removeEventListener("unhandledrejection", handleCameraTeardownRejection);
+  }, []);
+
+  useEffect(() => {
+    let disposed = false;
+
+    import("html5-qrcode")
+      .then(async ({ Html5Qrcode }) => {
+        if (disposed) return;
+        const scanner = new Html5Qrcode(readerId);
+        scannerRef.current = scanner;
+        scannerStartedRef.current = false;
+
+        try {
+          await scanner.start(
+            { facingMode: "environment" },
+            { fps: 10, qrbox: { width: 240, height: 240 } },
+            async (decodedText) => {
+              if (processingRef.current) return;
+              processingRef.current = true;
+              setStatus("QR Code lido. Validando ponto...");
+              const accepted = await onTokenReadRef.current(decodedText);
+              if (!accepted) processingRef.current = false;
+            },
+            () => undefined,
+          );
+          scannerStartedRef.current = true;
+          if (disposed) {
+            stopQrScanner(scanner, scannerStartedRef.current);
+            return;
+          }
+          if (!disposed) setStatus("Aponte a câmera para o QR Code do ponto de ronda.");
+        } catch {
+          if (!disposed) setStatus("Não foi possível acessar a câmera. Verifique a permissão ou informe o token do QR Code.");
+        }
+      })
+      .catch(() => {
+        if (!disposed) setStatus("Leitor de QR Code indisponível neste aparelho.");
+      });
+
+    return () => {
+      disposed = true;
+      const scanner = scannerRef.current;
+      const scannerStarted = scannerStartedRef.current;
+      scannerRef.current = null;
+      scannerStartedRef.current = false;
+      if (scanner) {
+        stopQrScanner(scanner, scannerStarted);
+      }
+    };
+  }, [readerId]);
+
+  async function handleTokenSubmit() {
+    if (!tokenDraft.trim() || processingRef.current) return;
+    processingRef.current = true;
+    setStatus("Validando token informado...");
+    const accepted = await onTokenReadRef.current(tokenDraft);
+    if (!accepted) processingRef.current = false;
+  }
+
+  return (
+    <div className="dialog-backdrop" role="presentation">
+      <section className="dialog qr-reader-dialog" role="dialog" aria-modal="true" aria-labelledby="qr-reader-title">
+        <h2 id="qr-reader-title">Ler QR Code</h2>
+        <p>Aponte a câmera para o QR Code do ponto de ronda.</p>
+        <div className="qr-reader-frame" id={readerId} />
+        <p className="qr-reader-status">{message || status}</p>
+        <details className="qr-token-fallback">
+          <summary>Informar token se a câmera falhar</summary>
+          <label>
+            Token do QR Code
+            <input type="text" value={tokenDraft} onChange={(event) => setTokenDraft(event.target.value)} placeholder="round-point-entrada-principal" />
+          </label>
+          <button className="secondary-button" type="button" onClick={handleTokenSubmit}>Usar token</button>
+        </details>
+        <div className="button-grid">
+          <button className="ghost-button" type="button" onClick={onCancel}>Cancelar</button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function stopQrScanner(scanner: import("html5-qrcode").Html5Qrcode, scannerStarted: boolean) {
+  const clearScanner = () => {
+    try {
+      scanner.clear();
+    } catch {
+      // Scanner may already be cleared by the camera library.
+    }
+  };
+
+  if (!scannerStarted) {
+    clearScanner();
+    return;
+  }
+
+  try {
+    void scanner.stop()
+      .catch(() => undefined)
+      .finally(clearScanner);
+  } catch {
+    clearScanner();
+  }
 }
 
 function getCurrentLocation(): Promise<GuardShiftLocation> {
@@ -303,6 +482,36 @@ function getCurrentLocation(): Promise<GuardShiftLocation> {
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 },
     );
   });
+}
+
+async function getOptionalCurrentLocation() {
+  try {
+    return { location: await getCurrentLocation() };
+  } catch {
+    return { location: undefined };
+  }
+}
+
+function extractQrToken(rawValue: string) {
+  const value = rawValue.trim();
+  if (!value) return "";
+
+  try {
+    const url = new URL(value);
+    return url.searchParams.get("qr_token")
+      ?? url.searchParams.get("token")
+      ?? url.searchParams.get("qr")
+      ?? value;
+  } catch {
+    const match = value.match(/round-point-[a-z0-9-]+/i);
+    return match?.[0] ?? value;
+  }
+}
+
+function formatRoundCheckinStatusLabel(status: "on_time" | "late" | "out_of_sequence") {
+  if (status === "on_time") return "No horário";
+  if (status === "late") return "Atrasado";
+  return "Fora da sequência";
 }
 
 function getSessionSummary(session: GuardShiftSession | null) {

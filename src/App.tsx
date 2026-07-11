@@ -1,11 +1,12 @@
 import { ChangeEvent, FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
+import { QRCodeSVG } from "qrcode.react";
 import { activities, employees, products } from "./data";
 import { GuardShiftPanel, GuardSyncDiagnosticPanel } from "./modules/security/components/GuardShift";
 import { signInAdminSupabaseAuth, signInGuardSupabaseAuth } from "./modules/security/services/guardAuthBridge";
 import { DEFAULT_GUARD_ROUND_POINTS, DEFAULT_GUARD_ROUND_SCHEDULES, loadGuardRoundReport } from "./modules/security/services/roundService";
 import { loadGuardMonitoringEntries } from "./modules/security/services/shiftService";
 import { signOutSupabaseAuth } from "./modules/security/services/supabaseClient";
-import type { GuardRoundCheckinStatus, GuardRoundLoadState, GuardRoundReportEntry, GuardRoundReportStatus } from "./modules/security/types/round.types";
+import type { GuardRoundCheckinSource, GuardRoundCheckinStatus, GuardRoundLoadState, GuardRoundPoint, GuardRoundReportEntry, GuardRoundReportStatus } from "./modules/security/types/round.types";
 import type { GuardMonitoringEntry, GuardMonitoringLoadState, GuardShiftStatus } from "./modules/security/types/shift.types";
 import {
   addOrder,
@@ -1744,6 +1745,7 @@ function SecurityMonitoringScreen({ onBack, onLogout }: { onBack: () => void; on
               {roundState.points.map((point) => <li key={point.id}>{point.name}</li>)}
             </ol>
           </article>
+          <RoundQrCodesPanel points={roundState.points} />
           {roundsLoading && <article className="monitoring-card"><strong>Carregando rondas...</strong></article>}
           {!roundsLoading && roundState.entries.length === 0 && (
             <article className="empty-state">
@@ -1794,6 +1796,50 @@ function MonitoringEntryCard({ entry }: { entry: GuardMonitoringEntry }) {
   );
 }
 
+function RoundQrCodesPanel({ points }: { points: GuardRoundPoint[] }) {
+  const [copiedToken, setCopiedToken] = useState("");
+
+  async function handleCopyToken(token: string) {
+    const copied = await copyToClipboard(token);
+    setCopiedToken(copied ? token : "");
+  }
+
+  return (
+    <article className="monitoring-card round-qr-panel">
+      <span>QR CODES DOS PONTOS</span>
+      <strong>Tokens para impressão</strong>
+      <p>Use estes QR Codes nos pontos físicos da ronda. Cada código identifica um ponto ativo da sequência.</p>
+      <div className="round-qr-grid">
+        {points.map((point) => (
+          <RoundQrCodeCard
+            copied={copiedToken === point.qrToken}
+            key={point.id}
+            onCopy={handleCopyToken}
+            point={point}
+          />
+        ))}
+      </div>
+    </article>
+  );
+}
+
+function RoundQrCodeCard({ point, copied, onCopy }: { point: GuardRoundPoint; copied: boolean; onCopy: (token: string) => void }) {
+  return (
+    <section className="round-qr-card">
+      <div>
+        <span>Ponto {point.sequenceOrder}</span>
+        <strong>{point.name}</strong>
+      </div>
+      <div className="round-qr-image" aria-label={`QR Code ${point.name}`}>
+        <QRCodeSVG value={point.qrToken} size={132} marginSize={1} level="M" />
+      </div>
+      <code className="round-qr-token">{point.qrToken}</code>
+      <button className="secondary-button" type="button" onClick={() => onCopy(point.qrToken)}>Copiar token</button>
+      {copied && <small className="round-copy-status">Token copiado.</small>}
+    </section>
+  );
+}
+
 function RoundReportCard({ entry }: { entry: GuardRoundReportEntry }) {
   return (
     <article className="monitoring-card round-report-card">
@@ -1813,7 +1859,7 @@ function RoundReportCard({ entry }: { entry: GuardRoundReportEntry }) {
           <li className={checkin ? "done" : "pending"} key={point.id}>
             <span>
               <b>{point.sequenceOrder}. {point.name}</b>
-              <small>{checkin ? `${formatTimeOnly(checkin.checkedAt)} • ${formatRoundCheckinStatus(checkin.status)}` : "Pendente"}</small>
+              <small>{checkin ? `${formatTimeOnly(checkin.checkedAt)} • ${formatRoundCheckinStatus(checkin.status)} • ${formatRoundCheckinSource(checkin.checkinSource)}` : "Pendente"}</small>
             </span>
             {checkin?.location && (
               <details className="round-point-location">
@@ -1871,11 +1917,41 @@ function formatRoundReportStatus(status: GuardRoundReportStatus) {
 
 function formatRoundCheckinStatus(status: GuardRoundCheckinStatus) {
   const labels: Record<GuardRoundCheckinStatus, string> = {
-    on_time: "Dentro da tolerância",
+    on_time: "No horário",
     late: "Atrasado",
     out_of_sequence: "Fora da sequência",
   };
   return labels[status];
+}
+
+function formatRoundCheckinSource(source: GuardRoundCheckinSource) {
+  return source === "qr" ? "QR Code" : "Manual";
+}
+
+async function copyToClipboard(value: string) {
+  try {
+    if (navigator.clipboard) {
+      await navigator.clipboard.writeText(value);
+      return true;
+    }
+  } catch {
+    // Fallback below covers browsers without clipboard permission.
+  }
+
+  const textArea = document.createElement("textarea");
+  textArea.value = value;
+  textArea.style.position = "fixed";
+  textArea.style.left = "-999px";
+  document.body.appendChild(textArea);
+  textArea.focus();
+  textArea.select();
+  try {
+    return document.execCommand("copy");
+  } catch {
+    return false;
+  } finally {
+    document.body.removeChild(textArea);
+  }
 }
 
 function formatDateOnly(value: string) {
