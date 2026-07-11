@@ -8,6 +8,7 @@ import type {
   GuardRoundPointReport,
   GuardRoundReportEntry,
   GuardRoundReportStatus,
+  GuardRoundCheckinSource,
   GuardRoundSchedule,
   RegisterGuardRoundPointResult,
 } from "../types/round.types";
@@ -122,19 +123,23 @@ export async function registerGuardRoundPoint(input: {
   guardLocalId: GuardId;
   guardName: string;
   session: GuardShiftSession;
-  location: GuardShiftLocation;
+  location?: GuardShiftLocation;
+  point?: GuardRoundPoint;
+  checkinSource?: GuardRoundCheckinSource;
 }): Promise<RegisterGuardRoundPointResult> {
   const data = await loadRoundData();
   const currentState = buildCurrentState(input.session, data.points, data.schedules, data.checkins, data.remoteReadable ? "Supabase" : "Local", data.message);
 
-  if (!currentState.schedule || !currentState.expectedPoint) {
+  if (!currentState.schedule || (!currentState.expectedPoint && !input.point)) {
     throw new Error("ROUND_SEQUENCE_COMPLETE");
   }
 
   const schedule = currentState.schedule;
-  const point = currentState.expectedPoint;
+  const point = input.point ?? currentState.expectedPoint;
+  if (!point) throw new Error("ROUND_SEQUENCE_COMPLETE");
   const status = getCheckinStatus(input.session, schedule, point, currentState.checkins, new Date());
   const guardId = input.session.guardId ?? getGuardSupabaseUserBinding(input.guardLocalId).userId;
+  const checkinSource = input.checkinSource ?? "manual";
 
   if (data.remoteReadable && isRoundRemoteSyncReady(guardId, input.session)) {
     try {
@@ -146,6 +151,7 @@ export async function registerGuardRoundPoint(input: {
         schedule,
         point,
         status,
+        checkinSource,
         location: input.location,
       });
       upsertLocalRoundCheckin(checkin);
@@ -173,6 +179,7 @@ export async function registerGuardRoundPoint(input: {
     schedule,
     point,
     status,
+    checkinSource,
     location: input.location,
   });
   upsertLocalRoundCheckin(localCheckin);
@@ -335,7 +342,9 @@ function getCheckinStatus(
   previousCheckins: GuardRoundCheckin[],
   checkedAt: Date,
 ): GuardRoundCheckinStatus {
-  const expectedSequence = previousCheckins.length + 1;
+  const completedSequences = new Set(previousCheckins.map((checkin) => checkin.pointSequenceOrder));
+  let expectedSequence = 1;
+  while (completedSequences.has(expectedSequence)) expectedSequence += 1;
   if (point.sequenceOrder !== expectedSequence) return "out_of_sequence";
 
   if (previousCheckins.length === 0) {
@@ -360,7 +369,8 @@ async function insertCloudRoundCheckin(input: {
   schedule: GuardRoundSchedule;
   point: GuardRoundPoint;
   status: GuardRoundCheckinStatus;
-  location: GuardShiftLocation;
+  checkinSource: GuardRoundCheckinSource;
+  location?: GuardShiftLocation;
 }) {
   const response = await roundRequest("guard_round_checkins", {
     method: "POST",
@@ -373,11 +383,11 @@ async function insertCloudRoundCheckin(input: {
       round_point_id: input.point.id,
       point_sequence_order: input.point.sequenceOrder,
       scheduled_time: input.schedule.scheduledTime,
-      latitude: input.location.latitude,
-      longitude: input.location.longitude,
-      accuracy: input.location.accuracy,
+      latitude: input.location?.latitude,
+      longitude: input.location?.longitude,
+      accuracy: input.location?.accuracy,
       status: input.status,
-      source: "manual",
+      source: input.checkinSource,
       qr_token: input.point.qrToken,
     }]),
   });
@@ -390,7 +400,7 @@ async function insertCloudRoundCheckin(input: {
   };
 }
 
-async function insertCloudRoundAuditLog(checkin: GuardRoundCheckin, point: GuardRoundPoint, location: GuardShiftLocation) {
+async function insertCloudRoundAuditLog(checkin: GuardRoundCheckin, point: GuardRoundPoint, location?: GuardShiftLocation) {
   if (!checkin.guardId) return;
 
   await roundRequest("audit_logs", {
@@ -422,7 +432,8 @@ function createLocalRoundCheckin(input: {
   schedule: GuardRoundSchedule;
   point: GuardRoundPoint;
   status: GuardRoundCheckinStatus;
-  location: GuardShiftLocation;
+  checkinSource: GuardRoundCheckinSource;
+  location?: GuardShiftLocation;
 }): GuardRoundCheckin {
   return {
     id: createId(),
@@ -437,13 +448,13 @@ function createLocalRoundCheckin(input: {
     scheduledTime: input.schedule.scheduledTime,
     checkedAt: new Date().toISOString(),
     status: input.status,
-    checkinSource: "manual",
+    checkinSource: input.checkinSource,
     source: "Local",
-    location: {
+    location: input.location ? {
       latitude: input.location.latitude,
       longitude: input.location.longitude,
       accuracy: input.location.accuracy,
-    },
+    } : undefined,
     qrToken: input.point.qrToken,
   };
 }
