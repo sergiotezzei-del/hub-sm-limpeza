@@ -71,7 +71,7 @@ type ManualDraft = {
 
 type GuardName = "Carlos Clemente" | "Salomão";
 
-type MonitoringTab = "entries" | "rounds";
+type MonitoringTab = "entries" | "rounds" | "qrcode";
 type MonitoringGuardFilter = "all" | GuardName;
 type MonitoringStatusFilter = "all" | "ok" | "late" | "out_of_sequence" | "pending";
 type MonitoringShiftSummaryStatus = "complete" | "in_progress" | "incomplete" | "late" | "out_of_sequence";
@@ -1753,20 +1753,26 @@ function SecurityMonitoringScreen({ onBack, onLogout }: { onBack: () => void; on
     <section className="screen monitoring-screen">
       <TopBar title="Monitoramento de Guardas" subtitle="Relatórios de entrada, saída e rondas" onLogout={onLogout} />
       <button className="ghost-button" type="button" onClick={onBack}>Voltar para Segurança</button>
-      <MonitoringOverviewCards metrics={overviewMetrics} />
-      <MonitoringGlobalFilters
-        dateFilter={dateFilter}
-        guardFilter={guardFilter}
-        statusFilter={statusFilter}
-        onDateFilterChange={setDateFilter}
-        onGuardFilterChange={setGuardFilter}
-        onStatusFilterChange={setStatusFilter}
-      />
-      <ShiftSummarySection loading={loading || roundsLoading} summaries={filteredShiftSummaries} />
       <div className="monitoring-tabs" role="tablist" aria-label="Relatórios de monitoramento">
         <button className={activeTab === "entries" ? "active" : ""} type="button" onClick={() => setActiveTab("entries")}>Entrada / Ativação de Serviço</button>
         <button className={activeTab === "rounds" ? "active" : ""} type="button" onClick={() => setActiveTab("rounds")}>Rondas</button>
+        <button className={activeTab === "qrcode" ? "active" : ""} type="button" onClick={() => setActiveTab("qrcode")}>QR Code</button>
       </div>
+
+      {activeTab !== "qrcode" && (
+        <>
+          <MonitoringGlobalFilters
+            dateFilter={dateFilter}
+            guardFilter={guardFilter}
+            statusFilter={statusFilter}
+            onDateFilterChange={setDateFilter}
+            onGuardFilterChange={setGuardFilter}
+            onStatusFilterChange={setStatusFilter}
+          />
+          <MonitoringOverviewCards metrics={overviewMetrics} />
+          <ShiftSummarySection loading={loading || roundsLoading} summaries={filteredShiftSummaries} />
+        </>
+      )}
 
       {activeTab === "entries" && (
         <section className="monitoring-panel">
@@ -1794,9 +1800,14 @@ function SecurityMonitoringScreen({ onBack, onLogout }: { onBack: () => void; on
               {sortRoundPointsForDisplay(roundState.points).map((point) => <li key={point.id}>{point.name}</li>)}
             </ol>
           </article>
-          <RoundQrCodesPanel points={roundState.points} />
           {roundsLoading && <article className="monitoring-card"><strong>Carregando rondas...</strong></article>}
           {!roundsLoading && <RoundScheduleReport entries={filteredRoundEntries} points={roundState.points} schedules={roundState.schedules} shiftSummaries={filteredShiftSummaries} />}
+        </section>
+      )}
+
+      {activeTab === "qrcode" && (
+        <section className="monitoring-panel monitoring-qrcode-panel">
+          <RoundQrCodesPanel points={roundState.points} />
         </section>
       )}
     </section>
