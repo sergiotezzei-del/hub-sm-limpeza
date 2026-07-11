@@ -388,28 +388,40 @@ select:disabled {
 
 .module-card {
   position: relative;
-  border-left: 4px solid #e5eaf1;
+  color: var(--ink);
+  background: #ffffff !important;
+  background-color: #ffffff !important;
+  border-color: #e5eaf1 !important;
+  border-left: 6px solid #ffffff !important;
+  transition:
+    background-color 0.16s ease,
+    border-color 0.16s ease,
+    box-shadow 0.16s ease,
+    color 0.16s ease,
+    transform 0.16s ease;
 }
 
 .module-card.has-access {
-  background: #fff7ed !important;
-  border-color: #fed7aa !important;
+  background: #ffffff !important;
+  background-color: #ffffff !important;
+  border-color: #e5eaf1 !important;
   border-left-color: var(--orange) !important;
 }
 
 .module-card.has-access span {
-  color: var(--orange-dark) !important;
+  color: var(--muted) !important;
 }
 
 .module-card.has-access strong {
-  color: #7c2d12 !important;
+  color: var(--ink) !important;
 }
 
 .module-card.no-access {
   color: var(--muted) !important;
-  background: var(--neutral-card) !important;
+  background: #f8fafc !important;
+  background-color: #f8fafc !important;
   border-color: #e5eaf1 !important;
-  border-left-color: #ffffff !important;
+  border-left-color: #f8fafc !important;
   box-shadow: none !important;
 }
 
@@ -418,10 +430,46 @@ select:disabled {
   color: #667085 !important;
 }
 
-.module-card.action-card.has-access:hover {
-  border-color: #fdba74;
-  box-shadow: 0 12px 24px rgba(249, 115, 22, 0.14);
+.module-card.action-card.has-access {
+  cursor: pointer;
+}
+
+.module-card.action-card.has-access:hover,
+.module-card.action-card.has-access:focus-visible,
+.module-card.action-card.has-access:active {
+  color: #ffffff;
+  background: var(--orange) !important;
+  background-color: var(--orange) !important;
+  border-color: var(--orange) !important;
+  border-left-color: var(--orange-dark) !important;
+  box-shadow: 0 12px 24px rgba(249, 115, 22, 0.22);
   transform: translateY(-1px);
+}
+
+.module-card.action-card.has-access:focus-visible {
+  outline: 3px solid rgba(249, 115, 22, 0.28);
+  outline-offset: 3px;
+}
+
+.module-card.action-card.has-access:active {
+  box-shadow: 0 8px 16px rgba(249, 115, 22, 0.18);
+  transform: translateY(0);
+}
+
+.module-card.action-card.has-access:hover span,
+.module-card.action-card.has-access:focus-visible span,
+.module-card.action-card.has-access:active span,
+.module-card.action-card.has-access:hover strong,
+.module-card.action-card.has-access:focus-visible strong,
+.module-card.action-card.has-access:active strong {
+  color: #ffffff !important;
+}
+
+.module-card.action-card.has-access:hover .attention-pill,
+.module-card.action-card.has-access:focus-visible .attention-pill,
+.module-card.action-card.has-access:active .attention-pill {
+  color: #7c2d12;
+  background: #ffffff;
 }
 
 .access-pill,
