@@ -73,8 +73,43 @@ type GuardName = "Carlos Clemente" | "Salomão";
 
 type MonitoringTab = "entries" | "rounds";
 type MonitoringGuardFilter = "all" | GuardName;
-type MonitoringStatusFilter = "all" | GuardShiftStatus;
-type MonitoringPeriodFilter = "today" | "7d" | "all";
+type MonitoringStatusFilter = "all" | "ok" | "late" | "out_of_sequence" | "pending";
+type MonitoringShiftSummaryStatus = "complete" | "in_progress" | "incomplete" | "late" | "out_of_sequence";
+type RoundScheduleDisplayStatus = "complete" | "incomplete" | "late" | "out_of_sequence" | "waiting";
+
+type MonitoringShiftSummary = {
+  id: string;
+  shiftSessionId: string;
+  guardName: string;
+  guardLocalId?: GuardId;
+  scheduledDate: string;
+  scheduledStart: string;
+  scheduledEnd: string;
+  shiftStatus: GuardShiftStatus;
+  startedAt?: string;
+  endedAt?: string;
+  source: "Supabase" | "Local";
+  roundsExpected: number;
+  roundsComplete: number;
+  pointsExpected: number;
+  pointsRegistered: number;
+  pointsPending: number;
+  overduePendingPoints: number;
+  lateCount: number;
+  outOfSequenceCount: number;
+  status: MonitoringShiftSummaryStatus;
+};
+
+type MonitoringOverviewMetrics = {
+  registeredShifts: number;
+  activeShifts: number;
+  roundsExpected: number;
+  roundsComplete: number;
+  pointsRegistered: number;
+  pointsPending: number;
+  lateCount: number;
+  outOfSequenceCount: number;
+};
 
 type StockExitUserId = string;
 
@@ -1626,9 +1661,9 @@ function SecurityMenuScreen({ permissions, isAdmin, onBack, onLogout, onOpenGuar
 
 function SecurityMonitoringScreen({ onBack, onLogout }: { onBack: () => void; onLogout: () => void }) {
   const [activeTab, setActiveTab] = useState<MonitoringTab>("entries");
+  const [dateFilter, setDateFilter] = useState(() => getTodayIso());
   const [guardFilter, setGuardFilter] = useState<MonitoringGuardFilter>("all");
   const [statusFilter, setStatusFilter] = useState<MonitoringStatusFilter>("all");
-  const [periodFilter, setPeriodFilter] = useState<MonitoringPeriodFilter>("7d");
   const [monitoringState, setMonitoringState] = useState<GuardMonitoringLoadState>({
     entries: [],
     remoteReadable: false,
@@ -1698,16 +1733,36 @@ function SecurityMonitoringScreen({ onBack, onLogout }: { onBack: () => void; on
     };
   }, []);
 
-  const filteredEntries = useMemo(() => monitoringState.entries.filter((entry) => (
-    matchesMonitoringGuard(entry, guardFilter)
-    && matchesMonitoringStatus(entry, statusFilter)
-    && matchesMonitoringPeriod(entry, periodFilter)
-  )), [guardFilter, monitoringState.entries, periodFilter, statusFilter]);
+  const shiftSummaries = useMemo(() => buildMonitoringShiftSummaries(
+    monitoringState.entries,
+    roundState.entries,
+    roundState.points,
+    roundState.schedules,
+  ), [monitoringState.entries, roundState.entries, roundState.points, roundState.schedules]);
+  const filteredShiftSummaries = useMemo(() => shiftSummaries.filter((summary) => (
+    matchesMonitoringDate(summary.scheduledDate, dateFilter)
+    && matchesMonitoringGuardName(summary.guardName, guardFilter)
+    && matchesMonitoringSummaryStatus(summary, statusFilter)
+  )), [dateFilter, guardFilter, shiftSummaries, statusFilter]);
+  const filteredShiftIds = useMemo(() => new Set(filteredShiftSummaries.map((summary) => summary.shiftSessionId)), [filteredShiftSummaries]);
+  const overviewMetrics = useMemo(() => getMonitoringOverviewMetrics(filteredShiftSummaries), [filteredShiftSummaries]);
+  const filteredEntries = useMemo(() => monitoringState.entries.filter((entry) => filteredShiftIds.has(entry.id)), [filteredShiftIds, monitoringState.entries]);
+  const filteredRoundEntries = useMemo(() => roundState.entries.filter((entry) => filteredShiftIds.has(entry.shiftSessionId)), [filteredShiftIds, roundState.entries]);
 
   return (
     <section className="screen monitoring-screen">
       <TopBar title="Monitoramento de Guardas" subtitle="Relatórios de entrada, saída e rondas" onLogout={onLogout} />
       <button className="ghost-button" type="button" onClick={onBack}>Voltar para Segurança</button>
+      <MonitoringOverviewCards metrics={overviewMetrics} />
+      <MonitoringGlobalFilters
+        dateFilter={dateFilter}
+        guardFilter={guardFilter}
+        statusFilter={statusFilter}
+        onDateFilterChange={setDateFilter}
+        onGuardFilterChange={setGuardFilter}
+        onStatusFilterChange={setStatusFilter}
+      />
+      <ShiftSummarySection loading={loading || roundsLoading} summaries={filteredShiftSummaries} />
       <div className="monitoring-tabs" role="tablist" aria-label="Relatórios de monitoramento">
         <button className={activeTab === "entries" ? "active" : ""} type="button" onClick={() => setActiveTab("entries")}>Entrada / Ativação de Serviço</button>
         <button className={activeTab === "rounds" ? "active" : ""} type="button" onClick={() => setActiveTab("rounds")}>Rondas</button>
@@ -1715,12 +1770,6 @@ function SecurityMonitoringScreen({ onBack, onLogout }: { onBack: () => void; on
 
       {activeTab === "entries" && (
         <section className="monitoring-panel">
-          <div className="monitoring-filters">
-            <label>Guarda<select value={guardFilter} onChange={(event) => setGuardFilter(event.target.value as MonitoringGuardFilter)}><option value="all">Todos</option>{guardNames.map((guardName) => <option key={guardName} value={guardName}>{guardName}</option>)}</select></label>
-            <label>Status<select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as MonitoringStatusFilter)}><option value="all">Todos</option><option value="active">Ativo</option><option value="ended">Encerrado</option><option value="pending">Pendente</option><option value="auto_ended">Encerrado automático</option></select></label>
-            <label>Período<select value={periodFilter} onChange={(event) => setPeriodFilter(event.target.value as MonitoringPeriodFilter)}><option value="today">Hoje</option><option value="7d">Últimos 7 dias</option><option value="all">Todos</option></select></label>
-          </div>
-
           {monitoringState.message && <p className={monitoringState.remoteReadable ? "success-message" : "notice-message"}>{monitoringState.message}</p>}
           {loading && <article className="monitoring-card"><strong>Carregando registros...</strong></article>}
           {!loading && filteredEntries.length === 0 && <article className="empty-state">Nenhum registro de ativação encontrado.</article>}
@@ -1747,10 +1796,102 @@ function SecurityMonitoringScreen({ onBack, onLogout }: { onBack: () => void; on
           </article>
           <RoundQrCodesPanel points={roundState.points} />
           {roundsLoading && <article className="monitoring-card"><strong>Carregando rondas...</strong></article>}
-          {!roundsLoading && <RoundScheduleReport entries={roundState.entries} points={roundState.points} schedules={roundState.schedules} />}
+          {!roundsLoading && <RoundScheduleReport entries={filteredRoundEntries} points={roundState.points} schedules={roundState.schedules} shiftSummaries={filteredShiftSummaries} />}
         </section>
       )}
     </section>
+  );
+}
+
+function MonitoringOverviewCards({ metrics }: { metrics: MonitoringOverviewMetrics }) {
+  const cards = [
+    { label: "Plantões registrados hoje", value: metrics.registeredShifts },
+    { label: "Plantões ativos agora", value: metrics.activeShifts },
+    { label: "Rondas previstas", value: metrics.roundsExpected },
+    { label: "Rondas completas", value: metrics.roundsComplete },
+    { label: "Pontos registrados", value: metrics.pointsRegistered },
+    { label: "Pontos pendentes", value: metrics.pointsPending },
+    { label: "Atrasos", value: metrics.lateCount },
+    { label: "Fora de sequência", value: metrics.outOfSequenceCount },
+  ];
+
+  return (
+    <section className="monitoring-overview-grid" aria-label="Resumo gerencial do monitoramento">
+      {cards.map((card) => (
+        <article className="monitoring-overview-card" key={card.label}>
+          <span>{card.label}</span>
+          <strong>{card.value}</strong>
+        </article>
+      ))}
+    </section>
+  );
+}
+
+function MonitoringGlobalFilters({
+  dateFilter,
+  guardFilter,
+  statusFilter,
+  onDateFilterChange,
+  onGuardFilterChange,
+  onStatusFilterChange,
+}: {
+  dateFilter: string;
+  guardFilter: MonitoringGuardFilter;
+  statusFilter: MonitoringStatusFilter;
+  onDateFilterChange: (value: string) => void;
+  onGuardFilterChange: (value: MonitoringGuardFilter) => void;
+  onStatusFilterChange: (value: MonitoringStatusFilter) => void;
+}) {
+  return (
+    <div className="monitoring-filters monitoring-global-filters">
+      <label>Data<input type="date" value={dateFilter} onChange={(event) => onDateFilterChange(event.target.value)} /></label>
+      <label>Guarda<select value={guardFilter} onChange={(event) => onGuardFilterChange(event.target.value as MonitoringGuardFilter)}><option value="all">Todos</option>{guardNames.map((guardName) => <option key={guardName} value={guardName}>{guardName}</option>)}</select></label>
+      <label>Status<select value={statusFilter} onChange={(event) => onStatusFilterChange(event.target.value as MonitoringStatusFilter)}><option value="all">Todos</option><option value="ok">OK</option><option value="late">Atrasado</option><option value="out_of_sequence">Fora de sequência</option><option value="pending">Pendente</option></select></label>
+    </div>
+  );
+}
+
+function ShiftSummarySection({ loading, summaries }: { loading: boolean; summaries: MonitoringShiftSummary[] }) {
+  return (
+    <section className="shift-summary-section" aria-label="Resumo do plantão">
+      <div className="round-report-title">
+        <span>RESUMO DO PLANTÃO</span>
+        <strong>Visão gerencial por serviço</strong>
+      </div>
+      {loading && <article className="monitoring-card"><strong>Carregando resumo do plantão...</strong></article>}
+      {!loading && summaries.length === 0 && <article className="empty-state">Nenhum plantão encontrado para os filtros atuais.</article>}
+      {!loading && summaries.length > 0 && (
+        <div className="shift-summary-list">
+          {summaries.map((summary) => <ShiftSummaryCard key={summary.id} summary={summary} />)}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function ShiftSummaryCard({ summary }: { summary: MonitoringShiftSummary }) {
+  return (
+    <article className="monitoring-card shift-summary-card">
+      <div className="monitoring-card-head">
+        <div>
+          <span>{formatDateOnly(summary.scheduledDate)}</span>
+          <strong>{summary.guardName}</strong>
+        </div>
+        <em className={`monitoring-status shift-${summary.status}`}>{formatShiftSummaryStatus(summary.status)}</em>
+      </div>
+      <div className="shift-summary-times">
+        <small>Entrada<b>{formatShiftSummaryEntry(summary)}</b></small>
+        <small>Saída<b>{formatShiftSummaryExit(summary)}</b></small>
+      </div>
+      <div className="monitoring-compact-grid shift-summary-grid">
+        <small>Rondas previstas<b>{summary.roundsExpected}</b></small>
+        <small>Rondas completas<b>{summary.roundsComplete}</b></small>
+        <small>Pontos registrados<b>{summary.pointsRegistered}/{summary.pointsExpected}</b></small>
+        <small>Pendentes<b>{summary.pointsPending}</b></small>
+        <small>Atrasos<b>{summary.lateCount}</b></small>
+        <small>Fora de sequência<b>{summary.outOfSequenceCount}</b></small>
+      </div>
+    </article>
   );
 }
 
@@ -1861,9 +2002,10 @@ function RoundQrCodeCard({ point, copied, onCopy }: { point: GuardRoundPoint; co
   );
 }
 
-function RoundScheduleReport({ entries, points, schedules }: { entries: GuardRoundReportEntry[]; points: GuardRoundPoint[]; schedules: GuardRoundSchedule[] }) {
+function RoundScheduleReport({ entries, points, schedules, shiftSummaries }: { entries: GuardRoundReportEntry[]; points: GuardRoundPoint[]; schedules: GuardRoundSchedule[]; shiftSummaries: MonitoringShiftSummary[] }) {
   const sortedSchedules = sortRoundSchedulesForDisplay(schedules);
   const sortedPoints = sortRoundPointsForDisplay(points);
+  const summaryByShift = new Map(shiftSummaries.map((summary) => [summary.shiftSessionId, summary]));
 
   return (
     <section className="round-report-section" aria-label="Relatório de rondas por horário">
@@ -1873,13 +2015,13 @@ function RoundScheduleReport({ entries, points, schedules }: { entries: GuardRou
       </div>
       {sortedSchedules.map((schedule) => {
         const scheduleEntries = entries.filter((entry) => entry.schedule.id === schedule.id || entry.schedule.scheduledTime === schedule.scheduledTime);
-        return <RoundScheduleGroup entries={scheduleEntries} key={schedule.id} points={sortedPoints} schedule={schedule} />;
+        return <RoundScheduleGroup entries={scheduleEntries} key={schedule.id} points={sortedPoints} schedule={schedule} summaryByShift={summaryByShift} />;
       })}
     </section>
   );
 }
 
-function RoundScheduleGroup({ entries, points, schedule }: { entries: GuardRoundReportEntry[]; points: GuardRoundPoint[]; schedule: GuardRoundSchedule }) {
+function RoundScheduleGroup({ entries, points, schedule, summaryByShift }: { entries: GuardRoundReportEntry[]; points: GuardRoundPoint[]; schedule: GuardRoundSchedule; summaryByShift: Map<string, MonitoringShiftSummary> }) {
   return (
     <article className="monitoring-card round-schedule-group">
       <div className="monitoring-card-head">
@@ -1892,20 +2034,23 @@ function RoundScheduleGroup({ entries, points, schedule }: { entries: GuardRound
           <RoundPointStatusList points={points.map((point) => ({ point }))} />
         </div>
       )}
-      {entries.length > 0 && entries.map((entry) => <RoundReportRunCard entry={entry} key={entry.id} />)}
+      {entries.length > 0 && entries.map((entry) => <RoundReportRunCard entry={entry} key={entry.id} summary={summaryByShift.get(entry.shiftSessionId)} />)}
     </article>
   );
 }
 
-function RoundReportRunCard({ entry }: { entry: GuardRoundReportEntry }) {
+function RoundReportRunCard({ entry, summary }: { entry: GuardRoundReportEntry; summary?: MonitoringShiftSummary }) {
+  const scheduleStatus = getRoundScheduleDisplayStatus(entry);
+
   return (
     <section className="round-report-run">
       <div className="monitoring-card-head">
-        <span>{formatDateOnly(entry.scheduledDate)} • {entry.guardName}</span>
-        <em className={`monitoring-status round-${entry.status}`}>{formatRoundReportStatus(entry.status)}</em>
+        <span>{entry.guardName} • Plantão {formatDateOnly(summary?.scheduledDate ?? entry.scheduledDate)}</span>
+        <em className={`monitoring-status round-display-${scheduleStatus}`}>{formatRoundScheduleDisplayStatus(scheduleStatus)}</em>
       </div>
       <div className="monitoring-compact-grid round-summary-grid">
         <small>Programado<b>{entry.schedule.scheduledTime}</b></small>
+        <small>Status horário<b>{formatRoundScheduleDisplayStatus(scheduleStatus)}</b></small>
         <small>Pontos batidos<b>{entry.completedPoints}</b></small>
         <small>Pendentes<b>{entry.pendingPoints}</b></small>
         <small>Origem<b>{entry.source}</b></small>
@@ -1941,24 +2086,194 @@ function RoundPointStatusList({ points }: { points: Array<{ point: GuardRoundPoi
   );
 }
 
-function matchesMonitoringGuard(entry: GuardMonitoringEntry, guardFilter: MonitoringGuardFilter) {
-  return guardFilter === "all" || entry.guardName === guardFilter;
+function buildMonitoringShiftSummaries(
+  entries: GuardMonitoringEntry[],
+  roundEntries: GuardRoundReportEntry[],
+  points: GuardRoundPoint[],
+  schedules: GuardRoundSchedule[],
+): MonitoringShiftSummary[] {
+  const roundEntriesByShift = groupRoundEntriesByShift(roundEntries);
+  const summaries = entries.map((entry) => buildMonitoringShiftSummary(entry, roundEntriesByShift.get(entry.id) ?? [], points, schedules));
+  const knownShiftIds = new Set(entries.map((entry) => entry.id));
+
+  roundEntriesByShift.forEach((shiftRoundEntries, shiftSessionId) => {
+    if (knownShiftIds.has(shiftSessionId)) return;
+    const firstRoundEntry = shiftRoundEntries[0];
+    if (!firstRoundEntry) return;
+    summaries.push(buildMonitoringShiftSummaryFromRounds(firstRoundEntry, shiftRoundEntries, points, schedules));
+  });
+
+  return summaries.sort((first, second) => {
+    const firstTime = new Date(first.startedAt ?? `${first.scheduledDate}T${first.scheduledStart}:00`).getTime();
+    const secondTime = new Date(second.startedAt ?? `${second.scheduledDate}T${second.scheduledStart}:00`).getTime();
+    return secondTime - firstTime || first.guardName.localeCompare(second.guardName);
+  });
 }
 
-function matchesMonitoringStatus(entry: GuardMonitoringEntry, statusFilter: MonitoringStatusFilter) {
-  return statusFilter === "all" || entry.status === statusFilter;
+function groupRoundEntriesByShift(entries: GuardRoundReportEntry[]) {
+  const grouped = new Map<string, GuardRoundReportEntry[]>();
+  entries.forEach((entry) => {
+    grouped.set(entry.shiftSessionId, [...(grouped.get(entry.shiftSessionId) ?? []), entry]);
+  });
+  grouped.forEach((shiftEntries, shiftSessionId) => {
+    grouped.set(shiftSessionId, [...shiftEntries].sort((first, second) => first.schedule.sequenceOrder - second.schedule.sequenceOrder));
+  });
+  return grouped;
 }
 
-function matchesMonitoringPeriod(entry: GuardMonitoringEntry, periodFilter: MonitoringPeriodFilter) {
-  if (periodFilter === "all") return true;
-  const scheduledDate = parseDateOnly(entry.scheduledDate);
-  if (!scheduledDate) return false;
-  const today = parseDateOnly(getTodayIso());
-  if (!today) return false;
-  if (periodFilter === "today") return entry.scheduledDate === getTodayIso();
-  const weekStart = new Date(today);
-  weekStart.setDate(today.getDate() - 6);
-  return scheduledDate >= weekStart && scheduledDate <= today;
+function buildMonitoringShiftSummary(
+  entry: GuardMonitoringEntry,
+  roundEntries: GuardRoundReportEntry[],
+  points: GuardRoundPoint[],
+  schedules: GuardRoundSchedule[],
+): MonitoringShiftSummary {
+  const metrics = getShiftRoundMetrics(entry.scheduledDate, entry.scheduledStart, entry.status, roundEntries, points, schedules);
+  return {
+    id: entry.id,
+    shiftSessionId: entry.id,
+    guardName: entry.guardName,
+    guardLocalId: entry.guardLocalId,
+    scheduledDate: entry.scheduledDate,
+    scheduledStart: entry.scheduledStart,
+    scheduledEnd: entry.scheduledEnd,
+    shiftStatus: entry.status,
+    startedAt: entry.startedAt,
+    endedAt: entry.endedAt,
+    source: entry.source,
+    ...metrics,
+    status: getShiftSummaryStatus(entry.status, metrics),
+  };
+}
+
+function buildMonitoringShiftSummaryFromRounds(
+  entry: GuardRoundReportEntry,
+  roundEntries: GuardRoundReportEntry[],
+  points: GuardRoundPoint[],
+  schedules: GuardRoundSchedule[],
+): MonitoringShiftSummary {
+  const metrics = getShiftRoundMetrics(entry.scheduledDate, "", "ended", roundEntries, points, schedules);
+  return {
+    id: `rounds-${entry.shiftSessionId}`,
+    shiftSessionId: entry.shiftSessionId,
+    guardName: entry.guardName,
+    guardLocalId: entry.guardLocalId,
+    scheduledDate: entry.scheduledDate,
+    scheduledStart: "--",
+    scheduledEnd: "--",
+    shiftStatus: "ended",
+    source: entry.source,
+    ...metrics,
+    status: getShiftSummaryStatus("ended", metrics),
+  };
+}
+
+function getShiftRoundMetrics(
+  scheduledDate: string,
+  scheduledStart: string,
+  shiftStatus: GuardShiftStatus,
+  roundEntries: GuardRoundReportEntry[],
+  points: GuardRoundPoint[],
+  schedules: GuardRoundSchedule[],
+) {
+  const sortedSchedules = sortRoundSchedulesForDisplay(schedules);
+  const pointsPerRound = points.length;
+  const roundsExpected = sortedSchedules.length;
+  const pointsExpected = roundsExpected * pointsPerRound;
+  const roundsComplete = roundEntries.filter((entry) => entry.completedPoints >= pointsPerRound).length;
+  const pointsRegistered = roundEntries.reduce((total, entry) => total + Math.min(pointsPerRound, entry.completedPoints), 0);
+  const pointsPending = Math.max(0, pointsExpected - pointsRegistered);
+  const lateCount = countRoundCheckinsByStatus(roundEntries, "late");
+  const outOfSequenceCount = countRoundCheckinsByStatus(roundEntries, "out_of_sequence");
+  const overduePendingPoints = getOverduePendingPoints(scheduledDate, scheduledStart, shiftStatus, roundEntries, pointsPerRound, sortedSchedules);
+
+  return {
+    roundsExpected,
+    roundsComplete,
+    pointsExpected,
+    pointsRegistered,
+    pointsPending,
+    overduePendingPoints,
+    lateCount,
+    outOfSequenceCount,
+  };
+}
+
+function countRoundCheckinsByStatus(entries: GuardRoundReportEntry[], status: GuardRoundCheckinStatus) {
+  return entries.reduce((total, entry) => (
+    total + entry.points.filter((point) => point.checkin?.status === status).length
+  ), 0);
+}
+
+function getOverduePendingPoints(
+  scheduledDate: string,
+  scheduledStart: string,
+  shiftStatus: GuardShiftStatus,
+  roundEntries: GuardRoundReportEntry[],
+  pointsPerRound: number,
+  schedules: GuardRoundSchedule[],
+) {
+  const now = new Date();
+  return schedules.reduce((total, schedule) => {
+    const entry = roundEntries.find((current) => current.schedule.id === schedule.id || current.schedule.scheduledTime === schedule.scheduledTime);
+    const pendingPoints = Math.max(0, pointsPerRound - (entry?.completedPoints ?? 0));
+    if (pendingPoints === 0) return total;
+    if (shiftStatus !== "active" && shiftStatus !== "pending") return total + pendingPoints;
+
+    const scheduledAt = getMonitoringRoundScheduledAt(scheduledDate, scheduledStart, schedule.scheduledTime);
+    const toleranceMs = schedule.toleranceMinutes * 60000;
+    return now.getTime() > scheduledAt.getTime() + toleranceMs ? total + pendingPoints : total;
+  }, 0);
+}
+
+function getShiftSummaryStatus(
+  shiftStatus: GuardShiftStatus,
+  metrics: Omit<MonitoringShiftSummary, "id" | "shiftSessionId" | "guardName" | "guardLocalId" | "scheduledDate" | "scheduledStart" | "scheduledEnd" | "shiftStatus" | "startedAt" | "endedAt" | "source" | "status">,
+): MonitoringShiftSummaryStatus {
+  if (metrics.pointsExpected > 0 && metrics.pointsRegistered >= metrics.pointsExpected && metrics.lateCount === 0 && metrics.outOfSequenceCount === 0) return "complete";
+  if (metrics.outOfSequenceCount > 0) return "out_of_sequence";
+  if (metrics.overduePendingPoints > 0) return "incomplete";
+  if (metrics.lateCount > 0) return "late";
+  if (shiftStatus === "active" && metrics.pointsPending > 0) return "in_progress";
+  if (metrics.pointsPending > 0) return "incomplete";
+  return "complete";
+}
+
+function getMonitoringOverviewMetrics(summaries: MonitoringShiftSummary[]): MonitoringOverviewMetrics {
+  return summaries.reduce((metrics, summary) => ({
+    registeredShifts: metrics.registeredShifts + 1,
+    activeShifts: metrics.activeShifts + (summary.shiftStatus === "active" ? 1 : 0),
+    roundsExpected: metrics.roundsExpected + summary.roundsExpected,
+    roundsComplete: metrics.roundsComplete + summary.roundsComplete,
+    pointsRegistered: metrics.pointsRegistered + summary.pointsRegistered,
+    pointsPending: metrics.pointsPending + summary.pointsPending,
+    lateCount: metrics.lateCount + summary.lateCount,
+    outOfSequenceCount: metrics.outOfSequenceCount + summary.outOfSequenceCount,
+  }), {
+    registeredShifts: 0,
+    activeShifts: 0,
+    roundsExpected: 0,
+    roundsComplete: 0,
+    pointsRegistered: 0,
+    pointsPending: 0,
+    lateCount: 0,
+    outOfSequenceCount: 0,
+  });
+}
+
+function matchesMonitoringDate(scheduledDate: string, dateFilter: string) {
+  return !dateFilter || scheduledDate === dateFilter;
+}
+
+function matchesMonitoringGuardName(guardName: string, guardFilter: MonitoringGuardFilter) {
+  return guardFilter === "all" || guardName === guardFilter;
+}
+
+function matchesMonitoringSummaryStatus(summary: MonitoringShiftSummary, statusFilter: MonitoringStatusFilter) {
+  if (statusFilter === "all") return true;
+  if (statusFilter === "ok") return summary.status === "complete";
+  if (statusFilter === "late") return summary.status === "late" || summary.lateCount > 0;
+  if (statusFilter === "out_of_sequence") return summary.status === "out_of_sequence" || summary.outOfSequenceCount > 0;
+  return summary.status === "incomplete" || summary.status === "in_progress" || summary.pointsPending > 0;
 }
 
 function formatMonitoringStatus(status: GuardShiftStatus) {
@@ -1971,6 +2286,28 @@ function formatMonitoringStatus(status: GuardShiftStatus) {
   return labels[status];
 }
 
+function formatShiftSummaryStatus(status: MonitoringShiftSummaryStatus) {
+  const labels: Record<MonitoringShiftSummaryStatus, string> = {
+    complete: "Completo",
+    in_progress: "Em andamento",
+    incomplete: "Incompleto",
+    late: "Com atraso",
+    out_of_sequence: "Fora de sequência",
+  };
+  return labels[status];
+}
+
+function formatShiftSummaryEntry(summary: MonitoringShiftSummary) {
+  if (!summary.startedAt) return `Prev. ${summary.scheduledStart}`;
+  return `${formatTimeOnly(summary.startedAt)} (prev. ${summary.scheduledStart})`;
+}
+
+function formatShiftSummaryExit(summary: MonitoringShiftSummary) {
+  if (summary.shiftStatus === "active") return "Serviço ativo";
+  if (!summary.endedAt) return `Prev. ${summary.scheduledEnd}`;
+  return `${formatTimeOnly(summary.endedAt)} (prev. ${summary.scheduledEnd})`;
+}
+
 function formatRoundReportStatus(status: GuardRoundReportStatus) {
   const labels: Record<GuardRoundReportStatus, string> = {
     pending: "Pendente",
@@ -1978,6 +2315,26 @@ function formatRoundReportStatus(status: GuardRoundReportStatus) {
     completed: "Completa",
     late: "Atraso",
     out_of_sequence: "Fora da sequência",
+  };
+  return labels[status];
+}
+
+function getRoundScheduleDisplayStatus(entry: GuardRoundReportEntry): RoundScheduleDisplayStatus {
+  if (entry.status === "out_of_sequence") return "out_of_sequence";
+  if (entry.status === "late") return "late";
+  if (entry.completedPoints >= entry.points.length) return "complete";
+  const scheduledAt = getMonitoringRoundScheduledAt(entry.scheduledDate, "", entry.schedule.scheduledTime);
+  const toleranceMs = entry.schedule.toleranceMinutes * 60000;
+  return new Date().getTime() <= scheduledAt.getTime() + toleranceMs ? "waiting" : "incomplete";
+}
+
+function formatRoundScheduleDisplayStatus(status: RoundScheduleDisplayStatus) {
+  const labels: Record<RoundScheduleDisplayStatus, string> = {
+    complete: "Completa",
+    incomplete: "Incompleta",
+    late: "Com atraso",
+    out_of_sequence: "Fora de sequência",
+    waiting: "Aguardando horário",
   };
   return labels[status];
 }
@@ -2008,6 +2365,12 @@ function sortRoundPointsForDisplay(points: GuardRoundPoint[]) {
 
 function sortRoundSchedulesForDisplay(schedules: GuardRoundSchedule[]) {
   return [...schedules].sort((first, second) => first.sequenceOrder - second.sequenceOrder || first.scheduledTime.localeCompare(second.scheduledTime));
+}
+
+function getMonitoringRoundScheduledAt(scheduledDate: string, scheduledStart: string, scheduledTime: string) {
+  const date = new Date(`${scheduledDate}T${scheduledTime}:00-03:00`);
+  if (scheduledStart && scheduledTime < scheduledStart) date.setDate(date.getDate() + 1);
+  return date;
 }
 
 async function copyToClipboard(value: string) {
