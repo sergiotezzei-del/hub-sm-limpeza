@@ -2,8 +2,10 @@ import { ChangeEvent, FormEvent, ReactNode, useEffect, useMemo, useState } from 
 import { activities, employees, products } from "./data";
 import { GuardShiftPanel, GuardSyncDiagnosticPanel } from "./modules/security/components/GuardShift";
 import { signInAdminSupabaseAuth, signInGuardSupabaseAuth } from "./modules/security/services/guardAuthBridge";
+import { DEFAULT_GUARD_ROUND_POINTS, DEFAULT_GUARD_ROUND_SCHEDULES, loadGuardRoundReport } from "./modules/security/services/roundService";
 import { loadGuardMonitoringEntries } from "./modules/security/services/shiftService";
 import { signOutSupabaseAuth } from "./modules/security/services/supabaseClient";
+import type { GuardRoundCheckinStatus, GuardRoundLoadState, GuardRoundReportEntry, GuardRoundReportStatus } from "./modules/security/types/round.types";
 import type { GuardMonitoringEntry, GuardMonitoringLoadState, GuardShiftStatus } from "./modules/security/types/shift.types";
 import {
   addOrder,
@@ -1632,7 +1634,16 @@ function SecurityMonitoringScreen({ onBack, onLogout }: { onBack: () => void; on
     remoteProtected: false,
     message: "Carregando registros de entrada e encerramento...",
   });
+  const [roundState, setRoundState] = useState<GuardRoundLoadState>({
+    points: DEFAULT_GUARD_ROUND_POINTS,
+    schedules: DEFAULT_GUARD_ROUND_SCHEDULES,
+    entries: [],
+    remoteReadable: false,
+    remoteProtected: false,
+    message: "Carregando rondas...",
+  });
   const [loading, setLoading] = useState(true);
+  const [roundsLoading, setRoundsLoading] = useState(true);
 
   useEffect(() => {
     let active = true;
@@ -1652,6 +1663,33 @@ function SecurityMonitoringScreen({ onBack, onLogout }: { onBack: () => void; on
       })
       .finally(() => {
         if (active) setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    setRoundsLoading(true);
+    loadGuardRoundReport()
+      .then((state) => {
+        if (active) setRoundState(state);
+      })
+      .catch(() => {
+        if (!active) return;
+        setRoundState({
+          points: DEFAULT_GUARD_ROUND_POINTS,
+          schedules: DEFAULT_GUARD_ROUND_SCHEDULES,
+          entries: [],
+          remoteReadable: false,
+          remoteProtected: false,
+          message: "Não foi possível carregar o relatório de rondas.",
+        });
+      })
+      .finally(() => {
+        if (active) setRoundsLoading(false);
       });
 
     return () => {
@@ -1695,14 +1733,29 @@ function SecurityMonitoringScreen({ onBack, onLogout }: { onBack: () => void; on
 
       {activeTab === "rounds" && (
         <section className="monitoring-panel">
-          <article className="monitoring-card rounds-placeholder">
+          {roundState.message && <p className={roundState.remoteReadable ? "success-message" : "notice-message"}>{roundState.message}</p>}
+          <article className="monitoring-card rounds-config-card">
             <span>RONDAS</span>
-            <strong>Relatório de rondas ainda não ativado.</strong>
-            <p>A próxima fase criará os pontos físicos, QR Code e batidas de ronda.</p>
-            <div className="monitoring-meta-grid">
-              {["Data/hora da ronda", "Guarda", "Ponto de ronda", "Status", "Foto", "Localização"].map((item) => <small key={item}>{item}<b>Fase futura</b></small>)}
+            <strong>Pontos e horários programados</strong>
+            <div className="round-schedule-strip">
+              {roundState.schedules.map((schedule) => <b key={schedule.id}>{schedule.scheduledTime}</b>)}
             </div>
+            <ol className="round-point-sequence">
+              {roundState.points.map((point) => <li key={point.id}>{point.name}</li>)}
+            </ol>
           </article>
+          {roundsLoading && <article className="monitoring-card"><strong>Carregando rondas...</strong></article>}
+          {!roundsLoading && roundState.entries.length === 0 && (
+            <article className="empty-state">
+              <h2>Nenhuma batida de ronda registrada</h2>
+              <p>Os pontos e horários já estão preparados. Os registros aparecem aqui quando o guarda bater um ponto.</p>
+            </article>
+          )}
+          {!roundsLoading && roundState.entries.length > 0 && (
+            <div className="monitoring-list">
+              {roundState.entries.map((entry) => <RoundReportCard key={entry.id} entry={entry} />)}
+            </div>
+          )}
         </section>
       )}
     </section>
@@ -1741,6 +1794,40 @@ function MonitoringEntryCard({ entry }: { entry: GuardMonitoringEntry }) {
   );
 }
 
+function RoundReportCard({ entry }: { entry: GuardRoundReportEntry }) {
+  return (
+    <article className="monitoring-card round-report-card">
+      <div className="monitoring-card-head">
+        <span>{formatDateOnly(entry.scheduledDate)} • {entry.schedule.scheduledTime}</span>
+        <em className={`monitoring-status round-${entry.status}`}>{formatRoundReportStatus(entry.status)}</em>
+      </div>
+      <strong className="monitoring-guard-name">{entry.guardName}</strong>
+      <div className="monitoring-compact-grid round-summary-grid">
+        <small>Programado<b>{entry.schedule.scheduledTime}</b></small>
+        <small>Pontos batidos<b>{entry.completedPoints}</b></small>
+        <small>Pendentes<b>{entry.pendingPoints}</b></small>
+        <small>Origem<b>{entry.source}</b></small>
+      </div>
+      <ul className="round-checkin-list">
+        {entry.points.map(({ point, checkin }) => (
+          <li className={checkin ? "done" : "pending"} key={point.id}>
+            <span>
+              <b>{point.sequenceOrder}. {point.name}</b>
+              <small>{checkin ? `${formatTimeOnly(checkin.checkedAt)} • ${formatRoundCheckinStatus(checkin.status)}` : "Pendente"}</small>
+            </span>
+            {checkin?.location && (
+              <details className="round-point-location">
+                <summary>Ver localização</summary>
+                <p>{formatLocation(checkin.location.latitude)}, {formatLocation(checkin.location.longitude)}{checkin.location.accuracy ? ` (${Math.round(checkin.location.accuracy)}m)` : ""}</p>
+              </details>
+            )}
+          </li>
+        ))}
+      </ul>
+    </article>
+  );
+}
+
 function matchesMonitoringGuard(entry: GuardMonitoringEntry, guardFilter: MonitoringGuardFilter) {
   return guardFilter === "all" || entry.guardName === guardFilter;
 }
@@ -1767,6 +1854,26 @@ function formatMonitoringStatus(status: GuardShiftStatus) {
     active: "Ativo",
     ended: "Encerrado",
     auto_ended: "Encerrado automático",
+  };
+  return labels[status];
+}
+
+function formatRoundReportStatus(status: GuardRoundReportStatus) {
+  const labels: Record<GuardRoundReportStatus, string> = {
+    pending: "Pendente",
+    in_progress: "Em andamento",
+    completed: "Completa",
+    late: "Atraso",
+    out_of_sequence: "Fora da sequência",
+  };
+  return labels[status];
+}
+
+function formatRoundCheckinStatus(status: GuardRoundCheckinStatus) {
+  const labels: Record<GuardRoundCheckinStatus, string> = {
+    on_time: "Dentro da tolerância",
+    late: "Atrasado",
+    out_of_sequence: "Fora da sequência",
   };
   return labels[status];
 }

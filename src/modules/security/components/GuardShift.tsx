@@ -8,6 +8,8 @@ import {
   loadGuardShiftState,
   loadGuardRemoteSyncDiagnostic,
 } from "../services/shiftService";
+import { loadCurrentGuardRoundState, registerGuardRoundPoint } from "../services/roundService";
+import type { GuardRoundCurrentState } from "../types/round.types";
 import {
   GuardShiftDuplicateActiveError,
   type GuardScheduleShift,
@@ -169,23 +171,115 @@ export function GuardShiftPanel({ guardLocalId, guardName, todayShift, nextShift
   }
 
   return (
-    <section className="guard-shift-card">
-      <span>MONITORAMENTO</span>
-      <strong>Turno de hoje: {todayShift.startTime} às {todayShift.endTime}</strong>
-      <p>{getSessionSummary(session)}</p>
-      {session?.status === "ended" && <p>{getEndedSummary(session)}</p>}
-      {message && <small>{message}</small>}
-      {showTechnicalSync && technicalMessage && <small>{technicalMessage}</small>}
-      {canManage && session?.status === "pending" && (
-        <button className="success-button wide-button" type="button" disabled={saving} onClick={handleActivate}>
-          {saving ? "Ativando..." : "ATIVAR SERVIÇO"}
-        </button>
-      )}
+    <>
+      <section className="guard-shift-card">
+        <span>MONITORAMENTO</span>
+        <strong>Turno de hoje: {todayShift.startTime} às {todayShift.endTime}</strong>
+        <p>{getSessionSummary(session)}</p>
+        {session?.status === "ended" && <p>{getEndedSummary(session)}</p>}
+        {message && <small>{message}</small>}
+        {showTechnicalSync && technicalMessage && <small>{technicalMessage}</small>}
+        {canManage && session?.status === "pending" && (
+          <button className="success-button wide-button" type="button" disabled={saving} onClick={handleActivate}>
+            {saving ? "Ativando..." : "ATIVAR SERVIÇO"}
+          </button>
+        )}
+        {canManage && session?.status === "active" && (
+          <button className="danger-button wide-button" type="button" disabled={saving} onClick={handleEnd}>
+            {saving ? "Encerrando..." : "ENCERRAR SERVIÇO"}
+          </button>
+        )}
+      </section>
       {canManage && session?.status === "active" && (
-        <button className="danger-button wide-button" type="button" disabled={saving} onClick={handleEnd}>
-          {saving ? "Encerrando..." : "ENCERRAR SERVIÇO"}
-        </button>
+        <GuardRoundCurrentPanel guardLocalId={guardLocalId} guardName={guardName} session={session} />
       )}
+    </>
+  );
+}
+
+function GuardRoundCurrentPanel({ guardLocalId, guardName, session }: { guardLocalId: GuardId; guardName: string; session: GuardShiftSession }) {
+  const [roundState, setRoundState] = useState<GuardRoundCurrentState | null>(null);
+  const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    loadCurrentGuardRoundState({ guardLocalId, guardName, session })
+      .then((state) => {
+        if (!active) return;
+        setRoundState(state);
+        setMessage("");
+      })
+      .catch(() => {
+        if (!active) return;
+        setRoundState(null);
+        setMessage("Não foi possível carregar a ronda atual.");
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [guardLocalId, guardName, session]);
+
+  async function handleRegisterPoint() {
+    if (!roundState?.expectedPoint || saving) return;
+    setSaving(true);
+    setMessage("Capturando localização...");
+    try {
+      const location = await getCurrentLocation();
+      const result = await registerGuardRoundPoint({ guardLocalId, guardName, session, location });
+      setRoundState(result.state);
+      setMessage(result.message);
+    } catch (error) {
+      if (error instanceof Error && error.message === "ROUND_SEQUENCE_COMPLETE") {
+        setMessage("Todas as rondas programadas deste turno foram registradas.");
+      } else {
+        setMessage(getShiftErrorMessage(error));
+      }
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (loading) {
+    return <section className="guard-round-card"><span>RONDA ATUAL</span><strong>Carregando ronda...</strong></section>;
+  }
+
+  if (!roundState?.schedule) {
+    return (
+      <section className="guard-round-card">
+        <span>RONDA ATUAL</span>
+        <strong>Todas as rondas programadas deste turno foram registradas.</strong>
+        {message && <small>{message}</small>}
+      </section>
+    );
+  }
+
+  return (
+    <section className="guard-round-card">
+      <div className="guard-round-head">
+        <span>RONDA ATUAL</span>
+        <em>{roundState.source}</em>
+      </div>
+      <strong>Próximo horário: {roundState.schedule.scheduledTime}</strong>
+      <p>Ponto atual esperado: <b>{roundState.expectedPoint?.name ?? "Sequência concluída"}</b></p>
+      <div className="guard-round-progress" aria-label="Sequência de pontos da ronda">
+        {roundState.points.map((point) => {
+          const completed = roundState.checkins.some((checkin) => checkin.roundPointId === point.id || checkin.pointSequenceOrder === point.sequenceOrder);
+          const current = roundState.expectedPoint?.sequenceOrder === point.sequenceOrder;
+          return <span className={completed ? "done" : current ? "current" : ""} key={point.id}>{point.sequenceOrder}. {point.name}</span>;
+        })}
+      </div>
+      <small>{roundState.completedPoints}/{roundState.points.length} pontos registrados</small>
+      {message && <small>{message}</small>}
+      <button className="secondary-button wide-button" type="button" disabled={saving || !roundState.expectedPoint} onClick={handleRegisterPoint}>
+        {saving ? "Registrando..." : "REGISTRAR PONTO"}
+      </button>
     </section>
   );
 }
