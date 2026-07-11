@@ -1804,8 +1804,9 @@ function RoundQrCodesPanel({ points }: { points: GuardRoundPoint[] }) {
 
     document.body.classList.add("print-round-qrs");
     window.addEventListener("afterprint", clearPrintMode);
-    window.print();
-    window.setTimeout(clearPrintMode, 1000);
+    window.requestAnimationFrame(() => {
+      window.print();
+    });
   }
 
   return (
