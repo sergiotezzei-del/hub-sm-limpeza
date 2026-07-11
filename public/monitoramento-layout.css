@@ -35,6 +35,10 @@
   border-color: var(--orange) !important;
 }
 
+.monitoring-screen:not(.monitoring-qrcode-mode) .round-qr-panel {
+  display: none !important;
+}
+
 .round-qr-panel.round-qr-panel-collapsed .round-qr-grid {
   display: none !important;
 }
