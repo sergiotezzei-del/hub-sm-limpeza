@@ -347,18 +347,28 @@ function getCheckinStatus(
   while (completedSequences.has(expectedSequence)) expectedSequence += 1;
   if (point.sequenceOrder !== expectedSequence) return "out_of_sequence";
 
-  if (previousCheckins.length === 0) {
-    const scheduledAt = getRoundScheduledDateTime(session, schedule);
-    const toleranceMs = schedule.toleranceMinutes * 60000;
-    return checkedAt.getTime() <= scheduledAt.getTime() + toleranceMs ? "on_time" : "late";
+  if (!isWithinRoundToleranceWindow(session, schedule, checkedAt)) return "late";
+
+  if (previousCheckins.length > 0) {
+    const previous = [...previousCheckins].sort((first, second) => second.pointSequenceOrder - first.pointSequenceOrder)[0];
+    const previousAt = new Date(previous.checkedAt);
+    const toleranceMs = schedule.pointIntervalToleranceMinutes * 60000;
+    if (Number.isFinite(previousAt.getTime()) && checkedAt.getTime() - previousAt.getTime() > toleranceMs) return "late";
   }
 
-  const previous = [...previousCheckins].sort((first, second) => second.pointSequenceOrder - first.pointSequenceOrder)[0];
-  const previousAt = new Date(previous.checkedAt);
-  const toleranceMs = schedule.pointIntervalToleranceMinutes * 60000;
-  if (Number.isFinite(previousAt.getTime()) && checkedAt.getTime() - previousAt.getTime() > toleranceMs) return "late";
-
   return "on_time";
+}
+
+function isWithinRoundToleranceWindow(session: GuardShiftSession, schedule: GuardRoundSchedule, checkedAt: Date) {
+  const checkedAtMs = checkedAt.getTime();
+  if (!Number.isFinite(checkedAtMs)) return false;
+
+  const scheduledAt = getRoundScheduledDateTime(session, schedule);
+  const scheduledAtMs = scheduledAt.getTime();
+  if (!Number.isFinite(scheduledAtMs)) return false;
+
+  const toleranceMs = schedule.toleranceMinutes * 60000;
+  return checkedAtMs >= scheduledAtMs - toleranceMs && checkedAtMs <= scheduledAtMs + toleranceMs;
 }
 
 async function insertCloudRoundCheckin(input: {
