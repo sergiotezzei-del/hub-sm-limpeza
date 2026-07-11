@@ -25,14 +25,72 @@
     head.insertAdjacentElement("afterend", button);
   }
 
+  function setQrMode(screen, enabled) {
+    if (!screen) return;
+    screen.classList.toggle("monitoring-qrcode-mode", enabled);
+    const qrButton = screen.querySelector(".monitoring-qr-tab-button");
+    const tabButtons = screen.querySelectorAll(".monitoring-tabs > button:not(.monitoring-qr-tab-button)");
+
+    qrButton?.classList.toggle("active", enabled);
+    tabButtons.forEach((button) => {
+      if (enabled) button.classList.remove("active");
+    });
+  }
+
+  function setupMonitoringQrTab(screen) {
+    if (!screen || screen.dataset.qrTabReady === "true") return;
+    const tabs = screen.querySelector(".monitoring-tabs");
+    if (!tabs) return;
+
+    const tabButtons = Array.from(tabs.querySelectorAll("button"));
+    const roundsButton = tabButtons.find((button) => button.textContent?.toLowerCase().includes("rondas"));
+    if (!roundsButton) return;
+
+    screen.dataset.qrTabReady = "true";
+
+    const qrButton = document.createElement("button");
+    qrButton.type = "button";
+    qrButton.className = "monitoring-qr-tab-button";
+    qrButton.textContent = "QR Code";
+
+    qrButton.addEventListener("click", () => {
+      if (!screen.querySelector(".round-qr-panel")) {
+        roundsButton.click();
+      }
+
+      window.requestAnimationFrame(() => {
+        setupAllQrPanels();
+        setQrMode(screen, true);
+        screen.querySelector(".round-qr-panel")?.scrollIntoView({ block: "start", behavior: "smooth" });
+      });
+    });
+
+    roundsButton.insertAdjacentElement("afterend", qrButton);
+
+    tabButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        setQrMode(screen, false);
+      });
+    });
+  }
+
   function setupAllQrPanels() {
     document.querySelectorAll(".round-qr-panel").forEach(setupQrPanel);
   }
 
-  const observer = new MutationObserver(setupAllQrPanels);
+  function setupAllMonitoringTabs() {
+    document.querySelectorAll(".monitoring-screen").forEach(setupMonitoringQrTab);
+  }
+
+  function setupAll() {
+    setupAllQrPanels();
+    setupAllMonitoringTabs();
+  }
+
+  const observer = new MutationObserver(setupAll);
 
   function start() {
-    setupAllQrPanels();
+    setupAll();
     if (document.body) observer.observe(document.body, { childList: true, subtree: true });
   }
 
