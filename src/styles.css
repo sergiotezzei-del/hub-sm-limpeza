@@ -1323,6 +1323,75 @@ select:disabled {
   margin-top: 2px;
 }
 
+.monitoring-alerts-panel {
+  display: grid;
+  gap: 10px;
+  margin: 12px 0 10px;
+}
+
+.monitoring-alerts-title {
+  display: grid;
+  gap: 2px;
+}
+
+.monitoring-alerts-title span {
+  color: #475569;
+  font-size: 0.72rem;
+  font-weight: 950;
+  letter-spacing: 0;
+}
+
+.monitoring-alerts-title strong {
+  color: var(--ink);
+  font-size: 0.98rem;
+  line-height: 1.2;
+}
+
+.monitoring-alert-list {
+  display: grid;
+  gap: 8px;
+}
+
+.monitoring-alert-card {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-left: 4px solid #16a34a;
+  border-radius: 8px;
+  box-shadow: var(--shadow-card);
+}
+
+.monitoring-alert-card span {
+  color: var(--ink);
+  font-size: 0.82rem;
+  font-weight: 950;
+}
+
+.monitoring-alert-card p {
+  margin: 0;
+  color: #475569;
+  font-size: 0.84rem;
+  font-weight: 750;
+  line-height: 1.35;
+}
+
+.monitoring-alert-card.alert-warning {
+  border-left-color: #f59e0b;
+  background: #fffbeb;
+}
+
+.monitoring-alert-card.alert-danger {
+  border-left-color: #dc2626;
+  background: #fef2f2;
+}
+
+.monitoring-alert-card.alert-ok {
+  border-left-color: #16a34a;
+  background: #f0fdf4;
+}
+
 .monitoring-filters {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

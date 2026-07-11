@@ -76,6 +76,15 @@ type MonitoringGuardFilter = "all" | GuardName;
 type MonitoringStatusFilter = "all" | "ok" | "late" | "out_of_sequence" | "pending";
 type MonitoringShiftSummaryStatus = "complete" | "in_progress" | "incomplete" | "late" | "out_of_sequence";
 type RoundScheduleDisplayStatus = "complete" | "incomplete" | "late" | "out_of_sequence" | "waiting";
+type MonitoringAlertLevel = "ok" | "warning" | "danger";
+
+type MonitoringAlert = {
+  id: string;
+  level: MonitoringAlertLevel;
+  guardName?: string;
+  title: string;
+  message: string;
+};
 
 type MonitoringShiftSummary = {
   id: string;
@@ -1748,6 +1757,7 @@ function SecurityMonitoringScreen({ onBack, onLogout }: { onBack: () => void; on
   const overviewMetrics = useMemo(() => getMonitoringOverviewMetrics(filteredShiftSummaries), [filteredShiftSummaries]);
   const filteredEntries = useMemo(() => monitoringState.entries.filter((entry) => filteredShiftIds.has(entry.id)), [filteredShiftIds, monitoringState.entries]);
   const filteredRoundEntries = useMemo(() => roundState.entries.filter((entry) => filteredShiftIds.has(entry.shiftSessionId)), [filteredShiftIds, roundState.entries]);
+  const monitoringAlerts = useMemo(() => buildMonitoringAlerts(filteredShiftSummaries, activeTab), [activeTab, filteredShiftSummaries]);
 
   return (
     <section className="screen monitoring-screen">
@@ -1769,6 +1779,7 @@ function SecurityMonitoringScreen({ onBack, onLogout }: { onBack: () => void; on
             onGuardFilterChange={setGuardFilter}
             onStatusFilterChange={setStatusFilter}
           />
+          <MonitoringAlertsPanel alerts={monitoringAlerts} />
           <MonitoringOverviewCards metrics={overviewMetrics} />
           <ShiftSummarySection loading={loading || roundsLoading} summaries={filteredShiftSummaries} />
         </>
@@ -1810,6 +1821,40 @@ function SecurityMonitoringScreen({ onBack, onLogout }: { onBack: () => void; on
           <RoundQrCodesPanel points={roundState.points} />
         </section>
       )}
+    </section>
+  );
+}
+
+function MonitoringAlertsPanel({ alerts }: { alerts: MonitoringAlert[] }) {
+  if (alerts.length === 0) {
+    return (
+      <section className="monitoring-alerts-panel" aria-label="Alertas do monitoramento">
+        <div className="monitoring-alerts-title">
+          <span>ALERTAS DO MONITORAMENTO</span>
+          <strong>Tudo certo no monitoramento selecionado.</strong>
+        </div>
+        <article className="monitoring-alert-card alert-ok">
+          <span>Tudo certo</span>
+          <p>Nenhum alerta para os filtros atuais.</p>
+        </article>
+      </section>
+    );
+  }
+
+  return (
+    <section className="monitoring-alerts-panel" aria-label="Alertas do monitoramento">
+      <div className="monitoring-alerts-title">
+        <span>ALERTAS DO MONITORAMENTO</span>
+        <strong>{alerts.length} alerta(s) para os filtros atuais</strong>
+      </div>
+      <div className="monitoring-alert-list">
+        {alerts.map((alert) => (
+          <article className={`monitoring-alert-card alert-${alert.level}`} key={alert.id}>
+            <span>{alert.title}</span>
+            <p>{alert.message}</p>
+          </article>
+        ))}
+      </div>
     </section>
   );
 }
@@ -2097,6 +2142,74 @@ function RoundPointStatusList({ points }: { points: Array<{ point: GuardRoundPoi
   );
 }
 
+function buildMonitoringAlerts(summaries: MonitoringShiftSummary[], activeTab: MonitoringTab): MonitoringAlert[] {
+  if (activeTab === "qrcode") return [];
+  const now = new Date();
+
+  return summaries.flatMap((summary) => {
+    const alerts: MonitoringAlert[] = [];
+
+    if (activeTab === "entries") {
+      const scheduledStartAt = getMonitoringShiftStartAt(summary);
+      const scheduledEndAt = getMonitoringShiftEndAt(summary);
+
+      if (summary.shiftStatus === "pending" && scheduledStartAt && now.getTime() > scheduledStartAt.getTime()) {
+        alerts.push({
+          id: `${summary.shiftSessionId}-service-not-started`,
+          level: "danger",
+          guardName: summary.guardName,
+          title: "Serviço não ativado",
+          message: `${summary.guardName} - Serviço previsto para ${summary.scheduledStart} ainda não foi ativado.`,
+        });
+      }
+
+      if (summary.shiftStatus === "active" && scheduledEndAt && now.getTime() > scheduledEndAt.getTime()) {
+        alerts.push({
+          id: `${summary.shiftSessionId}-service-without-end`,
+          level: "danger",
+          guardName: summary.guardName,
+          title: "Serviço ativo sem encerramento",
+          message: `${summary.guardName} - Serviço previsto para encerrar às ${summary.scheduledEnd} ainda está ativo.`,
+        });
+      }
+    }
+
+    if (activeTab === "rounds") {
+      if (summary.overduePendingPoints > 0) {
+        alerts.push({
+          id: `${summary.shiftSessionId}-round-pending`,
+          level: "warning",
+          guardName: summary.guardName,
+          title: "Ronda pendente",
+          message: `${summary.guardName} - ${summary.overduePendingPoints} ponto(s) pendente(s) em ronda vencida.`,
+        });
+      }
+
+      if (summary.lateCount > 0) {
+        alerts.push({
+          id: `${summary.shiftSessionId}-round-late`,
+          level: "warning",
+          guardName: summary.guardName,
+          title: "Ronda atrasada",
+          message: `${summary.guardName} - ${summary.lateCount} ponto(s) registrado(s) fora do horário.`,
+        });
+      }
+
+      if (summary.outOfSequenceCount > 0) {
+        alerts.push({
+          id: `${summary.shiftSessionId}-round-out-of-sequence`,
+          level: "danger",
+          guardName: summary.guardName,
+          title: "Fora de sequência",
+          message: `${summary.guardName} - ${summary.outOfSequenceCount} ponto(s) fora da sequência da ronda.`,
+        });
+      }
+    }
+
+    return alerts;
+  });
+}
+
 function buildMonitoringShiftSummaries(
   entries: GuardMonitoringEntry[],
   roundEntries: GuardRoundReportEntry[],
@@ -2376,6 +2489,24 @@ function sortRoundPointsForDisplay(points: GuardRoundPoint[]) {
 
 function sortRoundSchedulesForDisplay(schedules: GuardRoundSchedule[]) {
   return [...schedules].sort((first, second) => first.sequenceOrder - second.sequenceOrder || first.scheduledTime.localeCompare(second.scheduledTime));
+}
+
+function getMonitoringShiftStartAt(summary: MonitoringShiftSummary) {
+  return getMonitoringShiftTime(summary.scheduledDate, summary.scheduledStart);
+}
+
+function getMonitoringShiftEndAt(summary: MonitoringShiftSummary) {
+  const startedAt = getMonitoringShiftStartAt(summary);
+  const endedAt = getMonitoringShiftTime(summary.scheduledDate, summary.scheduledEnd);
+  if (!startedAt || !endedAt) return null;
+  if (endedAt.getTime() <= startedAt.getTime()) endedAt.setDate(endedAt.getDate() + 1);
+  return endedAt;
+}
+
+function getMonitoringShiftTime(scheduledDate: string, scheduledTime: string) {
+  if (!scheduledTime || scheduledTime === "--") return null;
+  const date = new Date(`${scheduledDate}T${scheduledTime}:00-03:00`);
+  return Number.isFinite(date.getTime()) ? date : null;
 }
 
 function getMonitoringRoundScheduledAt(scheduledDate: string, scheduledStart: string, scheduledTime: string) {
