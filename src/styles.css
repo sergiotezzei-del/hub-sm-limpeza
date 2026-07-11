@@ -1291,7 +1291,7 @@ select:disabled {
 
 .monitoring-tabs {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
   margin: 14px 0;
 }
@@ -1317,6 +1317,10 @@ select:disabled {
 .monitoring-list {
   display: grid;
   gap: 12px;
+}
+
+.monitoring-qrcode-panel {
+  margin-top: 2px;
 }
 
 .monitoring-filters {
