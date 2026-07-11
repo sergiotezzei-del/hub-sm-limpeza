@@ -28,3 +28,30 @@
 .monitoring-screen > .monitoring-tabs button {
   min-height: 52px;
 }
+
+.round-qr-panel.round-qr-panel-collapsed .round-qr-grid {
+  display: none !important;
+}
+
+.round-qr-panel.round-qr-panel-collapsed .round-qr-panel-head p {
+  display: none !important;
+}
+
+.round-qr-toggle-button {
+  margin: 14px 0 0;
+}
+
+.round-qr-panel.round-qr-panel-open .round-qr-grid {
+  margin-top: 14px;
+}
+
+@media (max-width: 640px) {
+  .round-qr-panel .round-qr-panel-head {
+    gap: 10px;
+  }
+
+  .round-qr-panel .round-print-button,
+  .round-qr-toggle-button {
+    width: 100%;
+  }
+}
