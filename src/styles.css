@@ -1256,6 +1256,39 @@ select:disabled {
   max-width: 1040px;
 }
 
+.monitoring-overview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
+  gap: 8px;
+  margin: 14px 0 10px;
+}
+
+.monitoring-overview-card {
+  display: grid;
+  gap: 4px;
+  min-height: 78px;
+  padding: 10px;
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--orange);
+  border-radius: 8px;
+  box-shadow: var(--shadow-card);
+}
+
+.monitoring-overview-card span {
+  color: #475569;
+  font-size: 0.72rem;
+  font-weight: 900;
+  line-height: 1.15;
+  text-transform: uppercase;
+}
+
+.monitoring-overview-card strong {
+  color: var(--ink);
+  font-size: 1.42rem;
+  line-height: 1;
+}
+
 .monitoring-tabs {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1290,10 +1323,67 @@ select:disabled {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
+  margin: 10px 0 12px;
   padding: 12px;
   background: #ffffff;
   border: 1px solid var(--line);
   border-radius: 8px;
+}
+
+.monitoring-global-filters {
+  align-items: end;
+}
+
+.shift-summary-section {
+  display: grid;
+  gap: 10px;
+  margin: 12px 0 14px;
+}
+
+.shift-summary-list {
+  display: grid;
+  gap: 10px;
+}
+
+.shift-summary-card {
+  border-left-color: #2563eb;
+}
+
+.shift-summary-card .monitoring-card-head > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.shift-summary-times {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.shift-summary-times small,
+.shift-summary-grid small {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 9px 10px;
+  color: var(--muted);
+  background: #f8fafc;
+  border: 1px solid #e5eaf1;
+  border-radius: 8px;
+  font-size: 0.76rem;
+  font-weight: 850;
+}
+
+.shift-summary-times b,
+.shift-summary-grid b {
+  color: var(--ink);
+  font-size: 0.92rem;
+  overflow-wrap: anywhere;
+}
+
+.shift-summary-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .monitoring-card {
@@ -1375,6 +1465,32 @@ select:disabled {
 .monitoring-status.pending {
   color: #7c2d12;
   background: #ffedd5;
+}
+
+.monitoring-status.shift-complete,
+.monitoring-status.round-display-complete {
+  color: #14532d;
+  background: #dcfce7;
+}
+
+.monitoring-status.shift-in_progress,
+.monitoring-status.round-display-waiting {
+  color: #1d4ed8;
+  background: #dbeafe;
+}
+
+.monitoring-status.shift-incomplete,
+.monitoring-status.round-display-incomplete {
+  color: #7c2d12;
+  background: #ffedd5;
+}
+
+.monitoring-status.shift-late,
+.monitoring-status.shift-out_of_sequence,
+.monitoring-status.round-display-late,
+.monitoring-status.round-display-out_of_sequence {
+  color: #991b1b;
+  background: #fee2e2;
 }
 
 .monitoring-compact-grid {
@@ -2015,8 +2131,13 @@ select:disabled {
   .user-form,
   .permissions-grid,
   .monitoring-filters,
+  .shift-summary-times,
   .user-actions {
     grid-template-columns: 1fr;
+  }
+
+  .monitoring-overview-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .monitoring-tabs,
@@ -2033,6 +2154,10 @@ select:disabled {
   }
 
   .monitoring-compact-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .shift-summary-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
