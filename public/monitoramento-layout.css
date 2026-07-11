@@ -29,6 +29,12 @@
   min-height: 52px;
 }
 
+.monitoring-qr-tab-button.active {
+  background: var(--orange) !important;
+  color: #ffffff !important;
+  border-color: var(--orange) !important;
+}
+
 .round-qr-panel.round-qr-panel-collapsed .round-qr-grid {
   display: none !important;
 }
@@ -45,7 +51,38 @@
   margin-top: 14px;
 }
 
+.monitoring-screen.monitoring-qrcode-mode > .monitoring-global-filters,
+.monitoring-screen.monitoring-qrcode-mode > .monitoring-overview-grid,
+.monitoring-screen.monitoring-qrcode-mode > .shift-summary-section {
+  display: none !important;
+}
+
+.monitoring-screen.monitoring-qrcode-mode .monitoring-panel > :not(.round-qr-panel) {
+  display: none !important;
+}
+
+.monitoring-screen.monitoring-qrcode-mode .round-qr-panel {
+  display: block !important;
+}
+
+.monitoring-screen.monitoring-qrcode-mode .round-qr-panel .round-qr-grid {
+  display: grid !important;
+  margin-top: 14px;
+}
+
+.monitoring-screen.monitoring-qrcode-mode .round-qr-panel .round-qr-panel-head p {
+  display: block !important;
+}
+
+.monitoring-screen.monitoring-qrcode-mode .round-qr-toggle-button {
+  display: none !important;
+}
+
 @media (max-width: 640px) {
+  .monitoring-tabs {
+    grid-template-columns: 1fr !important;
+  }
+
   .round-qr-panel .round-qr-panel-head {
     gap: 10px;
   }
