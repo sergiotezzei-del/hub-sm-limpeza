@@ -1508,6 +1508,203 @@ select:disabled {
   line-height: 1.35;
 }
 
+.payment-config-grid,
+.payment-profile-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.payment-config-card,
+.payment-profile-card,
+.payment-guard-card,
+.payment-summary-card,
+.payment-message-card,
+.payment-sheet-card,
+.payment-history-card {
+  border-left-color: #f97316;
+}
+
+.payment-total-card {
+  align-content: start;
+}
+
+.payment-total-card > strong {
+  font-size: clamp(1.45rem, 4vw, 2rem);
+}
+
+.payment-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.payment-notes-field {
+  grid-column: 1 / -1;
+}
+
+.payment-mini-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.payment-mini-grid small {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 9px 10px;
+  color: var(--muted);
+  background: #f8fafc;
+  border: 1px solid #e5eaf1;
+  border-radius: 8px;
+  font-size: 0.76rem;
+  font-weight: 850;
+}
+
+.payment-mini-grid b {
+  color: var(--ink);
+  font-size: 0.92rem;
+  overflow-wrap: anywhere;
+}
+
+.payment-profile-section,
+.payment-guard-list,
+.payment-history-section,
+.payment-history-list {
+  display: grid;
+  gap: 12px;
+}
+
+.payment-profile-card,
+.payment-guard-card,
+.payment-history-card {
+  align-content: start;
+}
+
+.payment-conference-list,
+.payment-extra-list {
+  display: grid;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+.payment-conference-list > strong,
+.payment-extra-head > strong,
+.payment-sheet-card > strong {
+  color: var(--ink);
+}
+
+.payment-shift-line {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+  padding: 9px 10px;
+  color: #334155;
+  background: #f8fafc;
+  border: 1px solid #e5eaf1;
+  border-left: 4px solid #94a3b8;
+  border-radius: 8px;
+  font-weight: 900;
+}
+
+.payment-shift-line small {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 750;
+}
+
+.payment-shift-line.ok {
+  border-left-color: #16a34a;
+  background: #f0fdf4;
+}
+
+.payment-shift-line.pending {
+  border-left-color: #f59e0b;
+  background: #fffbeb;
+}
+
+.payment-shift-line.divergence {
+  border-left-color: #dc2626;
+  background: #fef2f2;
+}
+
+.payment-extra-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.payment-extra-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.8fr) minmax(140px, 1.2fr) minmax(90px, 0.6fr) auto;
+  gap: 8px;
+  align-items: end;
+  padding: 10px;
+  background: #f8fafc;
+  border: 1px solid #e5eaf1;
+  border-radius: 8px;
+}
+
+.payment-message-card textarea {
+  min-height: 320px;
+  font-family: "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+  line-height: 1.45;
+}
+
+.payment-sheet-table {
+  display: grid;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.payment-sheet-row {
+  display: grid;
+  grid-template-columns: 90px 120px 150px repeat(5, 120px) 170px 170px;
+  gap: 6px;
+  min-width: 1320px;
+  align-items: stretch;
+}
+
+.payment-sheet-row > * {
+  min-width: 0;
+  padding: 8px;
+  color: #334155;
+  background: #ffffff;
+  border: 1px solid #e5eaf1;
+  border-radius: 8px;
+  font-size: 0.78rem;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.payment-sheet-row.header > * {
+  color: #7c2d12;
+  background: #ffedd5;
+}
+
+.payment-history-card label {
+  max-width: 260px;
+}
+
+.payment-history-pendente {
+  color: #713f12;
+  background: #fef3c7;
+}
+
+.payment-history-enviado-ao-financeiro {
+  color: #1d4ed8;
+  background: #dbeafe;
+}
+
+.payment-history-pago {
+  color: #14532d;
+  background: #dcfce7;
+}
+
 .monitoring-filters {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -2416,6 +2613,21 @@ select:disabled {
 
   .payment-report-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .payment-config-grid,
+  .payment-profile-grid,
+  .payment-form-grid,
+  .payment-extra-row {
+    grid-template-columns: 1fr;
+  }
+
+  .payment-mini-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .payment-history-card label {
+    max-width: none;
   }
 
   .round-point-row {
