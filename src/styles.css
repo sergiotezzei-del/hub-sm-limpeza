@@ -1582,6 +1582,32 @@ select:disabled {
   align-content: start;
 }
 
+.payment-profile-summary {
+  border-left-color: #64748b;
+}
+
+.payment-profile-status-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.payment-profile-status-grid small {
+  display: grid;
+  gap: 3px;
+  padding: 9px 10px;
+  color: var(--muted);
+  background: #f8fafc;
+  border: 1px solid #e5eaf1;
+  border-radius: 8px;
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
+.payment-profile-status-grid b {
+  color: var(--ink);
+}
+
 .payment-conference-list,
 .payment-extra-list {
   display: grid;
@@ -1629,6 +1655,23 @@ select:disabled {
   background: #fef2f2;
 }
 
+.payment-turn-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.payment-turn-pill {
+  width: fit-content;
+  padding: 7px 9px;
+  color: #334155;
+  background: #f8fafc;
+  border: 1px solid #e5eaf1;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
 .payment-extra-head {
   display: flex;
   flex-wrap: wrap;
@@ -1639,7 +1682,7 @@ select:disabled {
 
 .payment-extra-row {
   display: grid;
-  grid-template-columns: minmax(120px, 0.8fr) minmax(140px, 1.2fr) minmax(90px, 0.6fr) auto;
+  grid-template-columns: minmax(118px, 0.8fr) minmax(132px, 1fr) minmax(140px, 1.2fr) minmax(84px, 0.6fr) auto;
   gap: 8px;
   align-items: end;
   padding: 10px;
@@ -2617,6 +2660,7 @@ select:disabled {
 
   .payment-config-grid,
   .payment-profile-grid,
+  .payment-profile-status-grid,
   .payment-form-grid,
   .payment-extra-row {
     grid-template-columns: 1fr;
