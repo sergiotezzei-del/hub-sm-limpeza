@@ -3,9 +3,11 @@ import { QRCodeSVG } from "qrcode.react";
 import { activities, employees, products } from "./data";
 import { GuardShiftPanel, GuardSyncDiagnosticPanel } from "./modules/security/components/GuardShift";
 import { signInAdminSupabaseAuth, signInGuardSupabaseAuth } from "./modules/security/services/guardAuthBridge";
+import { loadGuardPaymentData, saveGuardPaymentProfile, saveGuardPaymentRecords, updateGuardPaymentRecordStatus } from "./modules/security/services/paymentService";
 import { DEFAULT_GUARD_ROUND_POINTS, DEFAULT_GUARD_ROUND_SCHEDULES, loadGuardRoundReport } from "./modules/security/services/roundService";
 import { loadGuardMonitoringEntries } from "./modules/security/services/shiftService";
 import { signOutSupabaseAuth } from "./modules/security/services/supabaseClient";
+import type { GuardPaymentLoadState, GuardPaymentProfile, GuardPaymentRecord, GuardPaymentStatus } from "./modules/security/types/payment.types";
 import type { GuardRoundCheckin, GuardRoundCheckinSource, GuardRoundCheckinStatus, GuardRoundLoadState, GuardRoundPoint, GuardRoundReportEntry, GuardRoundReportStatus, GuardRoundSchedule } from "./modules/security/types/round.types";
 import type { GuardMonitoringEntry, GuardMonitoringLoadState, GuardShiftStatus } from "./modules/security/types/shift.types";
 import {
@@ -79,6 +81,41 @@ type MonitoringShiftSummaryStatus = "complete" | "in_progress" | "incomplete" | 
 type RoundScheduleDisplayStatus = "complete" | "incomplete" | "late" | "out_of_sequence" | "waiting";
 type MonitoringAlertLevel = "ok" | "warning" | "danger";
 type PaymentStatus = "ok" | "check_entry" | "check_exit" | "check_rounds" | "check_shift";
+type GuardPaymentExtraType = "Feriado 1/2 dia" | "Feriado dia inteiro" | "Plantão especial 1/2 dia" | "Plantão especial dia inteiro" | "Evento especial 1/2 dia" | "Evento especial dia inteiro" | "Outro";
+
+type GuardPaymentExtra = {
+  id: string;
+  guardId: GuardId;
+  type: GuardPaymentExtraType;
+  description: string;
+  amount: number;
+};
+
+type GuardShiftConferenceItem = {
+  id: string;
+  guardId: GuardId;
+  guardName: GuardName;
+  date: string;
+  line: string;
+  status: "ok" | "pending" | "divergence";
+  note: string;
+};
+
+type GuardPaymentClosingRow = {
+  guardId: GuardId;
+  guardName: GuardName;
+  paymentName: string;
+  profile: GuardPaymentProfile;
+  profileComplete: boolean;
+  shifts: GuardShiftConferenceItem[];
+  divergences: GuardShiftConferenceItem[];
+  extras: GuardPaymentExtra[];
+  baseAmount: number;
+  holidayExtraAmount: number;
+  shiftExtraAmount: number;
+  totalAmount: number;
+  extraDescription: string;
+};
 
 type MonitoringAlert = {
   id: string;
@@ -224,6 +261,20 @@ const guardUserMap: Record<GuardId, GuardName> = {
   "carlos-clemente": "Carlos Clemente",
   salomao: "Salomão",
 };
+
+const GUARD_PAYMENT_BASE_AMOUNT = 1000;
+const GUARD_PAYMENT_HALF_EXTRA_AMOUNT = 75;
+const GUARD_PAYMENT_FULL_EXTRA_AMOUNT = 150;
+const guardPaymentStatuses: GuardPaymentStatus[] = ["PENDENTE", "ENVIADO AO FINANCEIRO", "PAGO"];
+const guardPaymentExtraTypes: GuardPaymentExtraType[] = [
+  "Feriado 1/2 dia",
+  "Feriado dia inteiro",
+  "Plantão especial 1/2 dia",
+  "Plantão especial dia inteiro",
+  "Evento especial 1/2 dia",
+  "Evento especial dia inteiro",
+  "Outro",
+];
 
 const userDepartments: UserDepartment[] = ["Administração", "Limpeza", "Segurança", "Manutenção", "Estoque", "Café", "Água", "Patrimônio", "Chaves"];
 const userTypes: AppUserType[] = ["Admin", "Limpeza", "Segurança", "Manutenção", "Estoque", "Consulta"];
@@ -1808,6 +1859,7 @@ function useGuardMonitoringData() {
     setDateFilter,
     setGuardFilter,
     setStatusFilter,
+    shiftSummaries,
     statusFilter,
   };
 }
@@ -1906,40 +1958,22 @@ function SecurityMonitoringScreen({ onBack, onLogout }: { onBack: () => void; on
 
 function SecurityGuardsPaymentScreen({ onBack, onLogout }: { onBack: () => void; onLogout: () => void }) {
   const {
-    dateFilter,
-    filteredShiftSummaries,
-    guardFilter,
     loading,
     monitoringState,
     roundState,
     roundsLoading,
-    setDateFilter,
-    setGuardFilter,
-    setStatusFilter,
-    statusFilter,
+    shiftSummaries,
   } = useGuardMonitoringData();
-  const paymentRows = useMemo(() => buildPaymentReportRows(filteredShiftSummaries), [filteredShiftSummaries]);
 
   return (
     <section className="screen monitoring-screen guards-payment-screen">
       <TopBar title="Fechamento / Pagamento" subtitle="Conferência dos plantões dos guardas" onLogout={onLogout} />
       <button className="ghost-button" type="button" onClick={onBack}>Voltar para Guardas</button>
-      <MonitoringGlobalFilters
-        dateFilter={dateFilter}
-        guardFilter={guardFilter}
-        statusFilter={statusFilter}
-        onDateFilterChange={setDateFilter}
-        onGuardFilterChange={setGuardFilter}
-        onStatusFilterChange={setStatusFilter}
-      />
       {monitoringState.message && <p className={monitoringState.remoteReadable ? "success-message" : "notice-message"}>{monitoringState.message}</p>}
       {roundState.message && <p className={roundState.remoteReadable ? "success-message" : "notice-message"}>{roundState.message}</p>}
       <PaymentReportSection
-        dateFilter={dateFilter}
-        guardFilter={guardFilter}
-        loading={loading || roundsLoading}
-        rows={paymentRows}
-        statusFilter={statusFilter}
+        monitoringLoading={loading || roundsLoading}
+        shiftSummaries={shiftSummaries}
       />
     </section>
   );
@@ -2071,38 +2105,141 @@ function ShiftSummaryCard({ summary }: { summary: MonitoringShiftSummary }) {
   );
 }
 
-function PaymentReportSection({
-  dateFilter,
-  guardFilter,
-  loading,
-  rows,
-  statusFilter,
-}: {
-  dateFilter: string;
-  guardFilter: MonitoringGuardFilter;
-  loading: boolean;
-  rows: PaymentReportRow[];
-  statusFilter: MonitoringStatusFilter;
-}) {
+function PaymentReportSection({ monitoringLoading, shiftSummaries }: { monitoringLoading: boolean; shiftSummaries: MonitoringShiftSummary[] }) {
+  const defaultPeriod = useMemo(() => getDefaultPaymentPeriod(), []);
+  const [periodStart, setPeriodStart] = useState(defaultPeriod.start);
+  const [periodEnd, setPeriodEnd] = useState(defaultPeriod.end);
+  const [paymentDate, setPaymentDate] = useState(defaultPeriod.paymentDate);
+  const [closingStatus, setClosingStatus] = useState<GuardPaymentStatus>("PENDENTE");
+  const [manualNotes, setManualNotes] = useState("");
+  const [paymentState, setPaymentState] = useState<GuardPaymentLoadState>({
+    profiles: [],
+    records: [],
+    remoteReadable: false,
+    remoteProtected: false,
+    message: "Carregando dados de pagamento...",
+  });
+  const [paymentLoading, setPaymentLoading] = useState(true);
+  const [profileDrafts, setProfileDrafts] = useState<Record<GuardId, GuardPaymentProfile>>(() => buildPaymentProfileDrafts([]));
+  const [extras, setExtras] = useState<Record<GuardId, GuardPaymentExtra[]>>({ "carlos-clemente": [], salomao: [] });
+  const [generatedMessage, setGeneratedMessage] = useState("");
   const [copyMessage, setCopyMessage] = useState("");
-  const reportText = useMemo(() => formatPaymentReportText(rows, dateFilter, guardFilter, statusFilter), [dateFilter, guardFilter, rows, statusFilter]);
 
-  async function handleCopyReport() {
-    const copied = await copyToClipboard(reportText);
-    setCopyMessage(copied ? "Relatório copiado." : "Não foi possível copiar o relatório.");
+  useEffect(() => {
+    let active = true;
+    setPaymentLoading(true);
+    loadGuardPaymentData()
+      .then((state) => {
+        if (!active) return;
+        setPaymentState(state);
+        setProfileDrafts(buildPaymentProfileDrafts(state.profiles));
+      })
+      .catch(() => {
+        if (!active) return;
+        setPaymentState({
+          profiles: [],
+          records: [],
+          remoteReadable: false,
+          remoteProtected: false,
+          message: "Não foi possível carregar dados de pagamento.",
+        });
+      })
+      .finally(() => {
+        if (active) setPaymentLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const closingRows = useMemo(() => buildGuardPaymentClosingRows({
+    extras,
+    periodEnd,
+    periodStart,
+    profiles: profileDrafts,
+    shiftSummaries,
+  }), [extras, periodEnd, periodStart, profileDrafts, shiftSummaries]);
+  const totalGeneral = useMemo(() => closingRows.reduce((total, row) => total + row.totalAmount, 0), [closingRows]);
+  const totalDivergences = useMemo(() => closingRows.reduce((total, row) => total + row.divergences.length, 0), [closingRows]);
+  const totalExtras = useMemo(() => closingRows.reduce((total, row) => total + row.extras.length, 0), [closingRows]);
+  const financeMessage = useMemo(() => buildFinanceMessage(closingRows, periodStart, periodEnd, manualNotes), [closingRows, manualNotes, periodEnd, periodStart]);
+  const paymentSheetText = useMemo(() => buildPaymentSheetText(closingRows, paymentDate, periodStart, periodEnd, closingStatus, manualNotes), [closingRows, closingStatus, manualNotes, paymentDate, periodEnd, periodStart]);
+  const messagePreview = generatedMessage || financeMessage;
+  const loading = monitoringLoading || paymentLoading;
+
+  function updateProfileDraft(guardId: GuardId, field: keyof GuardPaymentProfile, value: string) {
+    setProfileDrafts((current) => ({
+      ...current,
+      [guardId]: {
+        ...current[guardId],
+        [field]: value,
+      },
+    }));
   }
 
-  function handlePrintReport() {
-    const clearPrintMode = () => {
-      document.body.classList.remove("print-payment-report");
-      window.removeEventListener("afterprint", clearPrintMode);
-    };
+  async function handleSaveProfile(guardId: GuardId) {
+    const result = await saveGuardPaymentProfile(profileDrafts[guardId]);
+    setPaymentState((current) => ({
+      ...current,
+      profiles: upsertProfileList(current.profiles, result.profile),
+      message: result.message,
+    }));
+    setProfileDrafts((current) => ({ ...current, [guardId]: result.profile }));
+    setCopyMessage(result.message);
+  }
 
-    document.body.classList.add("print-payment-report");
-    window.addEventListener("afterprint", clearPrintMode);
-    window.requestAnimationFrame(() => {
-      window.print();
-    });
+  function handleAddExtra(guardId: GuardId) {
+    setExtras((current) => ({
+      ...current,
+      [guardId]: [...current[guardId], createGuardPaymentExtra(guardId)],
+    }));
+  }
+
+  function handleUpdateExtra(guardId: GuardId, extraId: string, field: keyof GuardPaymentExtra, value: string) {
+    setExtras((current) => ({
+      ...current,
+      [guardId]: current[guardId].map((extra) => extra.id === extraId ? updateGuardPaymentExtra(extra, field, value) : extra),
+    }));
+  }
+
+  function handleRemoveExtra(guardId: GuardId, extraId: string) {
+    setExtras((current) => ({
+      ...current,
+      [guardId]: current[guardId].filter((extra) => extra.id !== extraId),
+    }));
+  }
+
+  async function handleCopyFinanceMessage() {
+    const message = generatedMessage || financeMessage;
+    const copied = await copyToClipboard(message);
+    setCopyMessage(copied ? "Mensagem para financeiro copiada." : "Não foi possível copiar a mensagem.");
+  }
+
+  async function handleCopyPaymentRows() {
+    const copied = await copyToClipboard(paymentSheetText);
+    setCopyMessage(copied ? "Linhas para PAGAMENTOS copiadas." : "Não foi possível copiar as linhas para PAGAMENTOS.");
+  }
+
+  async function handleSaveClosing() {
+    const records = buildPaymentRecordsFromClosingRows(closingRows, paymentDate, periodStart, periodEnd, closingStatus, manualNotes, financeMessage);
+    const result = await saveGuardPaymentRecords(records);
+    setPaymentState((current) => ({
+      ...current,
+      records: mergePaymentRecords(current.records, result.records),
+      message: result.message,
+    }));
+    setCopyMessage(result.message);
+  }
+
+  async function handleUpdateRecordStatus(recordId: string, status: GuardPaymentStatus) {
+    const result = await updateGuardPaymentRecordStatus(recordId, status);
+    setPaymentState((current) => ({
+      ...current,
+      records: result.record ? mergePaymentRecords(current.records, [result.record]) : current.records,
+      message: result.message,
+    }));
+    setCopyMessage(result.message);
   }
 
   return (
@@ -2110,53 +2247,239 @@ function PaymentReportSection({
       <div className="payment-report-head">
         <div>
           <span>FECHAMENTO / PAGAMENTO</span>
-          <strong>Conferência simples dos plantões</strong>
-          <p>Relatório operacional para apoiar a conferência antes do pagamento, sem cálculo financeiro automático.</p>
+          <strong>Fluxo oficial Santa Maria</strong>
+          <p>Base quinzenal fixa de {formatCurrencyBRL(GUARD_PAYMENT_BASE_AMOUNT)} por guarda. Plantões normais entram como conferência, sem diária automática.</p>
         </div>
         <div className="payment-report-actions">
-          <button className="secondary-button" type="button" onClick={handleCopyReport} disabled={loading || rows.length === 0}>Copiar relatório</button>
-          <button className="secondary-button" type="button" onClick={handlePrintReport} disabled={loading || rows.length === 0}>Imprimir relatório</button>
+          <button className="secondary-button" type="button" onClick={() => setGeneratedMessage(financeMessage)} disabled={loading}>Gerar mensagem para financeiro</button>
+          <button className="secondary-button" type="button" onClick={handleCopyFinanceMessage} disabled={loading}>Copiar mensagem</button>
+          <button className="secondary-button" type="button" onClick={handleCopyPaymentRows} disabled={loading}>Copiar linhas para PAGAMENTOS</button>
+          <button className="secondary-button" type="button" onClick={handleSaveClosing} disabled={loading}>Salvar fechamento</button>
         </div>
       </div>
-      {copyMessage && <p className={copyMessage.startsWith("Relatório") ? "success-message" : "notice-message"}>{copyMessage}</p>}
+
+      {paymentState.message && <p className={paymentState.remoteReadable ? "success-message" : "notice-message"}>{paymentState.message}</p>}
+      {copyMessage && <p className={copyMessage.includes("copiada") || copyMessage.includes("copiadas") || copyMessage.includes("salvo") ? "success-message" : "notice-message"}>{copyMessage}</p>}
       {loading && <article className="monitoring-card"><strong>Carregando fechamento...</strong></article>}
-      {!loading && rows.length === 0 && <article className="empty-state">Nenhum plantão encontrado para o fechamento atual.</article>}
-      {!loading && rows.length > 0 && (
-        <div className="payment-report-list">
-          {rows.map((row) => <PaymentReportCard key={row.id} row={row} />)}
+
+      <section className="payment-config-grid">
+        <article className="monitoring-card payment-config-card">
+          <span>CONFIGURAÇÃO DO PERÍODO</span>
+          <div className="payment-form-grid">
+            <label>Data inicial<input type="date" value={periodStart} onChange={(event) => setPeriodStart(event.target.value)} /></label>
+            <label>Data final<input type="date" value={periodEnd} onChange={(event) => setPeriodEnd(event.target.value)} /></label>
+            <label>Data do pagamento<input type="date" value={paymentDate} onChange={(event) => setPaymentDate(event.target.value)} /></label>
+            <label>Status do fechamento<select value={closingStatus} onChange={(event) => setClosingStatus(event.target.value as GuardPaymentStatus)}>{guardPaymentStatuses.map((status) => <option key={status} value={status}>{status}</option>)}</select></label>
+          </div>
+          <label className="payment-notes-field">Observação manual<textarea value={manualNotes} onChange={(event) => setManualNotes(event.target.value)} placeholder="Use para divergências de WhatsApp, ajustes manuais ou observações para o financeiro." /></label>
+        </article>
+
+        <article className="monitoring-card payment-total-card">
+          <span>RESUMO FINANCEIRO</span>
+          <strong>{formatCurrencyBRL(totalGeneral)}</strong>
+          <div className="payment-mini-grid">
+            <small>Base por guarda<b>{formatCurrencyBRL(GUARD_PAYMENT_BASE_AMOUNT)}</b></small>
+            <small>Extras lançados<b>{totalExtras}</b></small>
+            <small>Divergências<b>{totalDivergences}</b></small>
+            <small>Status<b>{closingStatus}</b></small>
+          </div>
+        </article>
+      </section>
+
+      <section className="payment-profile-section">
+        <div className="round-report-title">
+          <span>DADOS DE PAGAMENTO</span>
+          <strong>Cadastro protegido dos guardas</strong>
         </div>
-      )}
+        <div className="payment-profile-grid">
+          {guardNames.map((guardName) => {
+            const guardId = getGuardIdFromName(guardName);
+            return (
+              <PaymentProfileEditor
+                key={guardId}
+                onChange={updateProfileDraft}
+                onSave={handleSaveProfile}
+                profile={profileDrafts[guardId]}
+              />
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="payment-guard-list">
+        {closingRows.map((row) => (
+          <PaymentClosingGuardCard
+            key={row.guardId}
+            onAddExtra={handleAddExtra}
+            onRemoveExtra={handleRemoveExtra}
+            onUpdateExtra={handleUpdateExtra}
+            row={row}
+          />
+        ))}
+      </section>
+
+      <PaymentConferenceSummary rows={closingRows} totalGeneral={totalGeneral} />
+
+      <section className="monitoring-card payment-message-card">
+        <div className="monitoring-card-head">
+          <div>
+            <span>MENSAGEM PARA FINANCEIRO</span>
+            <strong>Pronta para copiar</strong>
+          </div>
+          <em className="payment-status payment-ok">Total geral: {formatCurrencyBRL(totalGeneral)}</em>
+        </div>
+        <textarea readOnly value={messagePreview} />
+      </section>
+
+      <PaymentSheetPreview rows={closingRows} paymentDate={paymentDate} periodEnd={periodEnd} periodStart={periodStart} status={closingStatus} notes={manualNotes} />
+      <PaymentHistorySection records={paymentState.records} onStatusChange={handleUpdateRecordStatus} />
     </section>
   );
 }
 
-function PaymentReportCard({ row }: { row: PaymentReportRow }) {
+function PaymentProfileEditor({ profile, onChange, onSave }: { profile: GuardPaymentProfile; onChange: (guardId: GuardId, field: keyof GuardPaymentProfile, value: string) => void; onSave: (guardId: GuardId) => void }) {
+  const missing = getMissingPaymentProfileFields(profile);
   return (
-    <article className="monitoring-card payment-report-card">
+    <article className="monitoring-card payment-profile-card">
       <div className="monitoring-card-head">
         <div>
-          <span>{formatDateOnly(row.date)} • {row.shiftType}</span>
-          <strong>{row.guardName}</strong>
+          <span>{profile.operationalName}</span>
+          <strong>{profile.paymentName || "Nome para pagamento pendente"}</strong>
         </div>
-        <em className={`payment-status payment-${row.paymentStatus}`}>{formatPaymentStatus(row.paymentStatus)}</em>
+        <em className={`payment-status ${missing.length === 0 ? "payment-ok" : "payment-check_shift"}`}>{missing.length === 0 ? "Completo" : "Incompleto"}</em>
       </div>
-      <div className="payment-report-grid">
-        <small>Entrada prevista<b>{row.scheduledStart}</b></small>
-        <small>Saída prevista<b>{row.scheduledEnd}</b></small>
-        <small>Entrada registrada<b>{row.registeredStart}</b></small>
-        <small>Saída registrada<b>{row.registeredEnd}</b></small>
-        <small>Horas previstas<b>{row.expectedHours}</b></small>
-        <small>Horas registradas<b>{row.registeredHours}</b></small>
-        <small>Status do serviço<b>{row.serviceStatus}</b></small>
-        <small>Rondas previstas<b>{row.roundsExpected}</b></small>
-        <small>Rondas concluídas<b>{row.roundsComplete}</b></small>
-        <small>Pontos registrados<b>{row.pointsRegistered}</b></small>
-        <small>Pontos pendentes<b>{row.pointsPending}</b></small>
-        <small>Atrasos<b>{row.lateCount}</b></small>
-        <small>Fora de sequência<b>{row.outOfSequenceCount}</b></small>
+      {missing.length > 0 && <p className="notice-message">Dados de pagamento incompletos para este guarda: {missing.join(", ")}.</p>}
+      <div className="payment-form-grid">
+        <label>Nome para pagamento<input value={profile.paymentName} onChange={(event) => onChange(profile.guardId, "paymentName", event.target.value)} /></label>
+        <label>Banco<input value={profile.bankName} onChange={(event) => onChange(profile.guardId, "bankName", event.target.value)} /></label>
+        <label>Agência<input value={profile.agency} onChange={(event) => onChange(profile.guardId, "agency", event.target.value)} /></label>
+        <label>Tipo de conta<input value={profile.accountType} onChange={(event) => onChange(profile.guardId, "accountType", event.target.value)} placeholder="Conta Corrente, Poupança..." /></label>
+        <label>Conta<input value={profile.accountNumber} onChange={(event) => onChange(profile.guardId, "accountNumber", event.target.value)} /></label>
+        <label>CPF<input value={profile.cpf} onChange={(event) => onChange(profile.guardId, "cpf", event.target.value)} /></label>
+        <label>Pix<input value={profile.pix} onChange={(event) => onChange(profile.guardId, "pix", event.target.value)} /></label>
       </div>
-      <p className="payment-observation"><b>Observações:</b> {row.observations}</p>
+      <label className="payment-notes-field">Observação<textarea value={profile.notes} onChange={(event) => onChange(profile.guardId, "notes", event.target.value)} /></label>
+      <button className="secondary-button" type="button" onClick={() => onSave(profile.guardId)}>Salvar dados de pagamento</button>
     </article>
+  );
+}
+
+function PaymentClosingGuardCard({ row, onAddExtra, onUpdateExtra, onRemoveExtra }: { row: GuardPaymentClosingRow; onAddExtra: (guardId: GuardId) => void; onUpdateExtra: (guardId: GuardId, extraId: string, field: keyof GuardPaymentExtra, value: string) => void; onRemoveExtra: (guardId: GuardId, extraId: string) => void }) {
+  return (
+    <article className="monitoring-card payment-guard-card">
+      <div className="monitoring-card-head">
+        <div>
+          <span>{row.guardName}</span>
+          <strong>Total: {formatCurrencyBRL(row.totalAmount)}</strong>
+        </div>
+        <em className="payment-status payment-ok">Base quinzenal: {formatCurrencyBRL(row.baseAmount)}</em>
+      </div>
+      {!row.profileComplete && <p className="notice-message">Dados de pagamento incompletos para este guarda.</p>}
+      <div className="payment-mini-grid">
+        <small>Base fixa<b>{formatCurrencyBRL(row.baseAmount)}</b></small>
+        <small>Extra feriado<b>{formatCurrencyBRL(row.holidayExtraAmount)}</b></small>
+        <small>Plantão/outros<b>{formatCurrencyBRL(row.shiftExtraAmount)}</b></small>
+        <small>Total<b>{formatCurrencyBRL(row.totalAmount)}</b></small>
+      </div>
+      <div className="payment-conference-list">
+        <strong>Dias conferidos</strong>
+        {row.shifts.length === 0 && <p>Nenhum plantão da escala encontrado no período.</p>}
+        {row.shifts.map((shift) => <p className={`payment-shift-line ${shift.status}`} key={shift.id}>{shift.line}<small>{shift.note}</small></p>)}
+      </div>
+      <div className="payment-extra-list">
+        <div className="payment-extra-head">
+          <strong>Extras por guarda</strong>
+          <button className="secondary-button" type="button" onClick={() => onAddExtra(row.guardId)}>Adicionar extra</button>
+        </div>
+        {row.extras.length === 0 && <p>Sem extras lançados. Dias normais não geram diária automática.</p>}
+        {row.extras.map((extra) => (
+          <div className="payment-extra-row" key={extra.id}>
+            <label>Tipo<select value={extra.type} onChange={(event) => onUpdateExtra(row.guardId, extra.id, "type", event.target.value)}>{guardPaymentExtraTypes.map((type) => <option key={type} value={type}>{type}</option>)}</select></label>
+            <label>Descrição<input value={extra.description} onChange={(event) => onUpdateExtra(row.guardId, extra.id, "description", event.target.value)} /></label>
+            <label>Valor<input inputMode="decimal" value={String(extra.amount)} onChange={(event) => onUpdateExtra(row.guardId, extra.id, "amount", event.target.value)} /></label>
+            <button className="danger-button" type="button" onClick={() => onRemoveExtra(row.guardId, extra.id)}>Remover</button>
+          </div>
+        ))}
+      </div>
+    </article>
+  );
+}
+
+function PaymentConferenceSummary({ rows, totalGeneral }: { rows: GuardPaymentClosingRow[]; totalGeneral: number }) {
+  const shiftsCount = rows.reduce((total, row) => total + row.shifts.length, 0);
+  const divergencesCount = rows.reduce((total, row) => total + row.divergences.length, 0);
+  const extrasCount = rows.reduce((total, row) => total + row.extras.length, 0);
+  return (
+    <section className="monitoring-card payment-summary-card">
+      <span>RESUMO DE CONFERÊNCIA</span>
+      <div className="payment-mini-grid">
+        <small>Dias conferidos<b>{shiftsCount}</b></small>
+        <small>Divergências encontradas<b>{divergencesCount}</b></small>
+        <small>Extras identificados<b>{extrasCount}</b></small>
+        <small>Total geral<b>{formatCurrencyBRL(totalGeneral)}</b></small>
+      </div>
+      {rows.map((row) => <p key={row.guardId}><b>{row.guardName}:</b> {formatCurrencyBRL(row.totalAmount)} ({row.extras.length} extra(s), {row.divergences.length} divergência(s)).</p>)}
+    </section>
+  );
+}
+
+function PaymentSheetPreview({ rows, paymentDate, periodStart, periodEnd, status, notes }: { rows: GuardPaymentClosingRow[]; paymentDate: string; periodStart: string; periodEnd: string; status: GuardPaymentStatus; notes: string }) {
+  return (
+    <section className="monitoring-card payment-sheet-card">
+      <span>ABA PAGAMENTOS</span>
+      <strong>Linhas prontas para Google Sheets</strong>
+      <div className="payment-sheet-table">
+        <div className="payment-sheet-row header"><b>DATA PAGTO</b><b>PERÍODO</b><b>GUARDA</b><b>BASE QUINZENAL</b><b>EXTRA FERIADO</b><b>EXTRA PLANTÃO</b><b>DESCRIÇÃO EXTRAS</b><b>TOTAL</b><b>STATUS</b><b>OBSERVAÇÃO</b></div>
+        {rows.map((row) => (
+          <div className="payment-sheet-row" key={row.guardId}>
+            <span>{formatDateShort(paymentDate)}</span>
+            <span>{formatPaymentPeriodLabel(periodStart, periodEnd)}</span>
+            <span>{row.paymentName || row.guardName}</span>
+            <span>{formatCurrencyBRL(row.baseAmount)}</span>
+            <span>{formatCurrencyBRL(row.holidayExtraAmount)}</span>
+            <span>{formatCurrencyBRL(row.shiftExtraAmount)}</span>
+            <span>{row.extraDescription || "--"}</span>
+            <span>{formatCurrencyBRL(row.totalAmount)}</span>
+            <span>{status}</span>
+            <span>{notes || "--"}</span>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function PaymentHistorySection({ records, onStatusChange }: { records: GuardPaymentRecord[]; onStatusChange: (recordId: string, status: GuardPaymentStatus) => void }) {
+  return (
+    <section className="payment-history-section">
+      <div className="round-report-title">
+        <span>HISTÓRICO DE PAGAMENTOS</span>
+        <strong>Fechamentos salvos no app</strong>
+      </div>
+      {records.length === 0 && <article className="empty-state">Nenhum fechamento salvo ainda.</article>}
+      {records.length > 0 && (
+        <div className="payment-history-list">
+          {records.map((record) => (
+            <article className="monitoring-card payment-history-card" key={record.id}>
+              <div className="monitoring-card-head">
+                <div>
+                  <span>{formatPaymentPeriodLabel(record.periodStart, record.periodEnd)} • Pagto {formatDateShort(record.paymentDate)}</span>
+                  <strong>{record.guardDisplayName}</strong>
+                </div>
+                <em className={`payment-status payment-history-${record.status.toLowerCase().replace(/\s+/g, "-")}`}>{record.status}</em>
+              </div>
+              <div className="payment-mini-grid">
+                <small>Base<b>{formatCurrencyBRL(record.baseAmount)}</b></small>
+                <small>Extra feriado<b>{formatCurrencyBRL(record.holidayExtraAmount)}</b></small>
+                <small>Plantão/outros<b>{formatCurrencyBRL(record.shiftExtraAmount)}</b></small>
+                <small>Total<b>{formatCurrencyBRL(record.totalAmount)}</b></small>
+              </div>
+              <label>Status<select value={record.status} onChange={(event) => onStatusChange(record.id, event.target.value as GuardPaymentStatus)}>{guardPaymentStatuses.map((status) => <option key={status} value={status}>{status}</option>)}</select></label>
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -2483,6 +2806,389 @@ function formatPaymentReportText(rows: PaymentReportRow[], dateFilter: string, g
   ];
 
   return lines.join("\n").trim();
+}
+
+function getDefaultPaymentPeriod() {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = today.getMonth();
+  const day = today.getDate();
+  const start = new Date(year, month, day <= 15 ? 1 : 16);
+  const end = day <= 15 ? new Date(year, month, 15) : new Date(year, month + 1, 0);
+  return {
+    start: toIsoDate(start),
+    end: toIsoDate(end),
+    paymentDate: toIsoDate(today),
+  };
+}
+
+function buildPaymentProfileDrafts(profiles: GuardPaymentProfile[]): Record<GuardId, GuardPaymentProfile> {
+  const now = new Date().toISOString();
+  return guardNames.reduce((drafts, guardName) => {
+    const guardId = getGuardIdFromName(guardName);
+    const profile = profiles.find((current) => current.guardId === guardId);
+    drafts[guardId] = profile ?? {
+      id: `local-profile-${guardId}`,
+      guardId,
+      operationalName: guardName,
+      paymentName: "",
+      bankName: "",
+      agency: "",
+      accountType: "",
+      accountNumber: "",
+      cpf: "",
+      pix: "",
+      notes: "",
+      createdAt: now,
+      updatedAt: now,
+      source: "Local",
+    };
+    return drafts;
+  }, {} as Record<GuardId, GuardPaymentProfile>);
+}
+
+function buildGuardPaymentClosingRows(input: {
+  extras: Record<GuardId, GuardPaymentExtra[]>;
+  periodEnd: string;
+  periodStart: string;
+  profiles: Record<GuardId, GuardPaymentProfile>;
+  shiftSummaries: MonitoringShiftSummary[];
+}): GuardPaymentClosingRow[] {
+  return guardNames.map((guardName) => {
+    const guardId = getGuardIdFromName(guardName);
+    const profile = input.profiles[guardId];
+    const shifts = buildGuardShiftConferenceItems(guardId, guardName, input.periodStart, input.periodEnd, input.shiftSummaries);
+    const guardExtras = input.extras[guardId] ?? [];
+    const holidayExtraAmount = roundPaymentAmount(guardExtras.filter(isHolidayPaymentExtra).reduce((total, extra) => total + extra.amount, 0));
+    const shiftExtraAmount = roundPaymentAmount(guardExtras.filter((extra) => !isHolidayPaymentExtra(extra)).reduce((total, extra) => total + extra.amount, 0));
+    const totalAmount = roundPaymentAmount(GUARD_PAYMENT_BASE_AMOUNT + holidayExtraAmount + shiftExtraAmount);
+    return {
+      guardId,
+      guardName,
+      paymentName: profile.paymentName.trim(),
+      profile,
+      profileComplete: getMissingPaymentProfileFields(profile).length === 0,
+      shifts,
+      divergences: shifts.filter((shift) => shift.status !== "ok"),
+      extras: guardExtras,
+      baseAmount: GUARD_PAYMENT_BASE_AMOUNT,
+      holidayExtraAmount,
+      shiftExtraAmount,
+      totalAmount,
+      extraDescription: formatPaymentExtraDescription(guardExtras),
+    };
+  });
+}
+
+function buildGuardShiftConferenceItems(
+  guardId: GuardId,
+  guardName: GuardName,
+  periodStart: string,
+  periodEnd: string,
+  shiftSummaries: MonitoringShiftSummary[],
+): GuardShiftConferenceItem[] {
+  const summariesForGuard = shiftSummaries.filter((summary) => (
+    summary.guardLocalId === guardId
+    || (isGuardName(summary.guardName) && getGuardIdFromName(summary.guardName) === guardId)
+  ) && isDateInPaymentPeriod(summary.scheduledDate, periodStart, periodEnd));
+
+  const summariesBySchedule = new Map(summariesForGuard.map((summary) => [getPaymentScheduleKey(summary.scheduledDate, summary.scheduledStart), summary]));
+  const scheduledItems = getGuardShifts(guardName)
+    .filter((shift) => isDateInPaymentPeriod(shift.startDate, periodStart, periodEnd))
+    .map((shift) => {
+      const summary = summariesBySchedule.get(getPaymentScheduleKey(shift.startDate, shift.startTime));
+      return buildScheduledPaymentShiftItem(guardId, guardName, shift, summary);
+    });
+
+  const scheduledKeys = new Set(getGuardShifts(guardName)
+    .filter((shift) => isDateInPaymentPeriod(shift.startDate, periodStart, periodEnd))
+    .map((shift) => getPaymentScheduleKey(shift.startDate, shift.startTime)));
+
+  const extraItems = summariesForGuard
+    .filter((summary) => !scheduledKeys.has(getPaymentScheduleKey(summary.scheduledDate, summary.scheduledStart)))
+    .map((summary) => ({
+      id: `summary-${summary.shiftSessionId}`,
+      guardId,
+      guardName,
+      date: summary.scheduledDate,
+      line: `${formatDateShort(summary.scheduledDate)} - ${getPaymentShiftType(summary)} no app`,
+      status: "divergence" as const,
+      note: "Registro existe no app, mas nao foi encontrado na escala do periodo.",
+    }));
+
+  return [...scheduledItems, ...extraItems].sort((first, second) => (
+    first.date.localeCompare(second.date) || first.line.localeCompare(second.line)
+  ));
+}
+
+function buildScheduledPaymentShiftItem(guardId: GuardId, guardName: GuardName, shift: GuardShift, summary?: MonitoringShiftSummary): GuardShiftConferenceItem {
+  const id = `${guardId}-${shift.startDate}-${shift.startTime}`;
+  const line = `${formatDateShort(shift.startDate)} - ${formatGuardShiftKind(shift)} (${shift.startTime}-${shift.endTime})${shift.observation ? ` - ${formatGuardShiftObservation(shift.observation)}` : ""}`;
+
+  if (!summary) {
+    return {
+      id,
+      guardId,
+      guardName,
+      date: shift.startDate,
+      line,
+      status: "pending",
+      note: "Plantao previsto na escala. Conferir se houve ativacao e encerramento no app.",
+    };
+  }
+
+  if (!summary.startedAt || summary.shiftStatus === "pending") {
+    return {
+      id,
+      guardId,
+      guardName,
+      date: shift.startDate,
+      line,
+      status: "pending",
+      note: "Plantao ainda sem entrada registrada.",
+    };
+  }
+
+  if (!summary.endedAt || summary.shiftStatus === "active") {
+    return {
+      id,
+      guardId,
+      guardName,
+      date: shift.startDate,
+      line,
+      status: "pending",
+      note: "Entrada registrada. Conferir saida antes do pagamento.",
+    };
+  }
+
+  if (summary.lateCount > 0 || summary.outOfSequenceCount > 0 || summary.pointsPending > 0) {
+    return {
+      id,
+      guardId,
+      guardName,
+      date: shift.startDate,
+      line,
+      status: "divergence",
+      note: getPaymentObservation(summary, getPaymentStatus(summary)),
+    };
+  }
+
+  return {
+    id,
+    guardId,
+    guardName,
+    date: shift.startDate,
+    line,
+    status: "ok",
+    note: `Entrada ${formatTimeOnly(summary.startedAt)} e saida ${formatTimeOnly(summary.endedAt)} registradas.`,
+  };
+}
+
+function buildFinanceMessage(rows: GuardPaymentClosingRow[], periodStart: string, periodEnd: string, manualNotes: string) {
+  const lines = [
+    "Bom dia.",
+    "",
+    `Segue fechamento dos guardas Santa Maria referente ao periodo de ${formatPaymentPeriodLabel(periodStart, periodEnd)}.`,
+    "",
+    "Regra do fechamento: base quinzenal fixa de R$ 1.000,00 por guarda. Dias normais da escala entram somente para conferencia. R$ 150,00 e R$ 75,00 sao usados apenas para extras lancados.",
+    "",
+    ...rows.flatMap((row) => buildFinanceMessageGuardLines(row)),
+    `Total geral: ${formatCurrencyBRL(rows.reduce((total, row) => total + row.totalAmount, 0))}`,
+  ];
+
+  if (manualNotes.trim()) {
+    lines.push("", `Observacao geral: ${manualNotes.trim()}`);
+  }
+
+  return lines.join("\n").trim();
+}
+
+function buildFinanceMessageGuardLines(row: GuardPaymentClosingRow) {
+  const profile = row.profile;
+  const missing = getMissingPaymentProfileFields(profile);
+  return [
+    row.paymentName || row.guardName,
+    `Base quinzenal: ${formatCurrencyBRL(row.baseAmount)}`,
+    `Extra feriado: ${formatCurrencyBRL(row.holidayExtraAmount)}`,
+    `Extra plantao/outros: ${formatCurrencyBRL(row.shiftExtraAmount)}`,
+    `Descricao extras: ${row.extraDescription || "Sem extras"}`,
+    `Total: ${formatCurrencyBRL(row.totalAmount)}`,
+    `Banco: ${profile.bankName || "--"}`,
+    `Agencia: ${profile.agency || "--"}`,
+    `${profile.accountType || "Conta"}: ${profile.accountNumber || "--"}`,
+    `CPF: ${profile.cpf || "--"}`,
+    `Pix: ${profile.pix || "--"}`,
+    `Nome pagamento: ${profile.paymentName || "--"}`,
+    missing.length > 0 ? `Pendencia: dados de pagamento incompletos (${missing.join(", ")}).` : "Dados de pagamento completos.",
+    row.divergences.length > 0 ? `Conferencia: ${row.divergences.length} item(ns) para conferir.` : "Conferencia: sem divergencias no periodo.",
+    "",
+  ];
+}
+
+function buildPaymentSheetText(rows: GuardPaymentClosingRow[], paymentDate: string, periodStart: string, periodEnd: string, status: GuardPaymentStatus, notes: string) {
+  const header = ["DATA PAGTO", "PERÍODO", "GUARDA", "BASE QUINZENAL", "EXTRA FERIADO", "EXTRA PLANTÃO", "DESCRIÇÃO EXTRAS", "TOTAL", "STATUS", "OBSERVAÇÃO"];
+  const periodLabel = formatPaymentPeriodLabel(periodStart, periodEnd);
+  const lines = rows.map((row) => [
+    formatDateShort(paymentDate),
+    periodLabel,
+    row.paymentName || row.guardName,
+    formatCurrencyBRL(row.baseAmount),
+    formatCurrencyBRL(row.holidayExtraAmount),
+    formatCurrencyBRL(row.shiftExtraAmount),
+    row.extraDescription || "Sem extras",
+    formatCurrencyBRL(row.totalAmount),
+    status,
+    notes || (row.divergences.length > 0 ? `${row.divergences.length} item(ns) para conferir` : "OK"),
+  ].map(sanitizePaymentSheetCell).join("\t"));
+  return [header.join("\t"), ...lines].join("\n");
+}
+
+function buildPaymentRecordsFromClosingRows(
+  rows: GuardPaymentClosingRow[],
+  paymentDate: string,
+  periodStart: string,
+  periodEnd: string,
+  status: GuardPaymentStatus,
+  notes: string,
+  financeMessage: string,
+): GuardPaymentRecord[] {
+  const now = new Date().toISOString();
+  const periodLabel = formatPaymentPeriodLabel(periodStart, periodEnd);
+  return rows.map((row) => ({
+    id: createId(),
+    paymentDate,
+    periodLabel,
+    periodStart,
+    periodEnd,
+    guardId: row.guardId,
+    guardDisplayName: row.paymentName || row.guardName,
+    baseAmount: row.baseAmount,
+    holidayExtraAmount: row.holidayExtraAmount,
+    shiftExtraAmount: row.shiftExtraAmount,
+    extraDescription: row.extraDescription,
+    totalAmount: row.totalAmount,
+    status,
+    notes,
+    financeMessage,
+    createdAt: now,
+    updatedAt: now,
+    source: "Local",
+  }));
+}
+
+function upsertProfileList(profiles: GuardPaymentProfile[], profile: GuardPaymentProfile) {
+  return profiles.some((current) => current.guardId === profile.guardId || current.id === profile.id)
+    ? profiles.map((current) => (current.guardId === profile.guardId || current.id === profile.id ? profile : current))
+    : [profile, ...profiles];
+}
+
+function mergePaymentRecords(currentRecords: GuardPaymentRecord[], nextRecords: GuardPaymentRecord[]) {
+  const recordMap = new Map(currentRecords.map((record) => [record.id, record]));
+  nextRecords.forEach((record) => recordMap.set(record.id, record));
+  return [...recordMap.values()].sort((first, second) => (
+    new Date(second.createdAt).getTime() - new Date(first.createdAt).getTime()
+  ));
+}
+
+function createGuardPaymentExtra(guardId: GuardId): GuardPaymentExtra {
+  return {
+    id: createId(),
+    guardId,
+    type: "Feriado 1/2 dia",
+    description: "",
+    amount: GUARD_PAYMENT_HALF_EXTRA_AMOUNT,
+  };
+}
+
+function updateGuardPaymentExtra(extra: GuardPaymentExtra, field: keyof GuardPaymentExtra, value: string): GuardPaymentExtra {
+  if (field === "amount") return { ...extra, amount: parsePaymentAmount(value) };
+  if (field === "description") return { ...extra, description: value };
+  if (field === "type") {
+    const type = guardPaymentExtraTypes.includes(value as GuardPaymentExtraType) ? value as GuardPaymentExtraType : extra.type;
+    return { ...extra, type, amount: getDefaultAmountForPaymentExtra(type, extra.amount) };
+  }
+  return extra;
+}
+
+function getDefaultAmountForPaymentExtra(type: GuardPaymentExtraType, currentAmount: number) {
+  if (type.includes("1/2")) return GUARD_PAYMENT_HALF_EXTRA_AMOUNT;
+  if (type !== "Outro") return GUARD_PAYMENT_FULL_EXTRA_AMOUNT;
+  return currentAmount || 0;
+}
+
+function getMissingPaymentProfileFields(profile: GuardPaymentProfile) {
+  const fields = [
+    ["nome para pagamento", profile.paymentName],
+    ["banco", profile.bankName],
+    ["agencia", profile.agency],
+    ["tipo de conta", profile.accountType],
+    ["conta", profile.accountNumber],
+    ["CPF", profile.cpf],
+  ] as const;
+  return fields.filter(([, value]) => !value.trim()).map(([label]) => label);
+}
+
+function formatPaymentExtraDescription(extras: GuardPaymentExtra[]) {
+  return extras
+    .filter((extra) => extra.amount > 0 || extra.description.trim())
+    .map((extra) => `${extra.type}${extra.description.trim() ? ` - ${extra.description.trim()}` : ""}: ${formatCurrencyBRL(extra.amount)}`)
+    .join("; ");
+}
+
+function isHolidayPaymentExtra(extra: GuardPaymentExtra) {
+  return extra.type.startsWith("Feriado");
+}
+
+function formatGuardShiftKind(shift: GuardShift) {
+  if (shift.shiftType.toUpperCase().includes("NOTURNO")) return "noturno";
+  if (shift.observation?.toUpperCase().includes("EXTRA")) return "extra";
+  return "diurno";
+}
+
+function formatGuardShiftObservation(observation: string) {
+  return observation.toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+function formatCurrencyBRL(value: number) {
+  return roundPaymentAmount(value).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+function formatPaymentPeriodLabel(periodStart: string, periodEnd: string) {
+  return `${formatDateShort(periodStart)} a ${formatDateShort(periodEnd)}`;
+}
+
+function formatDateShort(value: string) {
+  const date = parseDateOnly(value);
+  if (!date) return "--";
+  return date.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+}
+
+function isDateInPaymentPeriod(value: string, periodStart: string, periodEnd: string) {
+  return Boolean(value) && value >= periodStart && value <= periodEnd;
+}
+
+function getPaymentScheduleKey(date: string, time: string) {
+  return `${date}|${time}`;
+}
+
+function parsePaymentAmount(value: string) {
+  const parsed = Number(value.replace(/\./g, "").replace(",", "."));
+  return roundPaymentAmount(Number.isFinite(parsed) ? parsed : 0);
+}
+
+function roundPaymentAmount(value: number) {
+  return Math.round((Number.isFinite(value) ? value : 0) * 100) / 100;
+}
+
+function sanitizePaymentSheetCell(value: string | number) {
+  return String(value).replace(/[\t\r\n]+/g, " ").trim();
+}
+
+function toIsoDate(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 function formatMonitoringStatusFilter(statusFilter: MonitoringStatusFilter) {
