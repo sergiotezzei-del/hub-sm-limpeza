@@ -60,6 +60,7 @@ type View =
   | "users-permissions"
   | "security-menu"
   | "security-guards"
+  | "security-guards-payment"
   | "security-monitoring"
   | "security-guard-detail";
 
@@ -71,7 +72,7 @@ type ManualDraft = {
 
 type GuardName = "Carlos Clemente" | "Salomão";
 
-type MonitoringTab = "entries" | "rounds" | "qrcode" | "closing";
+type MonitoringTab = "entries" | "rounds" | "qrcode";
 type MonitoringGuardFilter = "all" | GuardName;
 type MonitoringStatusFilter = "all" | "ok" | "late" | "out_of_sequence" | "pending";
 type MonitoringShiftSummaryStatus = "complete" | "in_progress" | "incomplete" | "late" | "out_of_sequence";
@@ -1017,6 +1018,17 @@ function App() {
     setView("security-monitoring");
   }
 
+  function openGuardPaymentReport() {
+    if (currentUser !== "tezzei" || !hasCurrentPermission("painel-admin")) {
+      setNotice("Sem permissão para acessar Fechamento / Pagamento.");
+      return;
+    }
+
+    setNotice("");
+    setSelectedGuardName(null);
+    setView("security-guards-payment");
+  }
+
   function openGuardDetail(guardName: GuardName) {
     setNotice("");
     setSelectedGuardName(guardName);
@@ -1260,7 +1272,9 @@ function App() {
 
       {view === "security-menu" && <SecurityMenuScreen permissions={getManagedUserPermissions(currentUser, managedUsers)} isAdmin={currentUser === "tezzei"} onBack={() => setView(getCurrentHomeView())} onLogout={goToLogin} onOpenGuards={openSecurityGuards} onOpenMonitoring={openSecurityMonitoring} />}
 
-      {view === "security-guards" && <SecurityGuardsScreen onBack={openSecurityMenu} onLogout={goToLogin} onOpenGuard={openGuardDetail} />}
+      {view === "security-guards" && <SecurityGuardsScreen onBack={openSecurityMenu} onLogout={goToLogin} onOpenGuard={openGuardDetail} onOpenPayment={openGuardPaymentReport} showPayment={currentUser === "tezzei"} />}
+
+      {view === "security-guards-payment" && currentUser === "tezzei" && <SecurityGuardsPaymentScreen onBack={openSecurityGuards} onLogout={goToLogin} />}
 
       {view === "security-monitoring" && currentUser === "tezzei" && <SecurityMonitoringScreen onBack={openSecurityMenu} onLogout={goToLogin} />}
 
@@ -1691,8 +1705,7 @@ function SecurityMenuScreen({ permissions, isAdmin, onBack, onLogout, onOpenGuar
   return <section className="screen"><TopBar title="Segurança" subtitle="Controle de segurança" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}>Voltar</button><section className="admin-grid security-grid"><ModuleCard title="Guardas" detail="Controle dos guardas" enabled={canGuards} onClick={onOpenGuards} className="security-card" />{isAdmin && <ModuleCard title="Monitoramento" detail="Entradas, saídas e rondas" enabled={canMonitoring} onClick={onOpenMonitoring} className="security-card" />}</section></section>;
 }
 
-function SecurityMonitoringScreen({ onBack, onLogout }: { onBack: () => void; onLogout: () => void }) {
-  const [activeTab, setActiveTab] = useState<MonitoringTab>("entries");
+function useGuardMonitoringData() {
   const [dateFilter, setDateFilter] = useState(() => getTodayIso());
   const [guardFilter, setGuardFilter] = useState<MonitoringGuardFilter>("all");
   const [statusFilter, setStatusFilter] = useState<MonitoringStatusFilter>("all");
@@ -1780,8 +1793,44 @@ function SecurityMonitoringScreen({ onBack, onLogout }: { onBack: () => void; on
   const overviewMetrics = useMemo(() => getMonitoringOverviewMetrics(filteredShiftSummaries), [filteredShiftSummaries]);
   const filteredEntries = useMemo(() => monitoringState.entries.filter((entry) => filteredShiftIds.has(entry.id)), [filteredShiftIds, monitoringState.entries]);
   const filteredRoundEntries = useMemo(() => roundState.entries.filter((entry) => filteredShiftIds.has(entry.shiftSessionId)), [filteredShiftIds, roundState.entries]);
+
+  return {
+    dateFilter,
+    filteredEntries,
+    filteredRoundEntries,
+    filteredShiftSummaries,
+    guardFilter,
+    loading,
+    monitoringState,
+    overviewMetrics,
+    roundState,
+    roundsLoading,
+    setDateFilter,
+    setGuardFilter,
+    setStatusFilter,
+    statusFilter,
+  };
+}
+
+function SecurityMonitoringScreen({ onBack, onLogout }: { onBack: () => void; onLogout: () => void }) {
+  const [activeTab, setActiveTab] = useState<MonitoringTab>("entries");
+  const {
+    dateFilter,
+    filteredEntries,
+    filteredRoundEntries,
+    filteredShiftSummaries,
+    guardFilter,
+    loading,
+    monitoringState,
+    overviewMetrics,
+    roundState,
+    roundsLoading,
+    setDateFilter,
+    setGuardFilter,
+    setStatusFilter,
+    statusFilter,
+  } = useGuardMonitoringData();
   const monitoringAlerts = useMemo(() => buildMonitoringAlerts(filteredShiftSummaries, activeTab), [activeTab, filteredShiftSummaries]);
-  const paymentRows = useMemo(() => buildPaymentReportRows(filteredShiftSummaries), [filteredShiftSummaries]);
   const showOperationalSummary = activeTab === "entries" || activeTab === "rounds";
 
   return (
@@ -1792,7 +1841,6 @@ function SecurityMonitoringScreen({ onBack, onLogout }: { onBack: () => void; on
         <button className={activeTab === "entries" ? "active" : ""} type="button" onClick={() => setActiveTab("entries")}>Entrada / Ativação de Serviço</button>
         <button className={activeTab === "rounds" ? "active" : ""} type="button" onClick={() => setActiveTab("rounds")}>Rondas</button>
         <button className={activeTab === "qrcode" ? "active" : ""} type="button" onClick={() => setActiveTab("qrcode")}>QR Code</button>
-        <button className={activeTab === "closing" ? "active" : ""} type="button" onClick={() => setActiveTab("closing")}>Fechamento / Pagamento</button>
       </div>
 
       {activeTab !== "qrcode" && (
@@ -1852,15 +1900,47 @@ function SecurityMonitoringScreen({ onBack, onLogout }: { onBack: () => void; on
         </section>
       )}
 
-      {activeTab === "closing" && (
-        <PaymentReportSection
-          dateFilter={dateFilter}
-          guardFilter={guardFilter}
-          loading={loading || roundsLoading}
-          rows={paymentRows}
-          statusFilter={statusFilter}
-        />
-      )}
+    </section>
+  );
+}
+
+function SecurityGuardsPaymentScreen({ onBack, onLogout }: { onBack: () => void; onLogout: () => void }) {
+  const {
+    dateFilter,
+    filteredShiftSummaries,
+    guardFilter,
+    loading,
+    monitoringState,
+    roundState,
+    roundsLoading,
+    setDateFilter,
+    setGuardFilter,
+    setStatusFilter,
+    statusFilter,
+  } = useGuardMonitoringData();
+  const paymentRows = useMemo(() => buildPaymentReportRows(filteredShiftSummaries), [filteredShiftSummaries]);
+
+  return (
+    <section className="screen monitoring-screen guards-payment-screen">
+      <TopBar title="Fechamento / Pagamento" subtitle="Conferência dos plantões dos guardas" onLogout={onLogout} />
+      <button className="ghost-button" type="button" onClick={onBack}>Voltar para Guardas</button>
+      <MonitoringGlobalFilters
+        dateFilter={dateFilter}
+        guardFilter={guardFilter}
+        statusFilter={statusFilter}
+        onDateFilterChange={setDateFilter}
+        onGuardFilterChange={setGuardFilter}
+        onStatusFilterChange={setStatusFilter}
+      />
+      {monitoringState.message && <p className={monitoringState.remoteReadable ? "success-message" : "notice-message"}>{monitoringState.message}</p>}
+      {roundState.message && <p className={roundState.remoteReadable ? "success-message" : "notice-message"}>{roundState.message}</p>}
+      <PaymentReportSection
+        dateFilter={dateFilter}
+        guardFilter={guardFilter}
+        loading={loading || roundsLoading}
+        rows={paymentRows}
+        statusFilter={statusFilter}
+      />
     </section>
   );
 }
@@ -2867,8 +2947,8 @@ function parseDateOnly(value: string) {
   return Number.isFinite(date.getTime()) ? date : null;
 }
 
-function SecurityGuardsScreen({ onBack, onLogout, onOpenGuard }: { onBack: () => void; onLogout: () => void; onOpenGuard: (guardName: GuardName) => void }) {
-  return <section className="screen"><TopBar title="Guardas" subtitle="Selecione o guarda" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}>Voltar para Segurança</button><GuardSyncDiagnosticPanel /><section className="admin-grid security-grid"><TodayDutyCard />{guardNames.map((guardName) => <ModuleCard key={guardName} title={guardName} detail="Guarda Santa Maria" enabled onClick={() => onOpenGuard(guardName)} className="security-card" />)}</section></section>;
+function SecurityGuardsScreen({ onBack, onLogout, onOpenGuard, onOpenPayment, showPayment }: { onBack: () => void; onLogout: () => void; onOpenGuard: (guardName: GuardName) => void; onOpenPayment: () => void; showPayment: boolean }) {
+  return <section className="screen"><TopBar title="Guardas" subtitle="Selecione o guarda" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}>Voltar para Segurança</button><GuardSyncDiagnosticPanel /><section className="admin-grid security-grid"><TodayDutyCard />{guardNames.map((guardName) => <ModuleCard key={guardName} title={guardName} detail="Guarda Santa Maria" enabled onClick={() => onOpenGuard(guardName)} className="security-card" />)}{showPayment && <ModuleCard title="Fechamento / Pagamento" detail="Conferência dos plantões" enabled onClick={onOpenPayment} className="security-card" />}</section></section>;
 }
 
 function SecurityGuardDetailScreen({ guardLocalId, guardName, onBack, onLogout }: { guardLocalId: GuardId; guardName: GuardName; onBack: () => void; onLogout: () => void }) {
