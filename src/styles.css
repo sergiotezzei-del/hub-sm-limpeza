@@ -1291,7 +1291,7 @@ select:disabled {
 
 .monitoring-tabs {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
   margin: 14px 0;
 }
@@ -1390,6 +1390,122 @@ select:disabled {
 .monitoring-alert-card.alert-ok {
   border-left-color: #16a34a;
   background: #f0fdf4;
+}
+
+.payment-report-section {
+  display: grid;
+  gap: 12px;
+}
+
+.payment-report-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+  padding: 14px;
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--orange);
+  border-radius: 8px;
+  box-shadow: var(--shadow-card);
+}
+
+.payment-report-head span {
+  color: #475569;
+  font-size: 0.72rem;
+  font-weight: 950;
+}
+
+.payment-report-head strong {
+  display: block;
+  margin-top: 2px;
+  color: var(--ink);
+  font-size: 1.02rem;
+}
+
+.payment-report-head p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 0.84rem;
+  font-weight: 750;
+  line-height: 1.35;
+}
+
+.payment-report-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.payment-report-list {
+  display: grid;
+  gap: 10px;
+}
+
+.payment-report-card {
+  border-left-color: #2563eb;
+}
+
+.payment-report-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.payment-report-grid small {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 9px 10px;
+  color: var(--muted);
+  background: #f8fafc;
+  border: 1px solid #e5eaf1;
+  border-radius: 8px;
+  font-size: 0.76rem;
+  font-weight: 850;
+}
+
+.payment-report-grid b {
+  color: var(--ink);
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+
+.payment-status {
+  align-self: start;
+  justify-self: end;
+  padding: 5px 8px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-style: normal;
+  font-weight: 950;
+  text-align: center;
+}
+
+.payment-ok {
+  color: #14532d;
+  background: #dcfce7;
+}
+
+.payment-check_entry,
+.payment-check_rounds {
+  color: #713f12;
+  background: #fef3c7;
+}
+
+.payment-check_exit,
+.payment-check_shift {
+  color: #991b1b;
+  background: #fee2e2;
+}
+
+.payment-observation {
+  margin: 0;
+  color: #475569;
+  font-size: 0.86rem;
+  font-weight: 750;
+  line-height: 1.35;
 }
 
 .monitoring-filters {
@@ -2154,6 +2270,60 @@ select:disabled {
     font-size: 10pt;
     line-height: 1.1;
   }
+
+  body.print-payment-report {
+    background: #ffffff;
+  }
+
+  body.print-payment-report #root,
+  body.print-payment-report .app-shell {
+    display: block !important;
+    width: auto;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    background: #ffffff !important;
+  }
+
+  body.print-payment-report .app-shell > :not(.monitoring-screen),
+  body.print-payment-report .monitoring-screen > :not(.payment-report-print-area) {
+    display: none !important;
+  }
+
+  body.print-payment-report .monitoring-screen,
+  body.print-payment-report .payment-report-section,
+  body.print-payment-report .payment-report-list,
+  body.print-payment-report .payment-report-card {
+    display: grid !important;
+    max-width: none !important;
+    margin: 0 !important;
+    background: #ffffff !important;
+    box-shadow: none !important;
+  }
+
+  body.print-payment-report .payment-report-section {
+    gap: 6mm;
+    padding: 10mm;
+  }
+
+  body.print-payment-report .payment-report-head,
+  body.print-payment-report .payment-report-card {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    border: 1px solid #cbd5e1;
+    border-left: 4px solid #f97316;
+    box-shadow: none;
+  }
+
+  body.print-payment-report .payment-report-actions,
+  body.print-payment-report .success-message,
+  body.print-payment-report .notice-message {
+    display: none !important;
+  }
+
+  body.print-payment-report .payment-report-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
 }
 
 @media (min-width: 721px) {
@@ -2218,6 +2388,16 @@ select:disabled {
     grid-template-columns: 1fr;
   }
 
+  .payment-report-head,
+  .payment-report-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .payment-report-actions > * {
+    width: 100%;
+  }
+
   .round-qr-panel-head {
     grid-template-columns: 1fr;
   }
@@ -2231,6 +2411,10 @@ select:disabled {
   }
 
   .shift-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .payment-report-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 

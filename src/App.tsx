@@ -71,12 +71,13 @@ type ManualDraft = {
 
 type GuardName = "Carlos Clemente" | "Salomão";
 
-type MonitoringTab = "entries" | "rounds" | "qrcode";
+type MonitoringTab = "entries" | "rounds" | "qrcode" | "closing";
 type MonitoringGuardFilter = "all" | GuardName;
 type MonitoringStatusFilter = "all" | "ok" | "late" | "out_of_sequence" | "pending";
 type MonitoringShiftSummaryStatus = "complete" | "in_progress" | "incomplete" | "late" | "out_of_sequence";
 type RoundScheduleDisplayStatus = "complete" | "incomplete" | "late" | "out_of_sequence" | "waiting";
 type MonitoringAlertLevel = "ok" | "warning" | "danger";
+type PaymentStatus = "ok" | "check_entry" | "check_exit" | "check_rounds" | "check_shift";
 
 type MonitoringAlert = {
   id: string;
@@ -84,6 +85,28 @@ type MonitoringAlert = {
   guardName?: string;
   title: string;
   message: string;
+};
+
+type PaymentReportRow = {
+  id: string;
+  guardName: string;
+  date: string;
+  shiftType: string;
+  scheduledStart: string;
+  scheduledEnd: string;
+  registeredStart: string;
+  registeredEnd: string;
+  expectedHours: string;
+  registeredHours: string;
+  serviceStatus: string;
+  roundsExpected: number;
+  roundsComplete: number;
+  pointsRegistered: number;
+  pointsPending: number;
+  lateCount: number;
+  outOfSequenceCount: number;
+  paymentStatus: PaymentStatus;
+  observations: string;
 };
 
 type MonitoringShiftSummary = {
@@ -1758,6 +1781,8 @@ function SecurityMonitoringScreen({ onBack, onLogout }: { onBack: () => void; on
   const filteredEntries = useMemo(() => monitoringState.entries.filter((entry) => filteredShiftIds.has(entry.id)), [filteredShiftIds, monitoringState.entries]);
   const filteredRoundEntries = useMemo(() => roundState.entries.filter((entry) => filteredShiftIds.has(entry.shiftSessionId)), [filteredShiftIds, roundState.entries]);
   const monitoringAlerts = useMemo(() => buildMonitoringAlerts(filteredShiftSummaries, activeTab), [activeTab, filteredShiftSummaries]);
+  const paymentRows = useMemo(() => buildPaymentReportRows(filteredShiftSummaries), [filteredShiftSummaries]);
+  const showOperationalSummary = activeTab === "entries" || activeTab === "rounds";
 
   return (
     <section className="screen monitoring-screen">
@@ -1767,6 +1792,7 @@ function SecurityMonitoringScreen({ onBack, onLogout }: { onBack: () => void; on
         <button className={activeTab === "entries" ? "active" : ""} type="button" onClick={() => setActiveTab("entries")}>Entrada / Ativação de Serviço</button>
         <button className={activeTab === "rounds" ? "active" : ""} type="button" onClick={() => setActiveTab("rounds")}>Rondas</button>
         <button className={activeTab === "qrcode" ? "active" : ""} type="button" onClick={() => setActiveTab("qrcode")}>QR Code</button>
+        <button className={activeTab === "closing" ? "active" : ""} type="button" onClick={() => setActiveTab("closing")}>Fechamento / Pagamento</button>
       </div>
 
       {activeTab !== "qrcode" && (
@@ -1779,9 +1805,13 @@ function SecurityMonitoringScreen({ onBack, onLogout }: { onBack: () => void; on
             onGuardFilterChange={setGuardFilter}
             onStatusFilterChange={setStatusFilter}
           />
-          <MonitoringAlertsPanel alerts={monitoringAlerts} />
-          <MonitoringOverviewCards metrics={overviewMetrics} />
-          <ShiftSummarySection loading={loading || roundsLoading} summaries={filteredShiftSummaries} />
+          {showOperationalSummary && (
+            <>
+              <MonitoringAlertsPanel alerts={monitoringAlerts} />
+              <MonitoringOverviewCards metrics={overviewMetrics} />
+              <ShiftSummarySection loading={loading || roundsLoading} summaries={filteredShiftSummaries} />
+            </>
+          )}
         </>
       )}
 
@@ -1820,6 +1850,16 @@ function SecurityMonitoringScreen({ onBack, onLogout }: { onBack: () => void; on
         <section className="monitoring-panel monitoring-qrcode-panel">
           <RoundQrCodesPanel points={roundState.points} />
         </section>
+      )}
+
+      {activeTab === "closing" && (
+        <PaymentReportSection
+          dateFilter={dateFilter}
+          guardFilter={guardFilter}
+          loading={loading || roundsLoading}
+          rows={paymentRows}
+          statusFilter={statusFilter}
+        />
       )}
     </section>
   );
@@ -1947,6 +1987,95 @@ function ShiftSummaryCard({ summary }: { summary: MonitoringShiftSummary }) {
         <small>Atrasos<b>{summary.lateCount}</b></small>
         <small>Fora de sequência<b>{summary.outOfSequenceCount}</b></small>
       </div>
+    </article>
+  );
+}
+
+function PaymentReportSection({
+  dateFilter,
+  guardFilter,
+  loading,
+  rows,
+  statusFilter,
+}: {
+  dateFilter: string;
+  guardFilter: MonitoringGuardFilter;
+  loading: boolean;
+  rows: PaymentReportRow[];
+  statusFilter: MonitoringStatusFilter;
+}) {
+  const [copyMessage, setCopyMessage] = useState("");
+  const reportText = useMemo(() => formatPaymentReportText(rows, dateFilter, guardFilter, statusFilter), [dateFilter, guardFilter, rows, statusFilter]);
+
+  async function handleCopyReport() {
+    const copied = await copyToClipboard(reportText);
+    setCopyMessage(copied ? "Relatório copiado." : "Não foi possível copiar o relatório.");
+  }
+
+  function handlePrintReport() {
+    const clearPrintMode = () => {
+      document.body.classList.remove("print-payment-report");
+      window.removeEventListener("afterprint", clearPrintMode);
+    };
+
+    document.body.classList.add("print-payment-report");
+    window.addEventListener("afterprint", clearPrintMode);
+    window.requestAnimationFrame(() => {
+      window.print();
+    });
+  }
+
+  return (
+    <section className="payment-report-section payment-report-print-area" aria-label="Fechamento e pagamento dos guardas">
+      <div className="payment-report-head">
+        <div>
+          <span>FECHAMENTO / PAGAMENTO</span>
+          <strong>Conferência simples dos plantões</strong>
+          <p>Relatório operacional para apoiar a conferência antes do pagamento, sem cálculo financeiro automático.</p>
+        </div>
+        <div className="payment-report-actions">
+          <button className="secondary-button" type="button" onClick={handleCopyReport} disabled={loading || rows.length === 0}>Copiar relatório</button>
+          <button className="secondary-button" type="button" onClick={handlePrintReport} disabled={loading || rows.length === 0}>Imprimir relatório</button>
+        </div>
+      </div>
+      {copyMessage && <p className={copyMessage.startsWith("Relatório") ? "success-message" : "notice-message"}>{copyMessage}</p>}
+      {loading && <article className="monitoring-card"><strong>Carregando fechamento...</strong></article>}
+      {!loading && rows.length === 0 && <article className="empty-state">Nenhum plantão encontrado para o fechamento atual.</article>}
+      {!loading && rows.length > 0 && (
+        <div className="payment-report-list">
+          {rows.map((row) => <PaymentReportCard key={row.id} row={row} />)}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function PaymentReportCard({ row }: { row: PaymentReportRow }) {
+  return (
+    <article className="monitoring-card payment-report-card">
+      <div className="monitoring-card-head">
+        <div>
+          <span>{formatDateOnly(row.date)} • {row.shiftType}</span>
+          <strong>{row.guardName}</strong>
+        </div>
+        <em className={`payment-status payment-${row.paymentStatus}`}>{formatPaymentStatus(row.paymentStatus)}</em>
+      </div>
+      <div className="payment-report-grid">
+        <small>Entrada prevista<b>{row.scheduledStart}</b></small>
+        <small>Saída prevista<b>{row.scheduledEnd}</b></small>
+        <small>Entrada registrada<b>{row.registeredStart}</b></small>
+        <small>Saída registrada<b>{row.registeredEnd}</b></small>
+        <small>Horas previstas<b>{row.expectedHours}</b></small>
+        <small>Horas registradas<b>{row.registeredHours}</b></small>
+        <small>Status do serviço<b>{row.serviceStatus}</b></small>
+        <small>Rondas previstas<b>{row.roundsExpected}</b></small>
+        <small>Rondas concluídas<b>{row.roundsComplete}</b></small>
+        <small>Pontos registrados<b>{row.pointsRegistered}</b></small>
+        <small>Pontos pendentes<b>{row.pointsPending}</b></small>
+        <small>Atrasos<b>{row.lateCount}</b></small>
+        <small>Fora de sequência<b>{row.outOfSequenceCount}</b></small>
+      </div>
+      <p className="payment-observation"><b>Observações:</b> {row.observations}</p>
     </article>
   );
 }
@@ -2140,6 +2269,151 @@ function RoundPointStatusList({ points }: { points: Array<{ point: GuardRoundPoi
       })}
     </ul>
   );
+}
+
+function buildPaymentReportRows(summaries: MonitoringShiftSummary[]): PaymentReportRow[] {
+  return summaries.map((summary) => {
+    const paymentStatus = getPaymentStatus(summary);
+    return {
+      id: summary.shiftSessionId,
+      guardName: summary.guardName,
+      date: summary.scheduledDate,
+      shiftType: getPaymentShiftType(summary),
+      scheduledStart: summary.scheduledStart,
+      scheduledEnd: summary.scheduledEnd,
+      registeredStart: formatTimeOnly(summary.startedAt),
+      registeredEnd: formatTimeOnly(summary.endedAt),
+      expectedHours: formatExpectedShiftHours(summary),
+      registeredHours: formatRegisteredShiftHours(summary),
+      serviceStatus: formatMonitoringStatus(summary.shiftStatus),
+      roundsExpected: summary.roundsExpected,
+      roundsComplete: summary.roundsComplete,
+      pointsRegistered: summary.pointsRegistered,
+      pointsPending: summary.pointsPending,
+      lateCount: summary.lateCount,
+      outOfSequenceCount: summary.outOfSequenceCount,
+      paymentStatus,
+      observations: getPaymentObservation(summary, paymentStatus),
+    };
+  });
+}
+
+function getPaymentStatus(summary: MonitoringShiftSummary): PaymentStatus {
+  if (summary.shiftStatus === "active" || (summary.startedAt && !summary.endedAt)) return "check_exit";
+  if (!summary.startedAt || summary.shiftStatus === "pending") return "check_entry";
+  if (summary.pointsPending > 0 || summary.lateCount > 0 || summary.outOfSequenceCount > 0) return "check_rounds";
+  if (summary.shiftStatus === "auto_ended" || summary.scheduledStart === "--" || summary.scheduledEnd === "--") return "check_shift";
+  return "ok";
+}
+
+function getPaymentObservation(summary: MonitoringShiftSummary, status: PaymentStatus) {
+  if (status === "ok") return "Plantão completo para conferência.";
+  if (status === "check_exit") return "Saída não registrada ou serviço ainda ativo.";
+  if (status === "check_entry") return "Entrada não registrada ou plantão pendente.";
+  if (status === "check_rounds") {
+    const issues = [
+      summary.pointsPending > 0 ? `${summary.pointsPending} ponto(s) pendente(s)` : "",
+      summary.lateCount > 0 ? `${summary.lateCount} atraso(s)` : "",
+      summary.outOfSequenceCount > 0 ? `${summary.outOfSequenceCount} fora de sequência` : "",
+    ].filter(Boolean);
+    return `Conferir rondas: ${issues.join(", ")}.`;
+  }
+  return "Conferir consistência do plantão.";
+}
+
+function formatPaymentStatus(status: PaymentStatus) {
+  const labels: Record<PaymentStatus, string> = {
+    ok: "OK para pagamento",
+    check_entry: "Conferir entrada",
+    check_exit: "Conferir saída",
+    check_rounds: "Conferir rondas",
+    check_shift: "Conferir plantão",
+  };
+  return labels[status];
+}
+
+function getPaymentShiftType(summary: MonitoringShiftSummary) {
+  if (summary.scheduledStart === "--" || summary.scheduledEnd === "--") return "Não identificado";
+  const expectedMinutes = getExpectedShiftMinutes(summary);
+  if (summary.scheduledEnd <= summary.scheduledStart) return "Noturno";
+  if (expectedMinutes !== null && expectedMinutes <= 360) return "Extra 6h";
+  return "Diurno";
+}
+
+function formatExpectedShiftHours(summary: MonitoringShiftSummary) {
+  const expectedMinutes = getExpectedShiftMinutes(summary);
+  return expectedMinutes === null ? "--" : formatDurationMinutes(expectedMinutes);
+}
+
+function getExpectedShiftMinutes(summary: MonitoringShiftSummary) {
+  const start = getMonitoringShiftStartAt(summary);
+  const end = getMonitoringShiftEndAt(summary);
+  if (!start || !end) return null;
+  return getDurationMinutes(start.toISOString(), end.toISOString());
+}
+
+function formatRegisteredShiftHours(summary: MonitoringShiftSummary) {
+  if (!summary.startedAt) return "Sem entrada";
+  if (!summary.endedAt) return "Incompleto";
+  const minutes = getDurationMinutes(summary.startedAt, summary.endedAt);
+  return minutes === null ? "--" : formatDurationMinutes(minutes);
+}
+
+function getDurationMinutes(startedAt: string, endedAt: string) {
+  const durationMs = new Date(endedAt).getTime() - new Date(startedAt).getTime();
+  if (!Number.isFinite(durationMs) || durationMs < 0) return null;
+  return Math.round(durationMs / 60000);
+}
+
+function formatDurationMinutes(totalMinutes: number) {
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (hours === 0) return `${minutes}min`;
+  if (minutes === 0) return `${hours}h`;
+  return `${hours}h${String(minutes).padStart(2, "0")}`;
+}
+
+function formatPaymentReportText(rows: PaymentReportRow[], dateFilter: string, guardFilter: MonitoringGuardFilter, statusFilter: MonitoringStatusFilter) {
+  const filters = [
+    `Data: ${dateFilter ? formatDateFull(dateFilter) : "Todas"}`,
+    `Guarda: ${guardFilter === "all" ? "Todos" : guardFilter}`,
+    `Status: ${formatMonitoringStatusFilter(statusFilter)}`,
+  ];
+
+  const lines = [
+    "FECHAMENTO DE GUARDAS",
+    `Período/Filtro: ${filters.join(" | ")}`,
+    "",
+    ...rows.flatMap((row) => [
+      `${row.guardName} - ${formatDateFull(row.date)} - ${row.shiftType}`,
+      `Previsto: ${row.scheduledStart} às ${row.scheduledEnd}`,
+      `Registrado: ${row.registeredStart} às ${row.registeredEnd}`,
+      `Horas previstas: ${row.expectedHours}`,
+      `Horas registradas: ${row.registeredHours}`,
+      `Status do serviço: ${row.serviceStatus}`,
+      `Rondas: ${row.roundsComplete}/${row.roundsExpected}`,
+      `Pontos registrados: ${row.pointsRegistered}`,
+      `Pendências: ${row.pointsPending}`,
+      `Atrasos: ${row.lateCount}`,
+      `Fora de sequência: ${row.outOfSequenceCount}`,
+      `Status: ${formatPaymentStatus(row.paymentStatus)}`,
+      `Observações: ${row.observations}`,
+      "",
+    ]),
+  ];
+
+  return lines.join("\n").trim();
+}
+
+function formatMonitoringStatusFilter(statusFilter: MonitoringStatusFilter) {
+  const labels: Record<MonitoringStatusFilter, string> = {
+    all: "Todos",
+    ok: "OK",
+    late: "Atrasado",
+    out_of_sequence: "Fora de sequência",
+    pending: "Pendente",
+  };
+  return labels[statusFilter];
 }
 
 function buildMonitoringAlerts(summaries: MonitoringShiftSummary[], activeTab: MonitoringTab): MonitoringAlert[] {
@@ -2545,6 +2819,12 @@ function formatDateOnly(value: string) {
   const date = parseDateOnly(value);
   if (!date) return "--";
   return date.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" });
+}
+
+function formatDateFull(value: string) {
+  const date = parseDateOnly(value);
+  if (!date) return "--";
+  return date.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
 function formatDateTimeShort(value: string | undefined) {
