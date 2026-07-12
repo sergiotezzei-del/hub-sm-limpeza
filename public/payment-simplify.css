@@ -1,0 +1,69 @@
+/* Ajuste leve para simplificar Fechamento / Pagamento sem alterar o fluxo principal. */
+.guards-payment-screen > .success-message {
+  display: none !important;
+}
+
+.guards-payment-screen .payment-report-head p {
+  display: none !important;
+}
+
+.guards-payment-screen .payment-report-actions {
+  gap: 10px;
+}
+
+.guards-payment-screen .payment-report-actions button {
+  min-height: 44px;
+}
+
+.guards-payment-screen .payment-total-card .payment-mini-grid small:nth-child(3) {
+  display: none !important;
+}
+
+.guards-payment-screen .payment-summary-card {
+  display: none !important;
+}
+
+.guards-payment-screen .payment-profile-section {
+  margin-top: 12px;
+}
+
+.guards-payment-screen .payment-profile-section .payment-profile-grid {
+  display: none !important;
+}
+
+.guards-payment-screen .payment-profile-section.payment-profile-open .payment-profile-grid {
+  display: grid !important;
+}
+
+.payment-profile-toggle-button {
+  width: 100%;
+  margin: 12px 0 0;
+}
+
+.guards-payment-screen .payment-shift-line small {
+  display: none !important;
+}
+
+.guards-payment-screen .payment-message-card textarea {
+  min-height: 420px;
+  font-size: 0.95rem;
+  line-height: 1.45;
+}
+
+.guards-payment-screen .payment-history-card .payment-mini-grid small:not(:last-child) {
+  display: none !important;
+}
+
+.guards-payment-screen .payment-history-card .payment-mini-grid {
+  grid-template-columns: 1fr;
+}
+
+@media (max-width: 720px) {
+  .guards-payment-screen .payment-report-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .guards-payment-screen .payment-config-grid {
+    gap: 12px;
+  }
+}
