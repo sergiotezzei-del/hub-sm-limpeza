@@ -59,7 +59,6 @@ export async function loadGuardPaymentData(): Promise<GuardPaymentLoadState> {
       records: getLocalPaymentRecords(),
       remoteReadable: false,
       remoteProtected: false,
-      message: "Supabase não configurado. Fechamento salvo somente neste aparelho.",
     };
   }
 
@@ -77,7 +76,6 @@ export async function loadGuardPaymentData(): Promise<GuardPaymentLoadState> {
       records,
       remoteReadable: true,
       remoteProtected: false,
-      message: "Dados de pagamento carregados do Supabase.",
     };
   } catch (error) {
     return {
@@ -86,8 +84,8 @@ export async function loadGuardPaymentData(): Promise<GuardPaymentLoadState> {
       remoteReadable: false,
       remoteProtected: isPaymentRemoteProtectedError(error),
       message: isPaymentRemoteProtectedError(error)
-        ? "Histórico de pagamentos protegido por RLS. Verifique a sessão Auth do Admin."
-        : "Não foi possível consultar pagamentos online agora. Exibindo registros deste aparelho.",
+        ? "Erro ao carregar dados de pagamento. Histórico protegido por RLS."
+        : "Erro ao carregar dados de pagamento. Exibindo registros deste aparelho.",
     };
   }
 }

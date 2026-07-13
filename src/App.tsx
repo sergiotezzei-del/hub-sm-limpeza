@@ -86,6 +86,7 @@ type GuardPaymentExtraType = "Feriado 1/2 dia" | "Feriado dia inteiro" | "Plant�
 type GuardPaymentExtra = {
   id: string;
   guardId: GuardId;
+  date: string;
   type: GuardPaymentExtraType;
   description: string;
   amount: number;
@@ -97,8 +98,6 @@ type GuardShiftConferenceItem = {
   guardName: GuardName;
   date: string;
   line: string;
-  status: "ok" | "pending" | "divergence";
-  note: string;
 };
 
 type GuardPaymentClosingRow = {
@@ -108,7 +107,6 @@ type GuardPaymentClosingRow = {
   profile: GuardPaymentProfile;
   profileComplete: boolean;
   shifts: GuardShiftConferenceItem[];
-  divergences: GuardShiftConferenceItem[];
   extras: GuardPaymentExtra[];
   baseAmount: number;
   holidayExtraAmount: number;
@@ -1957,24 +1955,12 @@ function SecurityMonitoringScreen({ onBack, onLogout }: { onBack: () => void; on
 }
 
 function SecurityGuardsPaymentScreen({ onBack, onLogout }: { onBack: () => void; onLogout: () => void }) {
-  const {
-    loading,
-    monitoringState,
-    roundState,
-    roundsLoading,
-    shiftSummaries,
-  } = useGuardMonitoringData();
 
   return (
     <section className="screen monitoring-screen guards-payment-screen">
       <TopBar title="Fechamento / Pagamento" subtitle="Conferência dos plantões dos guardas" onLogout={onLogout} />
       <button className="ghost-button" type="button" onClick={onBack}>Voltar para Guardas</button>
-      {monitoringState.message && <p className={monitoringState.remoteReadable ? "success-message" : "notice-message"}>{monitoringState.message}</p>}
-      {roundState.message && <p className={roundState.remoteReadable ? "success-message" : "notice-message"}>{roundState.message}</p>}
-      <PaymentReportSection
-        monitoringLoading={loading || roundsLoading}
-        shiftSummaries={shiftSummaries}
-      />
+      <PaymentReportSection />
     </section>
   );
 }
@@ -2105,34 +2091,35 @@ function ShiftSummaryCard({ summary }: { summary: MonitoringShiftSummary }) {
   );
 }
 
-function PaymentReportSection({ monitoringLoading, shiftSummaries }: { monitoringLoading: boolean; shiftSummaries: MonitoringShiftSummary[] }) {
+function PaymentReportSection() {
   const defaultPeriod = useMemo(() => getDefaultPaymentPeriod(), []);
   const [periodStart, setPeriodStart] = useState(defaultPeriod.start);
   const [periodEnd, setPeriodEnd] = useState(defaultPeriod.end);
   const [paymentDate, setPaymentDate] = useState(defaultPeriod.paymentDate);
   const [closingStatus, setClosingStatus] = useState<GuardPaymentStatus>("PENDENTE");
-  const [manualNotes, setManualNotes] = useState("");
   const [paymentState, setPaymentState] = useState<GuardPaymentLoadState>({
     profiles: [],
     records: [],
     remoteReadable: false,
     remoteProtected: false,
-    message: "Carregando dados de pagamento...",
   });
   const [paymentLoading, setPaymentLoading] = useState(true);
   const [profileDrafts, setProfileDrafts] = useState<Record<GuardId, GuardPaymentProfile>>(() => buildPaymentProfileDrafts([]));
   const [extras, setExtras] = useState<Record<GuardId, GuardPaymentExtra[]>>({ "carlos-clemente": [], salomao: [] });
-  const [generatedMessage, setGeneratedMessage] = useState("");
+  const [showProfileEditor, setShowProfileEditor] = useState(false);
+  const [paymentError, setPaymentError] = useState("");
   const [copyMessage, setCopyMessage] = useState("");
 
   useEffect(() => {
     let active = true;
     setPaymentLoading(true);
+    setPaymentError("");
     loadGuardPaymentData()
       .then((state) => {
         if (!active) return;
         setPaymentState(state);
         setProfileDrafts(buildPaymentProfileDrafts(state.profiles));
+        setPaymentError(getPaymentLoadErrorMessage(state.message));
       })
       .catch(() => {
         if (!active) return;
@@ -2143,6 +2130,7 @@ function PaymentReportSection({ monitoringLoading, shiftSummaries }: { monitorin
           remoteProtected: false,
           message: "Não foi possível carregar dados de pagamento.",
         });
+        setPaymentError("Erro ao carregar dados de pagamento.");
       })
       .finally(() => {
         if (active) setPaymentLoading(false);
@@ -2158,15 +2146,12 @@ function PaymentReportSection({ monitoringLoading, shiftSummaries }: { monitorin
     periodEnd,
     periodStart,
     profiles: profileDrafts,
-    shiftSummaries,
-  }), [extras, periodEnd, periodStart, profileDrafts, shiftSummaries]);
+  }), [extras, periodEnd, periodStart, profileDrafts]);
   const totalGeneral = useMemo(() => closingRows.reduce((total, row) => total + row.totalAmount, 0), [closingRows]);
-  const totalDivergences = useMemo(() => closingRows.reduce((total, row) => total + row.divergences.length, 0), [closingRows]);
   const totalExtras = useMemo(() => closingRows.reduce((total, row) => total + row.extras.length, 0), [closingRows]);
-  const financeMessage = useMemo(() => buildFinanceMessage(closingRows, periodStart, periodEnd, manualNotes), [closingRows, manualNotes, periodEnd, periodStart]);
-  const paymentSheetText = useMemo(() => buildPaymentSheetText(closingRows, paymentDate, periodStart, periodEnd, closingStatus, manualNotes), [closingRows, closingStatus, manualNotes, paymentDate, periodEnd, periodStart]);
-  const messagePreview = generatedMessage || financeMessage;
-  const loading = monitoringLoading || paymentLoading;
+  const financeMessage = useMemo(() => buildFinanceMessage(closingRows, periodStart, periodEnd), [closingRows, periodEnd, periodStart]);
+  const paymentSheetText = useMemo(() => buildPaymentSheetText(closingRows, paymentDate, periodStart, periodEnd, closingStatus), [closingRows, closingStatus, paymentDate, periodEnd, periodStart]);
+  const loading = paymentLoading;
 
   function updateProfileDraft(guardId: GuardId, field: keyof GuardPaymentProfile, value: string) {
     setProfileDrafts((current) => ({
@@ -2179,14 +2164,18 @@ function PaymentReportSection({ monitoringLoading, shiftSummaries }: { monitorin
   }
 
   async function handleSaveProfile(guardId: GuardId) {
-    const result = await saveGuardPaymentProfile(profileDrafts[guardId]);
-    setPaymentState((current) => ({
-      ...current,
-      profiles: upsertProfileList(current.profiles, result.profile),
-      message: result.message,
-    }));
-    setProfileDrafts((current) => ({ ...current, [guardId]: result.profile }));
-    setCopyMessage(result.message);
+    setPaymentError("");
+    try {
+      const result = await saveGuardPaymentProfile(profileDrafts[guardId]);
+      setPaymentState((current) => ({
+        ...current,
+        profiles: upsertProfileList(current.profiles, result.profile),
+      }));
+      setProfileDrafts((current) => ({ ...current, [guardId]: result.profile }));
+      setCopyMessage(result.message);
+    } catch {
+      setPaymentError("Erro ao salvar dados de pagamento.");
+    }
   }
 
   function handleAddExtra(guardId: GuardId) {
@@ -2211,8 +2200,7 @@ function PaymentReportSection({ monitoringLoading, shiftSummaries }: { monitorin
   }
 
   async function handleCopyFinanceMessage() {
-    const message = generatedMessage || financeMessage;
-    const copied = await copyToClipboard(message);
+    const copied = await copyToClipboard(financeMessage);
     setCopyMessage(copied ? "Mensagem para financeiro copiada." : "Não foi possível copiar a mensagem.");
   }
 
@@ -2222,24 +2210,32 @@ function PaymentReportSection({ monitoringLoading, shiftSummaries }: { monitorin
   }
 
   async function handleSaveClosing() {
-    const records = buildPaymentRecordsFromClosingRows(closingRows, paymentDate, periodStart, periodEnd, closingStatus, manualNotes, financeMessage);
-    const result = await saveGuardPaymentRecords(records);
-    setPaymentState((current) => ({
-      ...current,
-      records: mergePaymentRecords(current.records, result.records),
-      message: result.message,
-    }));
-    setCopyMessage(result.message);
+    setPaymentError("");
+    try {
+      const records = buildPaymentRecordsFromClosingRows(closingRows, paymentDate, periodStart, periodEnd, closingStatus, financeMessage);
+      const result = await saveGuardPaymentRecords(records);
+      setPaymentState((current) => ({
+        ...current,
+        records: mergePaymentRecords(current.records, result.records),
+      }));
+      setCopyMessage(result.message);
+    } catch {
+      setPaymentError("Erro ao salvar pagamento.");
+    }
   }
 
   async function handleUpdateRecordStatus(recordId: string, status: GuardPaymentStatus) {
-    const result = await updateGuardPaymentRecordStatus(recordId, status);
-    setPaymentState((current) => ({
-      ...current,
-      records: result.record ? mergePaymentRecords(current.records, [result.record]) : current.records,
-      message: result.message,
-    }));
-    setCopyMessage(result.message);
+    setPaymentError("");
+    try {
+      const result = await updateGuardPaymentRecordStatus(recordId, status);
+      setPaymentState((current) => ({
+        ...current,
+        records: result.record ? mergePaymentRecords(current.records, [result.record]) : current.records,
+      }));
+      setCopyMessage(result.message);
+    } catch {
+      setPaymentError("Erro ao salvar pagamento.");
+    }
   }
 
   return (
@@ -2251,14 +2247,13 @@ function PaymentReportSection({ monitoringLoading, shiftSummaries }: { monitorin
           <p>Base quinzenal fixa de {formatCurrencyBRL(GUARD_PAYMENT_BASE_AMOUNT)} por guarda. Plantões normais entram como conferência, sem diária automática.</p>
         </div>
         <div className="payment-report-actions">
-          <button className="secondary-button" type="button" onClick={() => setGeneratedMessage(financeMessage)} disabled={loading}>Gerar mensagem para financeiro</button>
           <button className="secondary-button" type="button" onClick={handleCopyFinanceMessage} disabled={loading}>Copiar mensagem</button>
           <button className="secondary-button" type="button" onClick={handleCopyPaymentRows} disabled={loading}>Copiar linhas para PAGAMENTOS</button>
           <button className="secondary-button" type="button" onClick={handleSaveClosing} disabled={loading}>Salvar fechamento</button>
         </div>
       </div>
 
-      {paymentState.message && <p className={paymentState.remoteReadable ? "success-message" : "notice-message"}>{paymentState.message}</p>}
+      {paymentError && <p className="notice-message">{paymentError}</p>}
       {copyMessage && <p className={copyMessage.includes("copiada") || copyMessage.includes("copiadas") || copyMessage.includes("salvo") ? "success-message" : "notice-message"}>{copyMessage}</p>}
       {loading && <article className="monitoring-card"><strong>Carregando fechamento...</strong></article>}
 
@@ -2271,7 +2266,6 @@ function PaymentReportSection({ monitoringLoading, shiftSummaries }: { monitorin
             <label>Data do pagamento<input type="date" value={paymentDate} onChange={(event) => setPaymentDate(event.target.value)} /></label>
             <label>Status do fechamento<select value={closingStatus} onChange={(event) => setClosingStatus(event.target.value as GuardPaymentStatus)}>{guardPaymentStatuses.map((status) => <option key={status} value={status}>{status}</option>)}</select></label>
           </div>
-          <label className="payment-notes-field">Observação manual<textarea value={manualNotes} onChange={(event) => setManualNotes(event.target.value)} placeholder="Use para divergências de WhatsApp, ajustes manuais ou observações para o financeiro." /></label>
         </article>
 
         <article className="monitoring-card payment-total-card">
@@ -2280,30 +2274,29 @@ function PaymentReportSection({ monitoringLoading, shiftSummaries }: { monitorin
           <div className="payment-mini-grid">
             <small>Base por guarda<b>{formatCurrencyBRL(GUARD_PAYMENT_BASE_AMOUNT)}</b></small>
             <small>Extras lançados<b>{totalExtras}</b></small>
-            <small>Divergências<b>{totalDivergences}</b></small>
+            <small>Guardas<b>{closingRows.length}</b></small>
             <small>Status<b>{closingStatus}</b></small>
           </div>
         </article>
       </section>
 
       <section className="payment-profile-section">
-        <div className="round-report-title">
-          <span>DADOS DE PAGAMENTO</span>
-          <strong>Cadastro protegido dos guardas</strong>
-        </div>
-        <div className="payment-profile-grid">
-          {guardNames.map((guardName) => {
-            const guardId = getGuardIdFromName(guardName);
-            return (
-              <PaymentProfileEditor
-                key={guardId}
-                onChange={updateProfileDraft}
-                onSave={handleSaveProfile}
-                profile={profileDrafts[guardId]}
-              />
-            );
-          })}
-        </div>
+        <PaymentProfileSummary profiles={profileDrafts} editing={showProfileEditor} onToggle={() => setShowProfileEditor((current) => !current)} />
+        {showProfileEditor && (
+          <div className="payment-profile-grid">
+            {guardNames.map((guardName) => {
+              const guardId = getGuardIdFromName(guardName);
+              return (
+                <PaymentProfileEditor
+                  key={guardId}
+                  onChange={updateProfileDraft}
+                  onSave={handleSaveProfile}
+                  profile={profileDrafts[guardId]}
+                />
+              );
+            })}
+          </div>
+        )}
       </section>
 
       <section className="payment-guard-list">
@@ -2318,8 +2311,6 @@ function PaymentReportSection({ monitoringLoading, shiftSummaries }: { monitorin
         ))}
       </section>
 
-      <PaymentConferenceSummary rows={closingRows} totalGeneral={totalGeneral} />
-
       <section className="monitoring-card payment-message-card">
         <div className="monitoring-card-head">
           <div>
@@ -2328,12 +2319,32 @@ function PaymentReportSection({ monitoringLoading, shiftSummaries }: { monitorin
           </div>
           <em className="payment-status payment-ok">Total geral: {formatCurrencyBRL(totalGeneral)}</em>
         </div>
-        <textarea readOnly value={messagePreview} />
+        <textarea readOnly value={financeMessage} />
       </section>
 
-      <PaymentSheetPreview rows={closingRows} paymentDate={paymentDate} periodEnd={periodEnd} periodStart={periodStart} status={closingStatus} notes={manualNotes} />
       <PaymentHistorySection records={paymentState.records} onStatusChange={handleUpdateRecordStatus} />
     </section>
+  );
+}
+
+function PaymentProfileSummary({ profiles, editing, onToggle }: { profiles: Record<GuardId, GuardPaymentProfile>; editing: boolean; onToggle: () => void }) {
+  return (
+    <article className="monitoring-card payment-profile-summary">
+      <div className="monitoring-card-head">
+        <div>
+          <span>DADOS DE PAGAMENTO DOS GUARDAS</span>
+          <strong>Cadastro protegido</strong>
+        </div>
+        <button className="secondary-button" type="button" onClick={onToggle}>{editing ? "Fechar dados de pagamento" : "Editar dados de pagamento"}</button>
+      </div>
+      <div className="payment-profile-status-grid">
+        {guardNames.map((guardName) => {
+          const guardId = getGuardIdFromName(guardName);
+          const complete = getMissingPaymentProfileFields(profiles[guardId]).length === 0;
+          return <small key={guardId}>{guardName}<b>{complete ? "Completo" : "Incompleto"}</b></small>;
+        })}
+      </div>
+    </article>
   );
 }
 
@@ -2382,9 +2393,9 @@ function PaymentClosingGuardCard({ row, onAddExtra, onUpdateExtra, onRemoveExtra
         <small>Total<b>{formatCurrencyBRL(row.totalAmount)}</b></small>
       </div>
       <div className="payment-conference-list">
-        <strong>Dias conferidos</strong>
+        <strong>Dias/turnos do período</strong>
         {row.shifts.length === 0 && <p>Nenhum plantão da escala encontrado no período.</p>}
-        {row.shifts.map((shift) => <p className={`payment-shift-line ${shift.status}`} key={shift.id}>{shift.line}<small>{shift.note}</small></p>)}
+        {row.shifts.length > 0 && <div className="payment-turn-list">{row.shifts.map((shift) => <span className="payment-turn-pill" key={shift.id}>{shift.line}</span>)}</div>}
       </div>
       <div className="payment-extra-list">
         <div className="payment-extra-head">
@@ -2394,8 +2405,9 @@ function PaymentClosingGuardCard({ row, onAddExtra, onUpdateExtra, onRemoveExtra
         {row.extras.length === 0 && <p>Sem extras lançados. Dias normais não geram diária automática.</p>}
         {row.extras.map((extra) => (
           <div className="payment-extra-row" key={extra.id}>
+            <label>Data<input type="date" value={extra.date} onChange={(event) => onUpdateExtra(row.guardId, extra.id, "date", event.target.value)} /></label>
             <label>Tipo<select value={extra.type} onChange={(event) => onUpdateExtra(row.guardId, extra.id, "type", event.target.value)}>{guardPaymentExtraTypes.map((type) => <option key={type} value={type}>{type}</option>)}</select></label>
-            <label>Descrição<input value={extra.description} onChange={(event) => onUpdateExtra(row.guardId, extra.id, "description", event.target.value)} /></label>
+            <label>Motivo<input value={extra.description} onChange={(event) => onUpdateExtra(row.guardId, extra.id, "description", event.target.value)} placeholder="Ex.: feriado, cobertura, evento" /></label>
             <label>Valor<input inputMode="decimal" value={String(extra.amount)} onChange={(event) => onUpdateExtra(row.guardId, extra.id, "amount", event.target.value)} /></label>
             <button className="danger-button" type="button" onClick={() => onRemoveExtra(row.guardId, extra.id)}>Remover</button>
           </div>
@@ -2407,18 +2419,17 @@ function PaymentClosingGuardCard({ row, onAddExtra, onUpdateExtra, onRemoveExtra
 
 function PaymentConferenceSummary({ rows, totalGeneral }: { rows: GuardPaymentClosingRow[]; totalGeneral: number }) {
   const shiftsCount = rows.reduce((total, row) => total + row.shifts.length, 0);
-  const divergencesCount = rows.reduce((total, row) => total + row.divergences.length, 0);
   const extrasCount = rows.reduce((total, row) => total + row.extras.length, 0);
   return (
     <section className="monitoring-card payment-summary-card">
       <span>RESUMO DE CONFERÊNCIA</span>
       <div className="payment-mini-grid">
         <small>Dias conferidos<b>{shiftsCount}</b></small>
-        <small>Divergências encontradas<b>{divergencesCount}</b></small>
+        <small>Guardas<b>{rows.length}</b></small>
         <small>Extras identificados<b>{extrasCount}</b></small>
         <small>Total geral<b>{formatCurrencyBRL(totalGeneral)}</b></small>
       </div>
-      {rows.map((row) => <p key={row.guardId}><b>{row.guardName}:</b> {formatCurrencyBRL(row.totalAmount)} ({row.extras.length} extra(s), {row.divergences.length} divergência(s)).</p>)}
+      {rows.map((row) => <p key={row.guardId}><b>{row.guardName}:</b> {formatCurrencyBRL(row.totalAmount)} ({row.extras.length} extra(s)).</p>)}
     </section>
   );
 }
@@ -2469,9 +2480,9 @@ function PaymentHistorySection({ records, onStatusChange }: { records: GuardPaym
                 <em className={`payment-status payment-history-${record.status.toLowerCase().replace(/\s+/g, "-")}`}>{record.status}</em>
               </div>
               <div className="payment-mini-grid">
-                <small>Base<b>{formatCurrencyBRL(record.baseAmount)}</b></small>
-                <small>Extra feriado<b>{formatCurrencyBRL(record.holidayExtraAmount)}</b></small>
-                <small>Plantão/outros<b>{formatCurrencyBRL(record.shiftExtraAmount)}</b></small>
+                <small>Data pagamento<b>{formatDateShort(record.paymentDate)}</b></small>
+                <small>Período<b>{formatPaymentPeriodLabel(record.periodStart, record.periodEnd)}</b></small>
+                <small>Guarda<b>{record.guardDisplayName}</b></small>
                 <small>Total<b>{formatCurrencyBRL(record.totalAmount)}</b></small>
               </div>
               <label>Status<select value={record.status} onChange={(event) => onStatusChange(record.id, event.target.value as GuardPaymentStatus)}>{guardPaymentStatuses.map((status) => <option key={status} value={status}>{status}</option>)}</select></label>
@@ -2852,12 +2863,11 @@ function buildGuardPaymentClosingRows(input: {
   periodEnd: string;
   periodStart: string;
   profiles: Record<GuardId, GuardPaymentProfile>;
-  shiftSummaries: MonitoringShiftSummary[];
 }): GuardPaymentClosingRow[] {
   return guardNames.map((guardName) => {
     const guardId = getGuardIdFromName(guardName);
     const profile = input.profiles[guardId];
-    const shifts = buildGuardShiftConferenceItems(guardId, guardName, input.periodStart, input.periodEnd, input.shiftSummaries);
+    const shifts = buildGuardShiftConferenceItems(guardId, guardName, input.periodStart, input.periodEnd);
     const guardExtras = input.extras[guardId] ?? [];
     const holidayExtraAmount = roundPaymentAmount(guardExtras.filter(isHolidayPaymentExtra).reduce((total, extra) => total + extra.amount, 0));
     const shiftExtraAmount = roundPaymentAmount(guardExtras.filter((extra) => !isHolidayPaymentExtra(extra)).reduce((total, extra) => total + extra.amount, 0));
@@ -2869,7 +2879,6 @@ function buildGuardPaymentClosingRows(input: {
       profile,
       profileComplete: getMissingPaymentProfileFields(profile).length === 0,
       shifts,
-      divergences: shifts.filter((shift) => shift.status !== "ok"),
       extras: guardExtras,
       baseAmount: GUARD_PAYMENT_BASE_AMOUNT,
       holidayExtraAmount,
@@ -2885,160 +2894,97 @@ function buildGuardShiftConferenceItems(
   guardName: GuardName,
   periodStart: string,
   periodEnd: string,
-  shiftSummaries: MonitoringShiftSummary[],
 ): GuardShiftConferenceItem[] {
-  const summariesForGuard = shiftSummaries.filter((summary) => (
-    summary.guardLocalId === guardId
-    || (isGuardName(summary.guardName) && getGuardIdFromName(summary.guardName) === guardId)
-  ) && isDateInPaymentPeriod(summary.scheduledDate, periodStart, periodEnd));
-
-  const summariesBySchedule = new Map(summariesForGuard.map((summary) => [getPaymentScheduleKey(summary.scheduledDate, summary.scheduledStart), summary]));
-  const scheduledItems = getGuardShifts(guardName)
+  return getGuardShifts(guardName)
     .filter((shift) => isDateInPaymentPeriod(shift.startDate, periodStart, periodEnd))
-    .map((shift) => {
-      const summary = summariesBySchedule.get(getPaymentScheduleKey(shift.startDate, shift.startTime));
-      return buildScheduledPaymentShiftItem(guardId, guardName, shift, summary);
-    });
-
-  const scheduledKeys = new Set(getGuardShifts(guardName)
-    .filter((shift) => isDateInPaymentPeriod(shift.startDate, periodStart, periodEnd))
-    .map((shift) => getPaymentScheduleKey(shift.startDate, shift.startTime)));
-
-  const extraItems = summariesForGuard
-    .filter((summary) => !scheduledKeys.has(getPaymentScheduleKey(summary.scheduledDate, summary.scheduledStart)))
-    .map((summary) => ({
-      id: `summary-${summary.shiftSessionId}`,
-      guardId,
-      guardName,
-      date: summary.scheduledDate,
-      line: `${formatDateShort(summary.scheduledDate)} - ${getPaymentShiftType(summary)} no app`,
-      status: "divergence" as const,
-      note: "Registro existe no app, mas nao foi encontrado na escala do periodo.",
-    }));
-
-  return [...scheduledItems, ...extraItems].sort((first, second) => (
-    first.date.localeCompare(second.date) || first.line.localeCompare(second.line)
-  ));
+    .map((shift) => buildScheduledPaymentShiftItem(guardId, guardName, shift));
 }
 
-function buildScheduledPaymentShiftItem(guardId: GuardId, guardName: GuardName, shift: GuardShift, summary?: MonitoringShiftSummary): GuardShiftConferenceItem {
+function buildScheduledPaymentShiftItem(guardId: GuardId, guardName: GuardName, shift: GuardShift): GuardShiftConferenceItem {
   const id = `${guardId}-${shift.startDate}-${shift.startTime}`;
-  const line = `${formatDateShort(shift.startDate)} - ${formatGuardShiftKind(shift)} (${shift.startTime}-${shift.endTime})${shift.observation ? ` - ${formatGuardShiftObservation(shift.observation)}` : ""}`;
-
-  if (!summary) {
-    return {
-      id,
-      guardId,
-      guardName,
-      date: shift.startDate,
-      line,
-      status: "pending",
-      note: "Plantao previsto na escala. Conferir se houve ativacao e encerramento no app.",
-    };
-  }
-
-  if (!summary.startedAt || summary.shiftStatus === "pending") {
-    return {
-      id,
-      guardId,
-      guardName,
-      date: shift.startDate,
-      line,
-      status: "pending",
-      note: "Plantao ainda sem entrada registrada.",
-    };
-  }
-
-  if (!summary.endedAt || summary.shiftStatus === "active") {
-    return {
-      id,
-      guardId,
-      guardName,
-      date: shift.startDate,
-      line,
-      status: "pending",
-      note: "Entrada registrada. Conferir saida antes do pagamento.",
-    };
-  }
-
-  if (summary.lateCount > 0 || summary.outOfSequenceCount > 0 || summary.pointsPending > 0) {
-    return {
-      id,
-      guardId,
-      guardName,
-      date: shift.startDate,
-      line,
-      status: "divergence",
-      note: getPaymentObservation(summary, getPaymentStatus(summary)),
-    };
-  }
-
   return {
     id,
     guardId,
     guardName,
     date: shift.startDate,
-    line,
-    status: "ok",
-    note: `Entrada ${formatTimeOnly(summary.startedAt)} e saida ${formatTimeOnly(summary.endedAt)} registradas.`,
+    line: `${formatDateShort(shift.startDate)} ${formatGuardShiftKind(shift)}`,
   };
 }
 
-function buildFinanceMessage(rows: GuardPaymentClosingRow[], periodStart: string, periodEnd: string, manualNotes: string) {
+function buildFinanceMessage(rows: GuardPaymentClosingRow[], periodStart: string, periodEnd: string) {
   const lines = [
     "Bom dia.",
     "",
-    `Segue fechamento dos guardas Santa Maria referente ao periodo de ${formatPaymentPeriodLabel(periodStart, periodEnd)}.`,
-    "",
-    "Regra do fechamento: base quinzenal fixa de R$ 1.000,00 por guarda. Dias normais da escala entram somente para conferencia. R$ 150,00 e R$ 75,00 sao usados apenas para extras lancados.",
+    `Segue pagamento dos guardas referente ao período de ${formatPaymentPeriodLabel(periodStart, periodEnd)}.`,
     "",
     ...rows.flatMap((row) => buildFinanceMessageGuardLines(row)),
     `Total geral: ${formatCurrencyBRL(rows.reduce((total, row) => total + row.totalAmount, 0))}`,
   ];
-
-  if (manualNotes.trim()) {
-    lines.push("", `Observacao geral: ${manualNotes.trim()}`);
-  }
 
   return lines.join("\n").trim();
 }
 
 function buildFinanceMessageGuardLines(row: GuardPaymentClosingRow) {
   const profile = row.profile;
-  const missing = getMissingPaymentProfileFields(profile);
+  const financeName = getFinanceGuardName(row);
   return [
-    row.paymentName || row.guardName,
+    financeName,
+    "",
+    ...buildFinanceShiftLines(row),
+    "",
     `Base quinzenal: ${formatCurrencyBRL(row.baseAmount)}`,
-    `Extra feriado: ${formatCurrencyBRL(row.holidayExtraAmount)}`,
-    `Extra plantao/outros: ${formatCurrencyBRL(row.shiftExtraAmount)}`,
-    `Descricao extras: ${row.extraDescription || "Sem extras"}`,
-    `Total: ${formatCurrencyBRL(row.totalAmount)}`,
+    `Extra feriado 1/2 dia: ${formatCurrencyBRL(row.holidayExtraAmount)}`,
+    `Outros extras: ${formatCurrencyBRL(row.shiftExtraAmount)}`,
+    "",
     `Banco: ${profile.bankName || "--"}`,
-    `Agencia: ${profile.agency || "--"}`,
-    `${profile.accountType || "Conta"}: ${profile.accountNumber || "--"}`,
+    `Agência: ${profile.agency || "--"}`,
+    `Conta Corrente: ${profile.accountNumber || "--"}`,
     `CPF: ${profile.cpf || "--"}`,
     `Pix: ${profile.pix || "--"}`,
-    `Nome pagamento: ${profile.paymentName || "--"}`,
-    missing.length > 0 ? `Pendencia: dados de pagamento incompletos (${missing.join(", ")}).` : "Dados de pagamento completos.",
-    row.divergences.length > 0 ? `Conferencia: ${row.divergences.length} item(ns) para conferir.` : "Conferencia: sem divergencias no periodo.",
+    `Nome: ${profile.paymentName || financeName}`,
+    `Valor: ${formatCurrencyBRL(row.totalAmount)}`,
+    "",
     "",
   ];
 }
 
-function buildPaymentSheetText(rows: GuardPaymentClosingRow[], paymentDate: string, periodStart: string, periodEnd: string, status: GuardPaymentStatus, notes: string) {
+function buildFinanceShiftLines(row: GuardPaymentClosingRow) {
+  const scheduledLines = row.shifts.map((shift) => shift.line);
+  const extraLines = row.extras.map(formatFinanceExtraLine).filter(Boolean);
+  return [...scheduledLines, ...extraLines];
+}
+
+function formatFinanceExtraLine(extra: GuardPaymentExtra) {
+  const dateLabel = extra.date ? formatDateShort(extra.date) : "XX/XX";
+  const reason = extra.description.trim();
+  if (extra.type.startsWith("Feriado")) {
+    return `${dateLabel} dia + feriado ${extra.type.includes("1/2") ? "1/2 dia" : "dia inteiro"}`;
+  }
+  if (extra.type.includes("Plantão")) {
+    return `${dateLabel} dia + plantão referente a ${reason || "extra"}`;
+  }
+  return `${dateLabel} dia + ${reason || extra.type.toLowerCase()}`;
+}
+
+function getFinanceGuardName(row: GuardPaymentClosingRow) {
+  if (row.guardId === "salomao") return "Ricardo Salomão";
+  return row.guardName;
+}
+
+function buildPaymentSheetText(rows: GuardPaymentClosingRow[], paymentDate: string, periodStart: string, periodEnd: string, status: GuardPaymentStatus) {
   const header = ["DATA PAGTO", "PERÍODO", "GUARDA", "BASE QUINZENAL", "EXTRA FERIADO", "EXTRA PLANTÃO", "DESCRIÇÃO EXTRAS", "TOTAL", "STATUS", "OBSERVAÇÃO"];
   const periodLabel = formatPaymentPeriodLabel(periodStart, periodEnd);
   const lines = rows.map((row) => [
     formatDateShort(paymentDate),
     periodLabel,
-    row.paymentName || row.guardName,
+    getFinanceGuardName(row),
     formatCurrencyBRL(row.baseAmount),
     formatCurrencyBRL(row.holidayExtraAmount),
     formatCurrencyBRL(row.shiftExtraAmount),
     row.extraDescription || "Sem extras",
     formatCurrencyBRL(row.totalAmount),
     status,
-    notes || (row.divergences.length > 0 ? `${row.divergences.length} item(ns) para conferir` : "OK"),
+    "OK",
   ].map(sanitizePaymentSheetCell).join("\t"));
   return [header.join("\t"), ...lines].join("\n");
 }
@@ -3049,7 +2995,6 @@ function buildPaymentRecordsFromClosingRows(
   periodStart: string,
   periodEnd: string,
   status: GuardPaymentStatus,
-  notes: string,
   financeMessage: string,
 ): GuardPaymentRecord[] {
   const now = new Date().toISOString();
@@ -3061,14 +3006,14 @@ function buildPaymentRecordsFromClosingRows(
     periodStart,
     periodEnd,
     guardId: row.guardId,
-    guardDisplayName: row.paymentName || row.guardName,
+    guardDisplayName: getFinanceGuardName(row),
     baseAmount: row.baseAmount,
     holidayExtraAmount: row.holidayExtraAmount,
     shiftExtraAmount: row.shiftExtraAmount,
     extraDescription: row.extraDescription,
     totalAmount: row.totalAmount,
     status,
-    notes,
+    notes: "",
     financeMessage,
     createdAt: now,
     updatedAt: now,
@@ -3094,6 +3039,7 @@ function createGuardPaymentExtra(guardId: GuardId): GuardPaymentExtra {
   return {
     id: createId(),
     guardId,
+    date: getTodayIso(),
     type: "Feriado 1/2 dia",
     description: "",
     amount: GUARD_PAYMENT_HALF_EXTRA_AMOUNT,
@@ -3102,6 +3048,7 @@ function createGuardPaymentExtra(guardId: GuardId): GuardPaymentExtra {
 
 function updateGuardPaymentExtra(extra: GuardPaymentExtra, field: keyof GuardPaymentExtra, value: string): GuardPaymentExtra {
   if (field === "amount") return { ...extra, amount: parsePaymentAmount(value) };
+  if (field === "date") return { ...extra, date: value };
   if (field === "description") return { ...extra, description: value };
   if (field === "type") {
     const type = guardPaymentExtraTypes.includes(value as GuardPaymentExtraType) ? value as GuardPaymentExtraType : extra.type;
@@ -3128,6 +3075,11 @@ function getMissingPaymentProfileFields(profile: GuardPaymentProfile) {
   return fields.filter(([, value]) => !value.trim()).map(([label]) => label);
 }
 
+function getPaymentLoadErrorMessage(message?: string) {
+  if (!message) return "";
+  return message.toLowerCase().startsWith("erro") ? message : "";
+}
+
 function formatPaymentExtraDescription(extras: GuardPaymentExtra[]) {
   return extras
     .filter((extra) => extra.amount > 0 || extra.description.trim())
@@ -3136,13 +3088,12 @@ function formatPaymentExtraDescription(extras: GuardPaymentExtra[]) {
 }
 
 function isHolidayPaymentExtra(extra: GuardPaymentExtra) {
-  return extra.type.startsWith("Feriado");
+  return extra.type === "Feriado 1/2 dia";
 }
 
 function formatGuardShiftKind(shift: GuardShift) {
-  if (shift.shiftType.toUpperCase().includes("NOTURNO")) return "noturno";
-  if (shift.observation?.toUpperCase().includes("EXTRA")) return "extra";
-  return "diurno";
+  if (shift.shiftType.toUpperCase().includes("NOTURNO")) return "noite";
+  return "dia";
 }
 
 function formatGuardShiftObservation(observation: string) {
