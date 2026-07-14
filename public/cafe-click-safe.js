@@ -41,7 +41,14 @@
 
   function preparar() {
     const cards = Array.from(document.querySelectorAll('.admin-card'));
-    const card = cards.find((c) => String(c.textContent || '').toLowerCase().includes('máquina de café'));
+    const card = cards.find((c) => {
+      const title = String(c.querySelector('span')?.textContent || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .trim();
+      return title === 'maquina de cafe';
+    });
     if (!card) return;
     card.classList.add('cafe-card-ok');
     card.style.cursor = 'pointer';
