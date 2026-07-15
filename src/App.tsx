@@ -1,6 +1,6 @@
 import { ChangeEvent, FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
-import { activities, employees, products } from "./data";
+import { activities, employees } from "./data";
 import { GuardShiftPanel, GuardSyncDiagnosticPanel } from "./modules/security/components/GuardShift";
 import { signInAdminSupabaseAuth, signInGuardSupabaseAuth } from "./modules/security/services/guardAuthBridge";
 import { loadGuardPaymentData, saveGuardPaymentProfile, saveGuardPaymentRecords, updateGuardPaymentRecordStatus } from "./modules/security/services/paymentService";
@@ -15,13 +15,21 @@ import {
   addStockCheck,
   deleteOrder as removeStoredOrder,
   getEmployeeProfiles,
+  getInventoryProducts as getStoredInventoryProducts,
   getLocalEmployeeProfiles,
+  getLocalInventoryProducts as getStoredLocalInventoryProducts,
   getLocalOrders,
+  getLocalStockMovements as getStoredLocalStockMovements,
   getNeiaOrderHistory,
   getOrderHistory,
   getOrders,
+  getStockMovements as getStoredStockMovements,
+  InventoryStorageTooLargeError,
   isCloudStorageEnabled,
+  prepareCleaningForRealUse,
+  registerStockExit,
   saveEmployeePhoto,
+  saveInventoryProductDetails,
   updateOrder as updateStoredOrder,
 } from "./storage";
 import type {
@@ -220,14 +228,10 @@ type SavedSession = {
 const BRAND = "SANTA MARIA SOLUÇÕES IMOBILIÁRIAS";
 const FOOTER = "TEZZEI - Operações & Processos";
 const SESSION_KEY = "hub-sm-active-session";
-const INVENTORY_KEY = "hub-sm-inventory-products";
-const STOCK_MOVEMENTS_KEY = "hub-sm-stock-movements";
 const USERS_KEY = "hub-sm-users-permissions";
-const LEGACY_PRODUCT_PHOTOS_KEY = "hub-sm-product-photos";
 const PRODUCT_PHOTO_SOURCE_MAX_BYTES = 10 * 1024 * 1024;
 const PRODUCT_PHOTO_SOURCE_MAX_DATA_URL_LENGTH = 14 * 1024 * 1024;
 const PRODUCT_PHOTO_MAX_DATA_URL_LENGTH = 70 * 1024;
-const INVENTORY_STORAGE_MAX_CHARS = 4_000_000;
 const PRODUCT_PHOTO_TOO_HEAVY_MESSAGE = "Foto muito pesada. Tire outra foto mais simples ou reduza a imagem.";
 const PRODUCT_PHOTO_COMPRESSION_STEPS = [
   { maxSide: 360, quality: 0.62 },
@@ -241,13 +245,6 @@ class ProductPhotoTooHeavyError extends Error {
   constructor() {
     super("PRODUCT_PHOTO_TOO_HEAVY");
     this.name = "ProductPhotoTooHeavyError";
-  }
-}
-
-class InventoryStorageTooLargeError extends Error {
-  constructor() {
-    super("INVENTORY_STORAGE_TOO_LARGE");
-    this.name = "InventoryStorageTooLargeError";
   }
 }
 
@@ -446,8 +443,8 @@ function App() {
   const [historyOrders, setHistoryOrders] = useState<CleaningOrder[]>([]);
   const [profiles, setProfiles] = useState<Record<EmployeeId, EmployeeProfile>>(() => getLocalEmployeeProfiles());
   const [managedUsers, setManagedUsers] = useState<ManagedUser[]>(() => getLocalManagedUsers());
-  const [inventoryProducts, setInventoryProducts] = useState<InventoryProduct[]>(() => getLocalInventoryProducts());
-  const [stockMovements, setStockMovements] = useState<StockMovement[]>(() => getLocalStockMovements());
+  const [inventoryProducts, setInventoryProducts] = useState<InventoryProduct[]>(() => getStoredLocalInventoryProducts());
+  const [stockMovements, setStockMovements] = useState<StockMovement[]>(() => getStoredLocalStockMovements());
   const [quantities, setQuantities] = useState<Record<string, string>>({});
   const [manualOpen, setManualOpen] = useState(false);
   const [manualDraft, setManualDraft] = useState<ManualDraft>(emptyManualDraft);
@@ -460,10 +457,10 @@ function App() {
   const [stockExitQuantity, setStockExitQuantity] = useState("1");
   const [stockExitObservation, setStockExitObservation] = useState("");
   const [stockExitMessage, setStockExitMessage] = useState("");
-  const [barcodeProductId, setBarcodeProductId] = useState(products[0]?.id ?? "");
+  const [barcodeProductId, setBarcodeProductId] = useState(() => getStoredLocalInventoryProducts()[0]?.id ?? "");
   const [productRegisterMode, setProductRegisterMode] = useState<ProductRegisterMode>("edit");
-  const [productName, setProductName] = useState(products[0]?.name ?? "");
-  const [productUnit, setProductUnit] = useState(products[0]?.unit ?? DEFAULT_PRODUCT_UNIT);
+  const [productName, setProductName] = useState(() => getStoredLocalInventoryProducts()[0]?.name ?? "");
+  const [productUnit, setProductUnit] = useState(() => getStoredLocalInventoryProducts()[0]?.unit ?? DEFAULT_PRODUCT_UNIT);
   const [productCurrentStock, setProductCurrentStock] = useState("0");
   const [productMinStock, setProductMinStock] = useState("0");
   const [barcodeValue, setBarcodeValue] = useState("");
@@ -474,6 +471,8 @@ function App() {
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<OrderItem[]>([]);
   const [deleteTarget, setDeleteTarget] = useState<CleaningOrder | null>(null);
+  const [cleaningPrepOpen, setCleaningPrepOpen] = useState(false);
+  const [cleaningPrepRunning, setCleaningPrepRunning] = useState(false);
 
   const onlineEnabled = isCloudStorageEnabled();
 
@@ -481,8 +480,8 @@ function App() {
     document.title = `${BRAND} - Central Operacional HUB SM`;
     void refreshOrders();
     void refreshProfiles();
-    refreshInventory();
-    refreshStockMovements();
+    void refreshInventory();
+    void refreshStockMovements();
 
     const interval = window.setInterval(() => {
       if (isCloudStorageEnabled()) {
@@ -555,12 +554,16 @@ function App() {
     setProfiles(currentProfiles);
   }
 
-  function refreshInventory() {
-    setInventoryProducts(getLocalInventoryProducts());
+  async function refreshInventory() {
+    const currentProducts = await getStoredInventoryProducts();
+    setInventoryProducts(currentProducts);
+    return currentProducts;
   }
 
-  function refreshStockMovements() {
-    setStockMovements(getLocalStockMovements());
+  async function refreshStockMovements() {
+    const currentMovements = await getStoredStockMovements();
+    setStockMovements(currentMovements);
+    return currentMovements;
   }
 
   function goToLogin() {
@@ -610,8 +613,8 @@ function App() {
     setNotice("");
     void refreshOrders();
     void refreshProfiles();
-    refreshInventory();
-    refreshStockMovements();
+    void refreshInventory();
+    void refreshStockMovements();
     setView(getInitialViewForManagedUser(user));
   }
 
@@ -647,7 +650,7 @@ function App() {
   }
 
   async function sendOrder() {
-    const selectedProducts = products
+    const selectedProducts = inventoryProducts
       .map((product) => {
         const quantity = Number(quantities[product.id]);
         if (!Number.isFinite(quantity) || quantity <= 0) return null;
@@ -689,7 +692,7 @@ function App() {
   }
 
   async function sendStockCheck() {
-    const items = products
+    const items = inventoryProducts
       .map((product) => {
         const quantity = Number(stockQuantities[product.id]);
         const observation = stockObservations[product.id]?.trim();
@@ -743,7 +746,7 @@ function App() {
     setStockExitQuantity("1");
     setStockExitObservation("");
     setStockExitMessage("");
-    refreshInventory();
+    void refreshInventory();
     setView("stock-exit");
   }
 
@@ -770,7 +773,7 @@ function App() {
     }
   }
 
-  function confirmStockExit() {
+  async function confirmStockExit() {
     if (!selectedExitProduct) {
       setStockExitMessage("Bipe ou selecione um produto antes de confirmar.");
       return;
@@ -782,14 +785,18 @@ function App() {
       return;
     }
 
-    addLocalStockExit({ product: selectedExitProduct, quantity, userId: stockExitUserId, userName: getStockExitUserName(stockExitUserId, managedUsers), observation: stockExitObservation });
-    refreshInventory();
-    refreshStockMovements();
-    setStockExitBarcode("");
-    setStockExitProductId("");
-    setStockExitQuantity("1");
-    setStockExitObservation("");
-    setStockExitMessage("Saída registrada com sucesso.");
+    try {
+      await registerStockExit({ product: selectedExitProduct, quantity, userId: stockExitUserId, userName: getStockExitUserName(stockExitUserId, managedUsers), observation: stockExitObservation });
+      await Promise.all([refreshInventory(), refreshStockMovements()]);
+      setStockExitBarcode("");
+      setStockExitProductId("");
+      setStockExitQuantity("1");
+      setStockExitObservation("");
+      setStockExitMessage("Saída registrada com sucesso.");
+    } catch {
+      await Promise.all([refreshInventory(), refreshStockMovements()]);
+      setStockExitMessage("Nao foi possivel registrar a saida online. Tente novamente.");
+    }
   }
 
   async function handleBarcodeRegisterFile(file: File | null) {
@@ -854,9 +861,8 @@ function App() {
     setBarcodeMessage("");
   }
 
-  function openProductRegister() {
-    refreshInventory();
-    const currentProducts = getLocalInventoryProducts();
+  async function openProductRegister() {
+    const currentProducts = await refreshInventory();
     const currentProduct = currentProducts.find((product) => product.id === barcodeProductId) ?? currentProducts[0];
     if (currentProduct) {
       setProductRegisterMode("edit");
@@ -894,7 +900,7 @@ function App() {
     setBarcodeMessage("Salvando...");
     try {
       await waitForNextFrame();
-      const result = await prepareLocalProductDetails({
+      const product = await prepareProductDetails({
         mode: productRegisterMode,
         productId: barcodeProductId,
         name: nextProductName,
@@ -903,8 +909,8 @@ function App() {
         minStock: nextMinStock,
         barcode: barcodeValue.trim(),
         photoData: productPhotoData,
-      });
-      saveLocalProductDetails(result.products);
+      }, inventoryProducts);
+      const result = await saveInventoryProductDetails({ mode: productRegisterMode, product });
       setInventoryProducts(result.products);
       const savedProduct = result.products.find((product) => product.id === result.productId);
       if (savedProduct) {
@@ -1038,8 +1044,8 @@ function App() {
     setSelectedGuardName(null);
     void refreshOrders();
     void refreshProfiles();
-    refreshInventory();
-    refreshStockMovements();
+    void refreshInventory();
+    void refreshStockMovements();
     setView("cleaning-dashboard");
   }
 
@@ -1165,6 +1171,34 @@ function App() {
     setView("users-permissions");
   }
 
+  function openCleaningPreparation() {
+    if (currentUser !== "tezzei" || !hasCurrentPermission("painel-admin")) {
+      setNotice("Somente o Admin Tezzei pode preparar a Limpeza para uso real.");
+      return;
+    }
+
+    setNotice("");
+    setCleaningPrepOpen(true);
+  }
+
+  async function confirmCleaningPreparation() {
+    if (cleaningPrepRunning) return;
+    setCleaningPrepRunning(true);
+
+    try {
+      const result = await prepareCleaningForRealUse();
+      await Promise.all([refreshOrders(), refreshInventory(), refreshStockMovements()]);
+      const remoteMessage = result.cloud ? "Supabase limpo com seguranca." : "Supabase nao configurado; limpeza local aplicada.";
+      setHistoryOrders([]);
+      setNotice(`${remoteMessage} Historicos de teste da Limpeza foram zerados.`);
+      setCleaningPrepOpen(false);
+    } catch {
+      setNotice("Nao foi possivel preparar a Limpeza. Verifique a conexao e tente novamente.");
+    } finally {
+      setCleaningPrepRunning(false);
+    }
+  }
+
   function saveManagedUser(user: ManagedUser) {
     const cleanAccessCode = user.accessCode.trim();
     const cleanName = user.name.trim();
@@ -1273,6 +1307,7 @@ function App() {
 
       {view === "order-form" && (
         <OrderFormScreen
+          products={inventoryProducts}
           quantities={quantities}
           manualOpen={manualOpen}
           manualDraft={manualDraft}
@@ -1294,6 +1329,7 @@ function App() {
 
       {view === "stock-check" && (
         <StockCheckScreen
+          products={inventoryProducts}
           quantities={stockQuantities}
           observations={stockObservations}
           notice={notice}
@@ -1428,19 +1464,20 @@ function App() {
           }}
           onOpenStockExit={() => openStockExit("neia")}
           onOpenBarcodeRegister={() => {
-            openProductRegister();
+            void openProductRegister();
           }}
           onOpenCurrentStock={() => {
-            refreshInventory();
+            void refreshInventory();
             setView("current-stock");
           }}
           onOpenStockHistory={() => {
-            refreshStockMovements();
+            void refreshStockMovements();
             setView("stock-exit-history");
           }}
           onOpenProfiles={openProfiles}
           onOpenOrderHistory={openOrderHistory}
           onOpenNeiaHistory={openNeiaHistory}
+          onPrepareCleaning={openCleaningPreparation}
         />
       )}
 
@@ -1487,6 +1524,7 @@ function App() {
       )}
 
       {deleteTarget && <DeleteDialog order={deleteTarget} onCancel={() => setDeleteTarget(null)} onConfirm={confirmDeleteOrder} />}
+      {cleaningPrepOpen && <CleaningPrepDialog running={cleaningPrepRunning} onCancel={() => setCleaningPrepOpen(false)} onConfirm={confirmCleaningPreparation} />}
 
       <footer>{FOOTER}</footer>
     </main>
@@ -1572,7 +1610,7 @@ function EmployeeHeader({ employeeId, profile, adminPreview, onLogout, onBackToP
   );
 }
 
-function OrderFormScreen({ quantities, manualOpen, manualDraft, manualItems, notice, onBack, onLogout, onQuantityChange, onManualOpenChange, onManualDraftChange, onAddManualItem, onRemoveManualItem, onSendOrder }: { quantities: Record<string, string>; manualOpen: boolean; manualDraft: ManualDraft; manualItems: OrderItem[]; notice: string; onBack: () => void; onLogout: () => void; onQuantityChange: (productId: string, value: string) => void; onManualOpenChange: (value: boolean) => void; onManualDraftChange: (draft: ManualDraft) => void; onAddManualItem: () => void; onRemoveManualItem: (itemId: string) => void; onSendOrder: () => void }) {
+function OrderFormScreen({ products, quantities, manualOpen, manualDraft, manualItems, notice, onBack, onLogout, onQuantityChange, onManualOpenChange, onManualDraftChange, onAddManualItem, onRemoveManualItem, onSendOrder }: { products: InventoryProduct[]; quantities: Record<string, string>; manualOpen: boolean; manualDraft: ManualDraft; manualItems: OrderItem[]; notice: string; onBack: () => void; onLogout: () => void; onQuantityChange: (productId: string, value: string) => void; onManualOpenChange: (value: boolean) => void; onManualDraftChange: (draft: ManualDraft) => void; onAddManualItem: () => void; onRemoveManualItem: (itemId: string) => void; onSendOrder: () => void }) {
   return (
     <section className="screen">
       <TopBar title="Fazer Pedido Sinval" subtitle="Solicitante: Neia" onLogout={onLogout} />
@@ -1588,7 +1626,7 @@ function OrderFormScreen({ quantities, manualOpen, manualDraft, manualItems, not
   );
 }
 
-function StockCheckScreen({ quantities, observations, notice, onBack, onLogout, onQuantityChange, onObservationChange, onSendStockCheck }: { quantities: Record<string, string>; observations: Record<string, string>; notice: string; onBack: () => void; onLogout: () => void; onQuantityChange: (productId: string, value: string) => void; onObservationChange: (productId: string, value: string) => void; onSendStockCheck: () => void }) {
+function StockCheckScreen({ products, quantities, observations, notice, onBack, onLogout, onQuantityChange, onObservationChange, onSendStockCheck }: { products: InventoryProduct[]; quantities: Record<string, string>; observations: Record<string, string>; notice: string; onBack: () => void; onLogout: () => void; onQuantityChange: (productId: string, value: string) => void; onObservationChange: (productId: string, value: string) => void; onSendStockCheck: () => void }) {
   return (
     <section className="screen"><TopBar title="Conferência de Estoque" subtitle="Solicitante: Neia" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}>Voltar</button>{notice && <p className="notice-message">{notice}</p>}<section className="product-list">{products.map((product) => <label className="product-row stock-row" key={product.id}><span><strong>{product.name}</strong><small>{product.unit}</small></span><input type="number" inputMode="decimal" min="0" placeholder="Qtd" value={quantities[product.id] ?? ""} onChange={(event) => onQuantityChange(product.id, event.target.value)} /><input type="text" placeholder="Obs." value={observations[product.id] ?? ""} onChange={(event) => onObservationChange(product.id, event.target.value)} /></label>)}</section><button className="primary-button wide-button sticky-action" type="button" onClick={onSendStockCheck}>Enviar Conferência</button></section>
   );
@@ -3864,7 +3902,7 @@ function ShiftCard({ shift, label, featured = false }: { shift: GuardShift; labe
   return <article className={featured ? "shift-card featured" : "shift-card"}><span>{label ?? shift.shiftType}</span><strong>{shift.startText}</strong><p>Entrada: {shift.startTime}<br />Saída: {shift.endTime} — {shift.endText}</p>{shift.observation && <p className="shift-observation">{shift.observation}</p>}</article>;
 }
 
-function CleaningDashboardScreen({ newOrdersCount, permissions, onBack, onLogout, onOpenOrders, onOpenStockExit, onOpenBarcodeRegister, onOpenCurrentStock, onOpenStockHistory, onOpenProfiles, onOpenOrderHistory, onOpenNeiaHistory }: { newOrdersCount: number; permissions: UserPermission[]; onBack: () => void; onLogout: () => void; onOpenOrders: () => void; onOpenStockExit: () => void; onOpenBarcodeRegister: () => void; onOpenCurrentStock: () => void; onOpenStockHistory: () => void; onOpenProfiles: () => void; onOpenOrderHistory: () => void; onOpenNeiaHistory: () => void }) {
+function CleaningDashboardScreen({ newOrdersCount, permissions, onBack, onLogout, onOpenOrders, onOpenStockExit, onOpenBarcodeRegister, onOpenCurrentStock, onOpenStockHistory, onOpenProfiles, onOpenOrderHistory, onOpenNeiaHistory, onPrepareCleaning }: { newOrdersCount: number; permissions: UserPermission[]; onBack: () => void; onLogout: () => void; onOpenOrders: () => void; onOpenStockExit: () => void; onOpenBarcodeRegister: () => void; onOpenCurrentStock: () => void; onOpenStockHistory: () => void; onOpenProfiles: () => void; onOpenOrderHistory: () => void; onOpenNeiaHistory: () => void; onPrepareCleaning: () => void }) {
   const canCleaning = permissions.includes("limpeza");
   const canStock = permissions.includes("estoque");
   const canStockExit = permissions.includes("saida-estoque");
@@ -3878,6 +3916,7 @@ function CleaningDashboardScreen({ newOrdersCount, permissions, onBack, onLogout
     { key: "neia-history", title: "Histórico Neia", detail: "Todos os pedidos feitos pela Neia", enabled: canCleaning, onClick: onOpenNeiaHistory },
     { key: "order-history", title: "Histórico / Auditoria", detail: "Concluídos e excluídos", enabled: canReports, onClick: onOpenOrderHistory },
     { key: "profiles", title: "Perfis da equipe", detail: "Acessar telas da Neia, Selma e Helena", enabled: canCleaning, onClick: onOpenProfiles },
+    { key: "prepare-real-use", title: "Preparar Limpeza para uso real", detail: "Zerar historicos de teste sem apagar produtos", enabled: permissions.includes("painel-admin"), onClick: onPrepareCleaning },
   ];
 
   return <section className="screen"><TopBar title="Gestão de Limpeza" subtitle="Neia, Selma, Helena, pedidos, estoque e auditoria" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}>Voltar</button>{canCleaning && newOrdersCount > 0 && <button className="alert-banner cleaning-alert-banner" type="button" onClick={onOpenOrders}>Pedido novo da Neia — precisa de atenção</button>}<section className="admin-grid cleaning-dashboard-grid">{cards.map((card) => <ModuleCard key={card.key} title={card.title} detail={card.detail} enabled={card.enabled} onClick={card.onClick} className="cleaning-control-card" attention={card.attention} />)}</section></section>;
@@ -3921,6 +3960,21 @@ function OrderItems({ order }: { order: CleaningOrder }) {
 
 function DeleteDialog({ order, onCancel, onConfirm }: { order: CleaningOrder; onCancel: () => void; onConfirm: () => void }) {
   return <div className="dialog-backdrop" role="presentation"><section className="dialog" role="dialog" aria-modal="true"><h2>Tem certeza que deseja excluir este pedido?</h2><p>Pedido de {order.solicitante}, {order.data} às {order.hora}. Ele será enviado para o histórico.</p><div className="button-grid"><button className="ghost-button" type="button" onClick={onCancel}>Cancelar</button><button className="danger-button" type="button" onClick={onConfirm}>Excluir</button></div></section></div>;
+}
+
+function CleaningPrepDialog({ running, onCancel, onConfirm }: { running: boolean; onCancel: () => void; onConfirm: () => void | Promise<void> }) {
+  return (
+    <div className="dialog-backdrop" role="presentation">
+      <section className="dialog" role="dialog" aria-modal="true">
+        <h2>Preparar Limpeza para uso real?</h2>
+        <p>Esta acao limpa pedidos, conferencias, saidas e solicitacoes de foto de teste. Produtos, categorias, fornecedores, usuarios, permissoes, seguranca, rondas e pagamentos serao preservados.</p>
+        <div className="button-grid">
+          <button className="ghost-button" type="button" disabled={running} onClick={onCancel}>Cancelar</button>
+          <button className="danger-button" type="button" disabled={running} onClick={() => { void onConfirm(); }}>{running ? "Preparando..." : "Preparar Limpeza"}</button>
+        </div>
+      </section>
+    </div>
+  );
 }
 
 function getGuardShifts(guardName: GuardName) {
@@ -4223,61 +4277,7 @@ function normalizeManagedUser(user: ManagedUser): ManagedUser {
   };
 }
 
-function baseInventory(): InventoryProduct[] {
-  return products.map((product) => ({ ...product, currentStock: 0, minStock: 0 }));
-}
-
-function getLocalInventoryProducts(): InventoryProduct[] {
-  const rawProducts = window.localStorage.getItem(INVENTORY_KEY);
-  const legacyPhotos = getLegacyProductPhotos();
-  if (!rawProducts) {
-    return baseInventory().map((product) => ({ ...product, photoData: legacyPhotos[getLegacyProductPhotoKey(product.name)] }));
-  }
-  try {
-    const parsed = JSON.parse(rawProducts);
-    if (!Array.isArray(parsed)) throw new Error("Estoque inválido");
-    const storedProducts = parsed.filter(isInventoryProductLike).map(normalizeInventoryProduct);
-    const localMap = new Map(storedProducts.map((product) => [product.id, product]));
-    const baseProducts = baseInventory().map((product) => {
-      const localProduct = localMap.get(product.id);
-      return {
-        ...product,
-        ...localProduct,
-        photoData: localProduct?.photoData ?? legacyPhotos[getLegacyProductPhotoKey(product.name)],
-      };
-    });
-    const baseIds = new Set(baseProducts.map((product) => product.id));
-    const customProducts = storedProducts.filter((product) => !baseIds.has(product.id));
-    return [...baseProducts, ...customProducts];
-  } catch {
-    return baseInventory().map((product) => ({ ...product, photoData: legacyPhotos[getLegacyProductPhotoKey(product.name)] }));
-  }
-}
-
-function saveLocalInventoryProducts(inventoryProducts: InventoryProduct[]) {
-  window.localStorage.setItem(INVENTORY_KEY, JSON.stringify(inventoryProducts));
-}
-
-function isInventoryProductLike(value: unknown): value is Partial<InventoryProduct> & { id: string; name: string } {
-  if (!value || typeof value !== "object") return false;
-  const product = value as Partial<InventoryProduct>;
-  return typeof product.id === "string" && typeof product.name === "string";
-}
-
-function normalizeInventoryProduct(product: Partial<InventoryProduct> & { id: string; name: string }): InventoryProduct {
-  return {
-    id: product.id,
-    name: product.name || "Produto",
-    unit: product.unit || DEFAULT_PRODUCT_UNIT,
-    barcode: product.barcode || undefined,
-    photoData: product.photoData || undefined,
-    currentStock: typeof product.currentStock === "number" && Number.isFinite(product.currentStock) ? product.currentStock : 0,
-    minStock: typeof product.minStock === "number" && Number.isFinite(product.minStock) ? product.minStock : 0,
-  };
-}
-
-async function prepareLocalProductDetails(details: ProductRegisterDetails): Promise<{ products: InventoryProduct[]; productId: string }> {
-  const currentProducts = getLocalInventoryProducts();
+async function prepareProductDetails(details: ProductRegisterDetails, currentProducts: InventoryProduct[]): Promise<InventoryProduct> {
   const unit = details.unit || DEFAULT_PRODUCT_UNIT;
   const savedProduct: InventoryProduct = {
     id: details.mode === "new" ? createProductId(details.name, currentProducts) : details.productId,
@@ -4289,19 +4289,8 @@ async function prepareLocalProductDetails(details: ProductRegisterDetails): Prom
     photoData: details.photoData || undefined,
   };
 
-  const nextProducts = details.mode === "new"
-    ? [...currentProducts, savedProduct]
-    : currentProducts.map((product) => product.id === details.productId ? { ...product, ...savedProduct } : product);
-
-  return { products: await compactInventoryProductPhotos(nextProducts), productId: savedProduct.id };
-}
-
-function saveLocalProductDetails(inventoryProducts: InventoryProduct[]) {
-  const serializedProducts = JSON.stringify(inventoryProducts);
-  if (serializedProducts.length > INVENTORY_STORAGE_MAX_CHARS) {
-    throw new InventoryStorageTooLargeError();
-  }
-  window.localStorage.setItem(INVENTORY_KEY, serializedProducts);
+  const [compactedProduct] = await compactInventoryProductPhotos([savedProduct]);
+  return compactedProduct;
 }
 
 async function compactInventoryProductPhotos(inventoryProducts: InventoryProduct[]) {
@@ -4342,19 +4331,6 @@ function isStorageQuotaError(error: unknown) {
   return quotaError.name === "QuotaExceededError" || quotaError.name === "NS_ERROR_DOM_QUOTA_REACHED" || quotaError.code === 22 || quotaError.code === 1014;
 }
 
-function getLegacyProductPhotos(): Record<string, string> {
-  const rawPhotos = window.localStorage.getItem(LEGACY_PRODUCT_PHOTOS_KEY);
-  if (!rawPhotos) return {};
-  try {
-    const parsed = JSON.parse(rawPhotos);
-    return parsed && typeof parsed === "object" ? parsed as Record<string, string> : {};
-  } catch { return {}; }
-}
-
-function getLegacyProductPhotoKey(productName: string) {
-  return productName.trim().toLowerCase();
-}
-
 function createProductId(productName: string, existingProducts: InventoryProduct[]) {
   const baseId = slugifyProductName(productName) || `produto-${Date.now()}`;
   const existingIds = new Set(existingProducts.map((product) => product.id));
@@ -4375,25 +4351,6 @@ function slugifyProductName(productName: string) {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 60);
-}
-
-function getLocalStockMovements(): StockMovement[] {
-  const rawMovements = window.localStorage.getItem(STOCK_MOVEMENTS_KEY);
-  if (!rawMovements) return [];
-  try {
-    const parsed = JSON.parse(rawMovements);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch { return []; }
-}
-
-function saveLocalStockMovements(movements: StockMovement[]) {
-  window.localStorage.setItem(STOCK_MOVEMENTS_KEY, JSON.stringify(movements));
-}
-
-function addLocalStockExit(input: { product: InventoryProduct; quantity: number; userId: StockExitUserId; userName: string; observation?: string }) {
-  const movement: StockMovement = { id: createId(), productId: input.product.id, productName: input.product.name, unit: input.product.unit, barcode: input.product.barcode, movementType: "saida", quantity: input.quantity, userId: input.userId, userName: input.userName, createdAt: new Date().toISOString(), observation: input.observation?.trim() || undefined };
-  saveLocalStockMovements([movement, ...getLocalStockMovements()]);
-  saveLocalInventoryProducts(getLocalInventoryProducts().map((product) => product.id === input.product.id ? { ...product, currentStock: Math.max(0, Number(product.currentStock || 0) - input.quantity) } : product));
 }
 
 async function decodeBarcodeFromFile(file: File): Promise<string> {
