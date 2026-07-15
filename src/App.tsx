@@ -469,6 +469,7 @@ function App() {
   const [productPhotoData, setProductPhotoData] = useState("");
   const [productSaving, setProductSaving] = useState(false);
   const [barcodeMessage, setBarcodeMessage] = useState("");
+  const [productRegisterBackView, setProductRegisterBackView] = useState<View>("cleaning-dashboard");
   const [notice, setNotice] = useState("");
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<OrderItem[]>([]);
@@ -951,8 +952,27 @@ function App() {
       setBarcodeProductId(currentProduct.id);
       fillProductRegisterFields(currentProduct);
     }
+    setProductRegisterBackView("cleaning-dashboard");
     setBarcodeMessage("");
     setView("product-register");
+  }
+
+  function openProductRegisterFromStock(productId: string) {
+    const currentProduct = inventoryProducts.find((product) => product.id === productId);
+    if (!currentProduct) return;
+    setProductRegisterMode("edit");
+    setBarcodeProductId(currentProduct.id);
+    fillProductRegisterFields(currentProduct);
+    setProductRegisterBackView("current-stock");
+    setBarcodeMessage("");
+    setView("product-register");
+  }
+
+  function backFromProductRegister() {
+    if (productRegisterBackView === "current-stock") {
+      void refreshInventory();
+    }
+    setView(productRegisterBackView);
   }
 
   async function saveProductRegister() {
@@ -1472,7 +1492,8 @@ function App() {
           message={barcodeMessage}
           saving={productSaving}
           unitOptions={productUnitOptions}
-          onBack={() => setView("cleaning-dashboard")}
+          backLabel={productRegisterBackView === "current-stock" ? "Voltar para Estoque Atual" : "Voltar para Limpeza"}
+          onBack={backFromProductRegister}
           onLogout={goToLogin}
           onCreateNew={startNewProductRegister}
           onCancelCreate={cancelNewProductRegister}
@@ -1490,7 +1511,7 @@ function App() {
       )}
 
       {view === "stock-exit-history" && <StockExitHistoryScreen movements={stockMovements} onBack={() => setView("cleaning-dashboard")} onLogout={goToLogin} />}
-      {view === "current-stock" && <CurrentStockScreen inventoryProducts={inventoryProducts} onBack={() => setView("cleaning-dashboard")} onLogout={goToLogin} />}
+      {view === "current-stock" && <CurrentStockScreen inventoryProducts={inventoryProducts} onBack={() => setView("cleaning-dashboard")} onLogout={goToLogin} onEditProduct={openProductRegisterFromStock} />}
 
       {view === "admin" && (
         <AdminSectorHomeScreen
@@ -1733,7 +1754,7 @@ function StockExitScreen({ inventoryProducts, selectedProduct, userId, barcode, 
   );
 }
 
-function ProductRegisterScreen({ inventoryProducts, selectedProduct, mode, productId, productName, unit, currentStock, minStock, barcode, photoData, message, saving, unitOptions, onBack, onLogout, onCreateNew, onCancelCreate, onProductChange, onProductNameChange, onUnitChange, onCurrentStockChange, onMinStockChange, onBarcodeChange, onBarcodeFileChange, onPhotoFileChange, onRemovePhoto, onSave }: { inventoryProducts: InventoryProduct[]; selectedProduct: InventoryProduct | null; mode: ProductRegisterMode; productId: string; productName: string; unit: string; currentStock: string; minStock: string; barcode: string; photoData: string; message: string; saving: boolean; unitOptions: string[]; onBack: () => void; onLogout: () => void; onCreateNew: () => void; onCancelCreate: () => void; onProductChange: (productId: string) => void; onProductNameChange: (name: string) => void; onUnitChange: (unit: string) => void; onCurrentStockChange: (stock: string) => void; onMinStockChange: (stock: string) => void; onBarcodeChange: (barcode: string) => void; onBarcodeFileChange: (file: File | null) => void; onPhotoFileChange: (file: File | null) => void; onRemovePhoto: () => void; onSave: () => void | Promise<void> }) {
+function ProductRegisterScreen({ inventoryProducts, selectedProduct, mode, productId, productName, unit, currentStock, minStock, barcode, photoData, message, saving, unitOptions, backLabel, onBack, onLogout, onCreateNew, onCancelCreate, onProductChange, onProductNameChange, onUnitChange, onCurrentStockChange, onMinStockChange, onBarcodeChange, onBarcodeFileChange, onPhotoFileChange, onRemovePhoto, onSave }: { inventoryProducts: InventoryProduct[]; selectedProduct: InventoryProduct | null; mode: ProductRegisterMode; productId: string; productName: string; unit: string; currentStock: string; minStock: string; barcode: string; photoData: string; message: string; saving: boolean; unitOptions: string[]; backLabel: string; onBack: () => void; onLogout: () => void; onCreateNew: () => void; onCancelCreate: () => void; onProductChange: (productId: string) => void; onProductNameChange: (name: string) => void; onUnitChange: (unit: string) => void; onCurrentStockChange: (stock: string) => void; onMinStockChange: (stock: string) => void; onBarcodeChange: (barcode: string) => void; onBarcodeFileChange: (file: File | null) => void; onPhotoFileChange: (file: File | null) => void; onRemovePhoto: () => void; onSave: () => void | Promise<void> }) {
   const displayName = productName.trim() || selectedProduct?.name || "Novo produto";
   const stockPreview = parseProductQuantity(currentStock) ?? 0;
   const unitPreview = unit || DEFAULT_PRODUCT_UNIT;
@@ -1741,7 +1762,7 @@ function ProductRegisterScreen({ inventoryProducts, selectedProduct, mode, produ
   return (
     <section className="screen">
       <TopBar title="Cadastro de Produtos" subtitle="Edite código de barras e foto do produto" onLogout={onLogout} />
-      <button className="ghost-button" type="button" onClick={onBack} disabled={saving}>Voltar para Limpeza</button>
+      <button className="ghost-button" type="button" onClick={onBack} disabled={saving}>{backLabel}</button>
       {message && <p className={message.includes("salvo") ? "success-message" : "notice-message"}>{message}</p>}
       <section className="manual-form inventory-form product-register-form">
         <div className="button-grid">
@@ -1805,8 +1826,8 @@ function StockExitHistoryScreen({ movements, onBack, onLogout }: { movements: St
   return <section className="screen"><TopBar title="Histórico de Saídas" subtitle="Consumo de produtos por usuária" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}>Voltar para Limpeza</button>{movements.length === 0 ? <section className="empty-state"><h2>Nenhuma saída registrada</h2><p>Quando uma funcionária retirar produto, aparecerá aqui.</p></section> : <section className="orders-list">{movements.map((movement) => <article className="order-card" key={movement.id}><div className="order-head"><div><p className="card-kicker">{formatDateTime(movement.createdAt)}</p><h2>{movement.productName}</h2><small>Retirado por {movement.userName}</small>{movement.barcode && <small>Código: {movement.barcode}</small>}{movement.observation && <small>{movement.observation}</small>}</div><span className="status-done">{formatStockQuantity(movement.quantity, movement.unit)}</span></div></article>)}</section>}</section>;
 }
 
-function CurrentStockScreen({ inventoryProducts, onBack, onLogout }: { inventoryProducts: InventoryProduct[]; onBack: () => void; onLogout: () => void }) {
-  return <section className="screen"><TopBar title="Estoque Atual" subtitle="Produtos cadastrados para controle de limpeza" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}>Voltar para Limpeza</button><section className="product-list current-stock-list">{inventoryProducts.map((product) => <article className="product-row inventory-stock-row" key={product.id}><ProductPhoto productName={product.name} photoData={product.photoData} /><span><strong>{product.name}</strong><small>{product.barcode ? `Código: ${product.barcode}` : "Sem código cadastrado"}</small></span><strong className="stock-quantity">{formatStockQuantity(product.currentStock, product.unit)}</strong></article>)}</section></section>;
+function CurrentStockScreen({ inventoryProducts, onBack, onLogout, onEditProduct }: { inventoryProducts: InventoryProduct[]; onBack: () => void; onLogout: () => void; onEditProduct: (productId: string) => void }) {
+  return <section className="screen"><TopBar title="Estoque Atual" subtitle="Produtos cadastrados para controle de limpeza" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}>Voltar para Limpeza</button><section className="product-list current-stock-list">{inventoryProducts.map((product) => <article className="product-row inventory-stock-row" key={product.id}><ProductPhoto productName={product.name} photoData={product.photoData} /><span><strong>{product.name}</strong><small>{product.barcode ? `Código: ${product.barcode}` : "Sem código cadastrado"}</small></span><strong className="stock-quantity">{formatStockQuantity(product.currentStock, product.unit)}</strong><button className="secondary-button inventory-edit-button" type="button" onClick={() => onEditProduct(product.id)}>Editar</button></article>)}</section></section>;
 }
 
 function ProductPhoto({ productName, photoData }: { productName: string; photoData?: string }) {
