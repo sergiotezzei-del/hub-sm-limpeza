@@ -7,9 +7,12 @@ import { loadGuardPaymentData, saveGuardPaymentProfile, saveGuardPaymentRecords,
 import { DEFAULT_GUARD_ROUND_POINTS, DEFAULT_GUARD_ROUND_SCHEDULES, loadGuardRoundReport } from "./modules/security/services/roundService";
 import { loadGuardMonitoringEntries } from "./modules/security/services/shiftService";
 import { signOutSupabaseAuth } from "./modules/security/services/supabaseClient";
+import { createBlankVehicleDraft, loadVehicleRecords, normalizeVehiclePlate, saveVehicleRecord, vehicleToDraft } from "./modules/security/services/vehicleService";
 import type { GuardPaymentLoadState, GuardPaymentProfile, GuardPaymentRecord, GuardPaymentStatus } from "./modules/security/types/payment.types";
 import type { GuardRoundCheckin, GuardRoundCheckinSource, GuardRoundCheckinStatus, GuardRoundLoadState, GuardRoundPoint, GuardRoundReportEntry, GuardRoundReportStatus, GuardRoundSchedule } from "./modules/security/types/round.types";
 import type { GuardMonitoringEntry, GuardMonitoringLoadState, GuardShiftStatus } from "./modules/security/types/shift.types";
+import type { VehicleLoadState, VehicleRecord, VehicleRecordDraft } from "./modules/security/types/vehicle.types";
+import { vehicleOwnerTypes } from "./modules/security/types/vehicle.types";
 import {
   addOrder,
   addStockCheck,
@@ -79,6 +82,7 @@ type View =
   | "security-guards"
   | "security-guards-payment"
   | "security-monitoring"
+  | "security-parking"
   | "security-guard-detail";
 
 type ManualDraft = {
@@ -289,6 +293,8 @@ const permissionOptions: Array<{ id: UserPermission; label: string }> = [
   { id: "agua", label: "Água" },
   { id: "seguranca", label: "Segurança" },
   { id: "guardas", label: "Guardas" },
+  { id: "estacionamento-consulta", label: "Estacionamento - consulta" },
+  { id: "estacionamento-cadastro", label: "Estacionamento - cadastro" },
   { id: "manutencao", label: "Manutenção" },
   { id: "chaves", label: "Chaves" },
   { id: "patrimonio", label: "Patrimônio" },
@@ -1155,7 +1161,7 @@ function App() {
   }
 
   function openSecurityMenu() {
-    if (!hasCurrentPermission("seguranca")) {
+    if (!hasAnyCurrentPermission(["seguranca", "guardas", "estacionamento-consulta", "estacionamento-cadastro"])) {
       setNotice("Sem permissão para acessar Segurança.");
       return;
     }
@@ -1240,6 +1246,17 @@ function App() {
     setNotice("");
     setSelectedGuardName(null);
     setView("security-monitoring");
+  }
+
+  function openSecurityParking() {
+    if (!hasAnyCurrentPermission(["painel-admin", "estacionamento-consulta", "estacionamento-cadastro"])) {
+      setNotice("Sem permissão para acessar Estacionamento.");
+      return;
+    }
+
+    setNotice("");
+    setSelectedGuardName(null);
+    setView("security-parking");
   }
 
   function openGuardPaymentReport() {
@@ -1551,13 +1568,15 @@ function App() {
         />
       )}
 
-      {view === "security-menu" && <SecurityMenuScreen permissions={getManagedUserPermissions(currentUser, managedUsers)} isAdmin={currentUser === "tezzei"} onBack={() => setView(getCurrentHomeView())} onLogout={goToLogin} onOpenGuards={openSecurityGuards} onOpenMonitoring={openSecurityMonitoring} />}
+      {view === "security-menu" && <SecurityMenuScreen permissions={getManagedUserPermissions(currentUser, managedUsers)} isAdmin={currentUser === "tezzei"} onBack={() => setView(getCurrentHomeView())} onLogout={goToLogin} onOpenGuards={openSecurityGuards} onOpenMonitoring={openSecurityMonitoring} onOpenParking={openSecurityParking} />}
 
       {view === "security-guards" && <SecurityGuardsScreen onBack={openSecurityMenu} onLogout={goToLogin} onOpenGuard={openGuardDetail} onOpenPayment={openGuardPaymentReport} showPayment={currentUser === "tezzei"} />}
 
       {view === "security-guards-payment" && currentUser === "tezzei" && <SecurityGuardsPaymentScreen onBack={openSecurityGuards} onLogout={goToLogin} />}
 
       {view === "security-monitoring" && currentUser === "tezzei" && <SecurityMonitoringScreen onBack={openSecurityMenu} onLogout={goToLogin} />}
+
+      {view === "security-parking" && <SecurityParkingScreen permissions={getManagedUserPermissions(currentUser, managedUsers)} isAdmin={currentUser === "tezzei"} onBack={openSecurityMenu} onLogout={goToLogin} />}
 
       {view === "security-guard-detail" && selectedGuardName && (
         <SecurityGuardDetailScreen guardLocalId={getGuardIdFromName(selectedGuardName)} guardName={selectedGuardName} onBack={openSecurityGuards} onLogout={goToLogin} />
@@ -1977,7 +1996,7 @@ function UserSectorHomeScreen({ user, permissions, notice, onLogout, onOpenClean
   const cards: SectorModuleCard[] = [
     { key: "limpeza", title: "Limpeza", detail: "Rotinas, produtos, pedidos e histórico da equipe de limpeza.", enabled: canCleaning, onClick: permissions.includes("limpeza") ? onOpenCleaningDashboard : onOpenStockExit, className: "cleaning-card" },
     { key: "copa-cafe", title: "Copa & Café", detail: "Máquina de café, água, copos, bebidas e insumos da copa.", enabled: permissions.includes("cafe") || permissions.includes("agua"), onClick: onOpenCopaCafe },
-    { key: "seguranca", title: "Segurança", detail: "Guardas, rondas, monitoramento e fechamento dos serviços.", enabled: permissions.includes("seguranca") || permissions.includes("guardas"), onClick: onOpenSecurity, className: "security-card" },
+    { key: "seguranca", title: "Segurança", detail: "Guardas, rondas, monitoramento, estacionamento e fechamento dos serviços.", enabled: permissions.includes("seguranca") || permissions.includes("guardas") || permissions.includes("estacionamento-consulta") || permissions.includes("estacionamento-cadastro"), onClick: onOpenSecurity, className: "security-card" },
     { key: "manutencao", title: "Manutenção", detail: "Chamados, obras, fornecedores e pendências prediais.", enabled: permissions.includes("manutencao"), onClick: onOpenMaintenance },
     { key: "estoque-geral", title: "Estoque Geral", detail: "Materiais diversos, ferramentas, informática e itens de apoio.", enabled: permissions.includes("estoque"), onClick: onOpenGeneralStock },
     { key: "patrimonio", title: "Patrimônio", detail: "Equipamentos, móveis, rede, câmeras, chaves e inventário.", enabled: permissions.includes("patrimonio") || permissions.includes("chaves"), onClick: onOpenPatrimony },
@@ -2001,7 +2020,7 @@ function AdminSectorHomeScreen({ newOrdersCount, onlineEnabled, permissions, onL
   const cards: SectorModuleCard[] = [
     { key: "limpeza", title: "Limpeza", detail: "Rotinas, produtos, pedidos e histórico da equipe de limpeza.", enabled: permissions.includes("limpeza"), onClick: onOpenCleaningDashboard, className: "cleaning-card", attention: newOrdersCount > 0 ? `${newOrdersCount} pedido(s) pendente(s)` : undefined },
     { key: "copa-cafe", title: "Copa & Café", detail: "Máquina de café, água, copos, bebidas e insumos da copa.", enabled: permissions.includes("cafe") || permissions.includes("agua"), onClick: onOpenCopaCafe },
-    { key: "seguranca", title: "Segurança", detail: "Guardas, rondas, monitoramento e fechamento dos serviços.", enabled: permissions.includes("seguranca"), onClick: onOpenSecurity, className: "security-card" },
+    { key: "seguranca", title: "Segurança", detail: "Guardas, rondas, monitoramento, estacionamento e fechamento dos serviços.", enabled: permissions.includes("seguranca"), onClick: onOpenSecurity, className: "security-card" },
     { key: "manutencao", title: "Manutenção", detail: "Chamados, obras, fornecedores e pendências prediais.", enabled: permissions.includes("manutencao"), onClick: onOpenMaintenance },
     { key: "estoque-geral", title: "Estoque Geral", detail: "Materiais diversos, ferramentas, informática e itens de apoio.", enabled: permissions.includes("estoque"), onClick: onOpenGeneralStock },
     { key: "patrimonio", title: "Patrimônio", detail: "Equipamentos, móveis, rede, câmeras, chaves e inventário.", enabled: permissions.includes("patrimonio") || permissions.includes("chaves"), onClick: onOpenPatrimony },
@@ -2127,10 +2146,319 @@ function AdminScreen({ newOrdersCount, onlineEnabled, permissions, onLogout, onO
   );
 }
 
-function SecurityMenuScreen({ permissions, isAdmin, onBack, onLogout, onOpenGuards, onOpenMonitoring }: { permissions: UserPermission[]; isAdmin: boolean; onBack: () => void; onLogout: () => void; onOpenGuards: () => void; onOpenMonitoring: () => void }) {
+function SecurityMenuScreen({ permissions, isAdmin, onBack, onLogout, onOpenGuards, onOpenMonitoring, onOpenParking }: { permissions: UserPermission[]; isAdmin: boolean; onBack: () => void; onLogout: () => void; onOpenGuards: () => void; onOpenMonitoring: () => void; onOpenParking: () => void }) {
   const canGuards = permissions.includes("guardas");
   const canMonitoring = isAdmin && permissions.includes("painel-admin");
-  return <section className="screen"><TopBar title="Segurança" subtitle="Controle de segurança" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}>Voltar</button><section className="admin-grid security-grid"><ModuleCard title="Guardas" detail="Controle dos guardas" enabled={canGuards} onClick={onOpenGuards} className="security-card" />{isAdmin && <ModuleCard title="Monitoramento" detail="Entradas, saídas e rondas" enabled={canMonitoring} onClick={onOpenMonitoring} className="security-card" />}</section></section>;
+  const canParking = permissions.includes("estacionamento-consulta") || permissions.includes("estacionamento-cadastro") || permissions.includes("painel-admin");
+  return <section className="screen"><TopBar title="Segurança" subtitle="Controle de segurança" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}>Voltar</button><section className="admin-grid security-grid"><ModuleCard title="Guardas" detail="Controle dos guardas" enabled={canGuards} onClick={onOpenGuards} className="security-card" />{isAdmin && <ModuleCard title="Monitoramento" detail="Entradas, saídas e rondas" enabled={canMonitoring} onClick={onOpenMonitoring} className="security-card" />}<ModuleCard title="Estacionamento" detail="Consulta e cadastro de veículos" enabled={canParking} onClick={onOpenParking} className="security-card" /></section></section>;
+}
+
+type ParkingTab = "search" | "register";
+
+function SecurityParkingScreen({ permissions, isAdmin, onBack, onLogout }: { permissions: UserPermission[]; isAdmin: boolean; onBack: () => void; onLogout: () => void }) {
+  const canRegister = isAdmin || permissions.includes("painel-admin") || permissions.includes("estacionamento-cadastro");
+  const [activeTab, setActiveTab] = useState<ParkingTab>("search");
+  const [vehicleState, setVehicleState] = useState<VehicleLoadState>({ vehicles: [], remoteReadable: false, remoteProtected: false });
+  const [loading, setLoading] = useState(true);
+  const [searchPlate, setSearchPlate] = useState("");
+  const [capturedPlatePhoto, setCapturedPlatePhoto] = useState("");
+  const [searchMessage, setSearchMessage] = useState("");
+  const [searchedPlate, setSearchedPlate] = useState("");
+  const [resultVehicle, setResultVehicle] = useState<VehicleRecord | null>(null);
+  const [resultOpen, setResultOpen] = useState(false);
+  const [draft, setDraft] = useState<VehicleRecordDraft>(() => createBlankVehicleDraft());
+  const [selectedVehicleId, setSelectedVehicleId] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [formMessage, setFormMessage] = useState("");
+  const vehicles = vehicleState.vehicles;
+  const sortedVehicles = useMemo(() => [...vehicles].sort((first, second) => `${first.ownerName} ${first.plate}`.localeCompare(`${second.ownerName} ${second.plate}`)), [vehicles]);
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    loadVehicleRecords()
+      .then((state) => {
+        if (!active) return;
+        setVehicleState(state);
+      })
+      .catch(() => {
+        if (!active) return;
+        setVehicleState({ vehicles: [], remoteReadable: false, remoteProtected: false, message: "Erro ao carregar veículos." });
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => { active = false; };
+  }, []);
+
+  function upsertVehicleInState(vehicle: VehicleRecord) {
+    setVehicleState((current) => {
+      const exists = current.vehicles.some((item) => item.id === vehicle.id || item.normalizedPlate === vehicle.normalizedPlate);
+      return {
+        ...current,
+        vehicles: exists
+          ? current.vehicles.map((item) => (item.id === vehicle.id || item.normalizedPlate === vehicle.normalizedPlate ? vehicle : item))
+          : [...current.vehicles, vehicle],
+      };
+    });
+  }
+
+  async function refreshVehicles() {
+    const state = await loadVehicleRecords();
+    setVehicleState(state);
+    return state.vehicles;
+  }
+
+  async function handlePlatePhoto(file: File | null) {
+    if (!file) return;
+    try {
+      const photoData = await imageFileToDataUrl(file);
+      setCapturedPlatePhoto(photoData);
+      setSearchMessage("Foto da placa capturada. Digite ou confira a placa para pesquisar.");
+    } catch {
+      setSearchMessage("Não foi possível salvar a foto da placa. Digite a placa manualmente.");
+    }
+  }
+
+  async function handleDraftPhoto(file: File | null, field: "carPhotoData" | "platePhotoData") {
+    if (!file) return;
+    try {
+      const photoData = await imageFileToDataUrl(file);
+      setDraft((current) => ({ ...current, [field]: photoData }));
+      setFormMessage("Foto adicionada. Salve o veículo para confirmar.");
+    } catch {
+      setFormMessage("Não foi possível salvar a foto. Tente uma imagem menor.");
+    }
+  }
+
+  async function searchVehicle() {
+    const normalizedPlate = normalizeVehiclePlate(searchPlate);
+    if (!normalizedPlate) {
+      setSearchMessage("Digite a placa para pesquisar.");
+      return;
+    }
+
+    const currentVehicles = vehicleState.remoteReadable ? vehicles : await refreshVehicles();
+    const foundVehicle = currentVehicles.find((vehicle) => vehicle.normalizedPlate === normalizedPlate) ?? null;
+    setSearchedPlate(searchPlate.trim().toUpperCase());
+    setResultVehicle(foundVehicle);
+    setResultOpen(true);
+    setSearchMessage(foundVehicle ? "" : "Veículo não cadastrado.");
+  }
+
+  function startVehicleCreate(plate = "", platePhotoData = "") {
+    setDraft(createBlankVehicleDraft(plate, platePhotoData));
+    setSelectedVehicleId("");
+    setFormMessage("");
+    setActiveTab("register");
+  }
+
+  function editVehicle(vehicle: VehicleRecord) {
+    setDraft(vehicleToDraft(vehicle));
+    setSelectedVehicleId(vehicle.id);
+    setFormMessage("");
+    setActiveTab("register");
+  }
+
+  function selectVehicleForEdit(vehicleId: string) {
+    setSelectedVehicleId(vehicleId);
+    const vehicle = vehicles.find((item) => item.id === vehicleId);
+    if (vehicle) {
+      setDraft(vehicleToDraft(vehicle));
+      setFormMessage("");
+    }
+  }
+
+  async function saveParkingVehicle(nextDraft = draft) {
+    const normalizedPlate = normalizeVehiclePlate(nextDraft.plate);
+    if (!canRegister) {
+      setFormMessage("Sem permissão para cadastrar veículos.");
+      return;
+    }
+    if (!normalizedPlate) {
+      setFormMessage("Informe a placa do veículo.");
+      return;
+    }
+
+    setSaving(true);
+    setFormMessage("Salvando veículo...");
+    try {
+      const result = await saveVehicleRecord(nextDraft);
+      upsertVehicleInState(result.vehicle);
+      setDraft(vehicleToDraft(result.vehicle));
+      setSelectedVehicleId(result.vehicle.id);
+      setFormMessage(result.message);
+    } catch (error) {
+      setFormMessage(error instanceof Error ? error.message : "Não foi possível salvar o veículo.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function inactivateVehicle() {
+    if (!draft.id) {
+      setFormMessage("Selecione um veículo cadastrado para inativar.");
+      return;
+    }
+    await saveParkingVehicle({ ...draft, active: false });
+  }
+
+  return (
+    <section className="screen parking-screen">
+      <TopBar title="Estacionamento" subtitle="Consulta rápida de placas e controle de veículos" onLogout={onLogout} />
+      <button className="ghost-button" type="button" onClick={onBack}>Voltar para Segurança</button>
+      {vehicleState.message && <p className="notice-message">{vehicleState.message}</p>}
+      <div className="monitoring-tabs parking-tabs">
+        <button className={activeTab === "search" ? "active" : ""} type="button" onClick={() => setActiveTab("search")}>Pesquisar Veículo</button>
+        {canRegister && <button className={activeTab === "register" ? "active" : ""} type="button" onClick={() => setActiveTab("register")}>Cadastro de Veículos</button>}
+      </div>
+
+      {activeTab === "search" && (
+        <section className="parking-search-panel">
+          <label className="scan-button parking-photo-button">
+            Tirar foto da placa
+            <input type="file" accept="image/*" capture="environment" onChange={(event) => { void handlePlatePhoto(event.target.files?.[0] ?? null); event.target.value = ""; }} />
+          </label>
+          {capturedPlatePhoto && <VehiclePhotoPreview label="Foto da placa capturada" photoData={capturedPlatePhoto} />}
+          <section className="manual-form parking-search-form">
+            <label>Digite a placa<input type="text" value={searchPlate} placeholder="Ex.: GJU-6539" autoCapitalize="characters" onChange={(event) => setSearchPlate(event.target.value.toUpperCase())} /></label>
+            <button className="primary-button wide-button" type="button" disabled={loading} onClick={() => { void searchVehicle(); }}>{loading ? "Carregando..." : "Pesquisar"}</button>
+          </section>
+          {searchMessage && <p className={searchMessage.includes("capturada") ? "success-message" : "notice-message"}>{searchMessage}</p>}
+        </section>
+      )}
+
+      {activeTab === "register" && canRegister && (
+        <section className="parking-register-panel">
+          <div className="button-grid">
+            <button className="secondary-button" type="button" disabled={saving} onClick={() => startVehicleCreate()}>Cadastrar novo veículo</button>
+            {sortedVehicles.length > 0 && (
+              <label>
+                Editar veículo existente
+                <select value={selectedVehicleId} disabled={saving} onChange={(event) => selectVehicleForEdit(event.target.value)}>
+                  <option value="">Selecione</option>
+                  {sortedVehicles.map((vehicle) => <option key={vehicle.id} value={vehicle.id}>{vehicle.plate} - {vehicle.ownerName || "Sem nome"}</option>)}
+                </select>
+              </label>
+            )}
+          </div>
+          {formMessage && <p className={formMessage.includes("salvo") || formMessage.includes("adicionada") ? "success-message" : "notice-message"}>{formMessage}</p>}
+          <VehicleRegisterForm draft={draft} saving={saving} onDraftChange={setDraft} onPhotoChange={handleDraftPhoto} onSave={() => { void saveParkingVehicle(); }} onInactivate={() => { void inactivateVehicle(); }} />
+        </section>
+      )}
+
+      {resultOpen && (
+        <VehicleResultDialog
+          plate={searchedPlate}
+          vehicle={resultVehicle}
+          canRegister={canRegister}
+          onClose={() => setResultOpen(false)}
+          onRegister={() => {
+            setResultOpen(false);
+            startVehicleCreate(searchedPlate, capturedPlatePhoto);
+          }}
+          onEdit={(vehicle) => {
+            setResultOpen(false);
+            editVehicle(vehicle);
+          }}
+        />
+      )}
+    </section>
+  );
+}
+
+function VehicleRegisterForm({ draft, saving, onDraftChange, onPhotoChange, onSave, onInactivate }: { draft: VehicleRecordDraft; saving: boolean; onDraftChange: (draft: VehicleRecordDraft) => void; onPhotoChange: (file: File | null, field: "carPhotoData" | "platePhotoData") => void; onSave: () => void; onInactivate: () => void }) {
+  return (
+    <section className="manual-form parking-register-form">
+      <label>Placa<input type="text" value={draft.plate} placeholder="Ex.: GJU-6539" disabled={saving} autoCapitalize="characters" onChange={(event) => onDraftChange({ ...draft, plate: event.target.value.toUpperCase() })} /></label>
+      <label>Tipo de vínculo<select value={draft.ownerType} disabled={saving} onChange={(event) => onDraftChange({ ...draft, ownerType: event.target.value as VehicleRecordDraft["ownerType"] })}>{vehicleOwnerTypes.map((ownerType) => <option key={ownerType} value={ownerType}>{ownerType}</option>)}</select></label>
+      <label>Nome<input type="text" value={draft.ownerName} disabled={saving} onChange={(event) => onDraftChange({ ...draft, ownerName: event.target.value })} /></label>
+      <label>Departamento<input type="text" value={draft.department} disabled={saving} onChange={(event) => onDraftChange({ ...draft, department: event.target.value })} /></label>
+      <label>Marca<input type="text" value={draft.brand} disabled={saving} onChange={(event) => onDraftChange({ ...draft, brand: event.target.value })} /></label>
+      <label>Modelo<input type="text" value={draft.model} disabled={saving} onChange={(event) => onDraftChange({ ...draft, model: event.target.value })} /></label>
+      <label>Cor<input type="text" value={draft.color} disabled={saving} onChange={(event) => onDraftChange({ ...draft, color: event.target.value })} /></label>
+      <div className="parking-photo-grid">
+        <VehiclePhotoField label="Foto do carro" photoData={draft.carPhotoData} disabled={saving} onChange={(file) => onPhotoChange(file, "carPhotoData")} onRemove={() => onDraftChange({ ...draft, carPhotoData: undefined })} />
+        <VehiclePhotoField label="Foto da placa" photoData={draft.platePhotoData} disabled={saving} onChange={(file) => onPhotoChange(file, "platePhotoData")} onRemove={() => onDraftChange({ ...draft, platePhotoData: undefined })} />
+      </div>
+      <label className="checkbox-row"><input type="checkbox" checked={draft.parkingAuthorized} disabled={saving} onChange={(event) => onDraftChange({ ...draft, parkingAuthorized: event.target.checked })} /><span>Autorizado a estacionar</span></label>
+      <label className="checkbox-row"><input type="checkbox" checked={draft.parkingPriority} disabled={saving} onChange={(event) => onDraftChange({ ...draft, parkingPriority: event.target.checked })} /><span>Prioridade de vaga</span></label>
+      <label className="checkbox-row"><input type="checkbox" checked={draft.active} disabled={saving} onChange={(event) => onDraftChange({ ...draft, active: event.target.checked })} /><span>Veículo ativo</span></label>
+      <label>Observações<textarea rows={3} value={draft.notes} disabled={saving} onChange={(event) => onDraftChange({ ...draft, notes: event.target.value })} /></label>
+      <div className="button-grid">
+        <button className="primary-button" type="button" disabled={saving} onClick={onSave}>{saving ? "Salvando..." : "Salvar veículo"}</button>
+        <button className="secondary-button" type="button" disabled={saving || !draft.id || !draft.active} onClick={onInactivate}>Inativar veículo</button>
+      </div>
+    </section>
+  );
+}
+
+function VehiclePhotoField({ label, photoData, disabled, onChange, onRemove }: { label: string; photoData?: string; disabled: boolean; onChange: (file: File | null) => void; onRemove: () => void }) {
+  return (
+    <article className="vehicle-photo-field">
+      <VehiclePhotoPreview label={label} photoData={photoData} />
+      <label className="photo-button">
+        {label}
+        <input type="file" accept="image/*" capture="environment" disabled={disabled} onChange={(event) => { onChange(event.target.files?.[0] ?? null); event.target.value = ""; }} />
+      </label>
+      {photoData && <button className="ghost-button" type="button" disabled={disabled} onClick={onRemove}>Remover foto</button>}
+    </article>
+  );
+}
+
+function VehiclePhotoPreview({ label, photoData }: { label: string; photoData?: string }) {
+  return <div className="vehicle-photo-preview" aria-label={label}>{photoData ? <img src={photoData} alt={label} /> : <span>{label}</span>}</div>;
+}
+
+function VehicleResultDialog({ plate, vehicle, canRegister, onClose, onRegister, onEdit }: { plate: string; vehicle: VehicleRecord | null; canRegister: boolean; onClose: () => void; onRegister: () => void; onEdit: (vehicle: VehicleRecord) => void }) {
+  return (
+    <div className="dialog-backdrop" role="presentation">
+      <section className="dialog vehicle-result-dialog" role="dialog" aria-modal="true" aria-label="Resultado da pesquisa de veículo">
+        {vehicle ? (
+          <>
+            <div className="vehicle-result-head">
+              <div>
+                <p className="card-kicker">Veículo encontrado</p>
+                <h2>{vehicle.plate}</h2>
+              </div>
+              <span className={vehicle.active ? "status-done" : "status-deleted"}>{vehicle.active ? vehicle.ownerType : "Inativo"}</span>
+            </div>
+            <div className="vehicle-result-grid">
+              <VehicleResultField label="Nome vinculado" value={vehicle.ownerName || "Não informado"} />
+              <VehicleResultField label="Departamento" value={vehicle.department || "Não informado"} />
+              <VehicleResultField label="Marca" value={vehicle.brand || "Não informado"} />
+              <VehicleResultField label="Modelo" value={vehicle.model || "Não informado"} />
+              <VehicleResultField label="Cor" value={vehicle.color || "Não informado"} />
+              <VehicleResultField label="Autorizado a estacionar" value={vehicle.parkingAuthorized ? "Sim" : "Não"} />
+              <VehicleResultField label="Prioridade de vaga" value={vehicle.parkingPriority ? "Sim" : "Não"} />
+              <VehicleResultField label="Observações" value={vehicle.notes || "Sem observações"} wide />
+            </div>
+            <div className="parking-photo-grid">
+              <VehiclePhotoPreview label="Foto do carro" photoData={vehicle.carPhotoData} />
+              <VehiclePhotoPreview label="Foto da placa" photoData={vehicle.platePhotoData} />
+            </div>
+            <div className="button-grid">
+              <button className="ghost-button" type="button" onClick={onClose}>Fechar</button>
+              {canRegister && <button className="secondary-button" type="button" onClick={() => onEdit(vehicle)}>Editar cadastro</button>}
+            </div>
+          </>
+        ) : (
+          <>
+            <h2>Veículo não cadastrado</h2>
+            <p>Placa pesquisada: <strong>{plate}</strong></p>
+            <div className="button-grid">
+              <button className="ghost-button" type="button" onClick={onClose}>Fechar</button>
+              {canRegister && <button className="primary-button" type="button" onClick={onRegister}>Cadastrar este veículo</button>}
+            </div>
+          </>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function VehicleResultField({ label, value, wide = false }: { label: string; value: string; wide?: boolean }) {
+  return <div className={wide ? "vehicle-result-field wide" : "vehicle-result-field"}><span>{label}</span><strong>{value}</strong></div>;
 }
 
 function useGuardMonitoringData() {

@@ -731,6 +731,16 @@ select:disabled {
   background: var(--green-soft);
 }
 
+.status-deleted {
+  flex: 0 0 auto;
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: #991b1b;
+  background: var(--red-soft);
+  font-size: 0.86rem;
+  font-weight: 900;
+}
+
 .item-list {
   display: grid;
   gap: 10px;
@@ -1348,6 +1358,112 @@ select:disabled {
   background: #fff7ed;
   border-color: #fdba74;
   box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.12);
+}
+
+.parking-tabs {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.parking-search-panel,
+.parking-register-panel,
+.parking-register-form,
+.parking-result-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.parking-photo-button {
+  min-height: 58px;
+  font-size: 1rem;
+}
+
+.parking-search-form {
+  padding: 14px;
+}
+
+.parking-photo-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.vehicle-photo-field {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  padding: 12px;
+  background: #f8fafc;
+  border: 1px solid #e5eaf1;
+  border-radius: 8px;
+}
+
+.vehicle-photo-preview {
+  min-height: 150px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  color: var(--muted);
+  text-align: center;
+  background: #ffffff;
+  border: 1px solid #d8dee8;
+  border-radius: 8px;
+  font-weight: 900;
+}
+
+.vehicle-photo-preview img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+.vehicle-result-dialog {
+  width: min(100%, 620px);
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+}
+
+.vehicle-result-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.vehicle-result-head h2 {
+  margin-bottom: 0;
+}
+
+.vehicle-result-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.vehicle-result-field {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 10px;
+  background: #f8fafc;
+  border: 1px solid #e5eaf1;
+  border-radius: 8px;
+}
+
+.vehicle-result-field.wide {
+  grid-column: 1 / -1;
+}
+
+.vehicle-result-field span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.vehicle-result-field strong {
+  color: var(--ink);
+  overflow-wrap: anywhere;
 }
 
 .monitoring-panel,
@@ -2661,7 +2777,10 @@ select:disabled {
   }
 
   .monitoring-tabs,
-  .monitoring-meta-grid {
+  .monitoring-meta-grid,
+  .parking-tabs,
+  .parking-photo-grid,
+  .vehicle-result-grid {
     grid-template-columns: 1fr;
   }
 
