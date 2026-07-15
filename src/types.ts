@@ -32,6 +32,8 @@ export type UserPermission =
   | "agua"
   | "seguranca"
   | "guardas"
+  | "estacionamento-consulta"
+  | "estacionamento-cadastro"
   | "manutencao"
   | "chaves"
   | "patrimonio"
