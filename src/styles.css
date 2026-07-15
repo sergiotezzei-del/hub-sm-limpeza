@@ -278,6 +278,36 @@ select:disabled {
   background: var(--green-soft);
 }
 
+.offline-pending-banner {
+  width: 100%;
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 12px 14px;
+  color: #7c2d12;
+  text-align: left;
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  border-left: 6px solid var(--orange);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.offline-pending-banner:disabled {
+  cursor: wait;
+  opacity: 0.78;
+}
+
+.offline-pending-banner strong {
+  font-size: 0.95rem;
+}
+
+.offline-pending-banner span {
+  color: #9a3412;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
 .top-bar {
   display: flex;
   align-items: flex-start;

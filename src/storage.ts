@@ -16,6 +16,7 @@ const PROFILES_KEY = "hub-sm-employee-profiles";
 const STOCK_CHECKS_KEY = "hub-sm-stock-checks";
 const INVENTORY_KEY = "hub-sm-inventory-products";
 const STOCK_MOVEMENTS_KEY = "hub-sm-stock-movements";
+const OFFLINE_QUEUE_KEY = "hub-sm-cleaning-offline-queue";
 const LEGACY_PRODUCT_PHOTOS_KEY = "hub-sm-product-photos";
 const LEGACY_STOCK_BOOTSTRAP_KEY = "hub-sm-limpeza-stock-bootstrap-2026-06-24";
 const CLOUD_URL = import.meta.env.VITE_DB_URL ?? "";
@@ -44,12 +45,44 @@ export type StockExitInput = {
   userId: string;
   userName: string;
   observation?: string;
+  operationId?: string;
 };
 
 export type CleaningProductionResetResult = {
   cloud: boolean;
   remoteTables: string[];
   localKeys: string[];
+};
+
+export type CleaningWriteResult = {
+  synced: boolean;
+  queued: boolean;
+};
+
+export type CleaningOfflineQueueKind = "order" | "stock-check" | "stock-exit";
+
+export type CleaningOfflineQueueItem = {
+  id: string;
+  kind: CleaningOfflineQueueKind;
+  createdAt: string;
+  attempts: number;
+  lastAttemptAt?: string;
+  lastError?: string;
+  payload: CleaningOrder | StockCheck | StockExitInput;
+};
+
+export type CleaningOfflineQueueSummary = {
+  total: number;
+  orders: number;
+  stockChecks: number;
+  stockExits: number;
+};
+
+export type CleaningOfflineSyncResult = {
+  attempted: number;
+  synced: number;
+  failed: number;
+  remaining: number;
 };
 
 type OrderRow = {
@@ -119,6 +152,8 @@ type StockMovementRow = {
   observation: string | null;
   source?: string | null;
 };
+
+let offlineSyncPromise: Promise<CleaningOfflineSyncResult> | null = null;
 
 function apiHeaders(extra: Record<string, string> = {}) {
   return {
@@ -215,20 +250,20 @@ export async function getNeiaOrderHistory(): Promise<CleaningOrder[]> {
   }
 }
 
-export async function addOrder(order: CleaningOrder) {
+export async function addOrder(order: CleaningOrder): Promise<CleaningWriteResult> {
   if (!cloudEnabled) {
-    saveLocalOrders([order, ...getLocalOrders()]);
-    return;
+    enqueueCleaningOfflineItem("order", order.id, order);
+    return { synced: false, queued: true };
   }
 
   try {
-    const createdOrder = await postOrder(order);
-    await postOrderItems(createdOrder.id, order.itens);
+    await syncOrderToRemote(order);
     await getOrders();
+    return { synced: true, queued: false };
   } catch (error) {
     console.error(error);
-    saveLocalOrders([order, ...getLocalOrders()]);
-    throw error;
+    enqueueCleaningOfflineItem("order", order.id, order);
+    return { synced: false, queued: true };
   }
 }
 
@@ -245,6 +280,7 @@ export async function updateOrder(updatedOrder: CleaningOrder) {
     saveLocalOrders(
       getLocalOrders().map((order) => (order.id === orderForSave.id ? orderForSave : order)),
     );
+    enqueueCleaningOfflineItem("order", orderForSave.id, orderForSave);
     return;
   }
 
@@ -271,17 +307,21 @@ export async function updateOrder(updatedOrder: CleaningOrder) {
     saveLocalOrders(
       getLocalOrders().map((order) => (order.id === orderForSave.id ? orderForSave : order)),
     );
+    enqueueCleaningOfflineItem("order", orderForSave.id, orderForSave);
     throw error;
   }
 }
 
 export async function deleteOrder(orderId: string) {
   const deletedAt = new Date().toISOString();
+  const localOrder = getLocalOrders().find((order) => order.id === orderId);
+  const deletedOrder = localOrder ? { ...localOrder, deletedAt } : null;
 
   if (!cloudEnabled) {
     saveLocalOrders(
       getLocalOrders().map((order) => (order.id === orderId ? { ...order, deletedAt } : order)),
     );
+    if (deletedOrder) enqueueCleaningOfflineItem("order", orderId, deletedOrder);
     return;
   }
 
@@ -296,6 +336,7 @@ export async function deleteOrder(orderId: string) {
     saveLocalOrders(
       getLocalOrders().map((order) => (order.id === orderId ? { ...order, deletedAt } : order)),
     );
+    if (deletedOrder) enqueueCleaningOfflineItem("order", orderId, deletedOrder);
     throw error;
   }
 }
@@ -375,48 +416,20 @@ function saveLocalStockChecks(checks: StockCheck[]) {
   window.localStorage.setItem(STOCK_CHECKS_KEY, JSON.stringify(checks));
 }
 
-export async function addStockCheck(check: StockCheck) {
+export async function addStockCheck(check: StockCheck): Promise<CleaningWriteResult> {
   if (!cloudEnabled) {
-    saveLocalStockChecks([check, ...getLocalStockChecks()]);
-    return;
+    enqueueCleaningOfflineItem("stock-check", check.id, check);
+    return { synced: false, queued: true };
   }
 
   try {
-    const response = await request(`${CLOUD_URL}/rest/v1/stock_checks`, {
-      method: "POST",
-      headers: { Prefer: "return=representation" },
-      body: JSON.stringify([
-        {
-          data: check.data,
-          hora: check.hora,
-          conferente: check.conferente,
-        },
-      ]),
-    });
-
-    const rows = (await response.json()) as StockCheckRow[];
-    if (!rows[0]?.id) throw new Error("Conferência criada sem ID online");
-
-    if (check.itens.length > 0) {
-      await request(`${CLOUD_URL}/rest/v1/stock_check_items`, {
-        method: "POST",
-        body: JSON.stringify(
-          check.itens.map((item) => ({
-            stock_check_id: rows[0].id,
-            product_name: item.productName,
-            unit: item.unit,
-            quantity: item.quantity,
-            observation: item.observation ?? null,
-          })),
-        ),
-      });
-    }
-
+    await syncStockCheckToRemote(check);
     await getStockChecks();
+    return { synced: true, queued: false };
   } catch (error) {
     console.error(error);
-    saveLocalStockChecks([check, ...getLocalStockChecks()]);
-    throw error;
+    enqueueCleaningOfflineItem("stock-check", check.id, check);
+    return { synced: false, queued: true };
   }
 }
 
@@ -441,16 +454,64 @@ export async function getStockChecks(): Promise<StockCheck[]> {
   }
 }
 
-async function postOrder(order: CleaningOrder): Promise<OrderRow> {
-  const response = await request(`${CLOUD_URL}/rest/v1/orders`, {
+async function syncStockCheckToRemote(check: StockCheck) {
+  const response = await request(`${CLOUD_URL}/rest/v1/stock_checks?on_conflict=id`, {
     method: "POST",
-    headers: { Prefer: "return=representation" },
+    headers: { Prefer: "resolution=merge-duplicates,return=representation" },
     body: JSON.stringify([
       {
+        id: check.id,
+        data: check.data,
+        hora: check.hora,
+        conferente: check.conferente,
+      },
+    ]),
+  });
+
+  const rows = (await response.json()) as StockCheckRow[];
+  if (!rows[0]?.id) throw new Error("Conferência criada sem ID online");
+
+  await request(`${CLOUD_URL}/rest/v1/stock_check_items?stock_check_id=eq.${rows[0].id}`, {
+    method: "DELETE",
+  });
+
+  if (check.itens.length === 0) return;
+
+  await request(`${CLOUD_URL}/rest/v1/stock_check_items`, {
+    method: "POST",
+    body: JSON.stringify(
+      check.itens.map((item) => ({
+        stock_check_id: rows[0].id,
+        product_name: item.productName,
+        unit: item.unit,
+        quantity: item.quantity,
+        observation: item.observation ?? null,
+      })),
+    ),
+  });
+}
+
+async function syncOrderToRemote(order: CleaningOrder) {
+  const createdOrder = await postOrder(order);
+  await request(`${CLOUD_URL}/rest/v1/order_items?order_id=eq.${createdOrder.id}`, {
+    method: "DELETE",
+  });
+  await postOrderItems(createdOrder.id, order.itens);
+}
+
+async function postOrder(order: CleaningOrder): Promise<OrderRow> {
+  const response = await request(`${CLOUD_URL}/rest/v1/orders?on_conflict=id`, {
+    method: "POST",
+    headers: { Prefer: "resolution=merge-duplicates,return=representation" },
+    body: JSON.stringify([
+      {
+        id: order.id,
         data: order.data,
         hora: order.hora,
         solicitante: order.solicitante,
         status: order.status,
+        deleted_at: order.deletedAt ?? null,
+        completed_at: order.completedAt ?? null,
       },
     ]),
   });
@@ -582,12 +643,27 @@ export async function getStockMovements(): Promise<StockMovement[]> {
   }
 }
 
-export async function registerStockExit(input: StockExitInput) {
+export async function registerStockExit(input: StockExitInput): Promise<CleaningWriteResult> {
+  const operationId = input.operationId || createOfflineOperationId();
+  const payload = { ...input, operationId };
+
   if (!cloudEnabled) {
-    addLocalStockExit(input);
-    return;
+    enqueueCleaningOfflineItem("stock-exit", operationId, payload);
+    return { synced: false, queued: true };
   }
 
+  try {
+    await syncStockExitToRemote(payload);
+    await Promise.all([getInventoryProducts(), getStockMovements()]);
+    return { synced: true, queued: false };
+  } catch (error) {
+    console.error(error);
+    enqueueCleaningOfflineItem("stock-exit", operationId, payload);
+    return { synced: false, queued: true };
+  }
+}
+
+async function syncStockExitToRemote(input: StockExitInput) {
   await request(`${CLOUD_URL}/rest/v1/rpc/register_cleaning_stock_exit`, {
     method: "POST",
     body: JSON.stringify({
@@ -597,10 +673,9 @@ export async function registerStockExit(input: StockExitInput) {
       p_user_name: input.userName,
       p_observation: input.observation?.trim() || null,
       p_source: "app",
+      p_movement_id: input.operationId ?? null,
     }),
   });
-
-  await Promise.all([getInventoryProducts(), getStockMovements()]);
 }
 
 export async function prepareCleaningForRealUse(): Promise<CleaningProductionResetResult> {
@@ -632,6 +707,163 @@ function clearLocalCleaningOperationalData() {
   const keys = [ORDERS_KEY, STOCK_CHECKS_KEY, STOCK_MOVEMENTS_KEY, LEGACY_STOCK_BOOTSTRAP_KEY];
   keys.forEach((key) => window.localStorage.removeItem(key));
   return keys;
+}
+
+export function getCleaningOfflineQueue(): CleaningOfflineQueueItem[] {
+  const rawQueue = window.localStorage.getItem(OFFLINE_QUEUE_KEY);
+  if (!rawQueue) return [];
+
+  try {
+    const parsed = JSON.parse(rawQueue);
+    return Array.isArray(parsed) ? parsed.filter(isCleaningOfflineQueueItem) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function getCleaningOfflineQueueSummary(): CleaningOfflineQueueSummary {
+  return summarizeCleaningOfflineQueue(getCleaningOfflineQueue());
+}
+
+export function syncCleaningOfflineQueue(): Promise<CleaningOfflineSyncResult> {
+  if (offlineSyncPromise) return offlineSyncPromise;
+
+  offlineSyncPromise = syncCleaningOfflineQueueNow().finally(() => {
+    offlineSyncPromise = null;
+  });
+
+  return offlineSyncPromise;
+}
+
+async function syncCleaningOfflineQueueNow(): Promise<CleaningOfflineSyncResult> {
+  const queue = getCleaningOfflineQueue();
+  if (!cloudEnabled || queue.length === 0) {
+    return { attempted: 0, synced: 0, failed: 0, remaining: queue.length };
+  }
+
+  const remainingQueue: CleaningOfflineQueueItem[] = [];
+  let synced = 0;
+  let failed = 0;
+
+  for (const item of queue) {
+    try {
+      await syncCleaningOfflineItem(item);
+      synced += 1;
+    } catch (error) {
+      failed += 1;
+      remainingQueue.push({
+        ...item,
+        attempts: item.attempts + 1,
+        lastAttemptAt: new Date().toISOString(),
+        lastError: getErrorMessage(error),
+      });
+    }
+  }
+
+  saveCleaningOfflineQueue(remainingQueue);
+
+  if (synced > 0) {
+    await Promise.all([getOrders(), getStockChecks(), getStockMovements(), getInventoryProducts()]);
+  }
+
+  return {
+    attempted: queue.length,
+    synced,
+    failed,
+    remaining: remainingQueue.length,
+  };
+}
+
+async function syncCleaningOfflineItem(item: CleaningOfflineQueueItem) {
+  if (item.kind === "order") {
+    if (!isCleaningOrderLike(item.payload)) throw new Error("Pedido offline invalido");
+    await syncOrderToRemote(item.payload);
+    return;
+  }
+
+  if (item.kind === "stock-check") {
+    if (!isStockCheckLike(item.payload)) throw new Error("Conferencia offline invalida");
+    await syncStockCheckToRemote(item.payload);
+    return;
+  }
+
+  if (!isStockExitInputLike(item.payload)) throw new Error("Saida offline invalida");
+  await syncStockExitToRemote(item.payload);
+}
+
+function enqueueCleaningOfflineItem(kind: CleaningOfflineQueueKind, localId: string, payload: CleaningOfflineQueueItem["payload"]) {
+  const queue = getCleaningOfflineQueue();
+  const queueId = `${kind}:${localId}`;
+  const existingItem = queue.find((item) => item.id === queueId);
+  const nextItem: CleaningOfflineQueueItem = {
+    id: queueId,
+    kind,
+    createdAt: existingItem?.createdAt ?? new Date().toISOString(),
+    attempts: existingItem?.attempts ?? 0,
+    lastAttemptAt: existingItem?.lastAttemptAt,
+    lastError: existingItem?.lastError,
+    payload,
+  };
+  saveCleaningOfflineQueue([nextItem, ...queue.filter((item) => item.id !== queueId)]);
+}
+
+function saveCleaningOfflineQueue(queue: CleaningOfflineQueueItem[]) {
+  window.localStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(queue));
+}
+
+function summarizeCleaningOfflineQueue(queue: CleaningOfflineQueueItem[]): CleaningOfflineQueueSummary {
+  return queue.reduce<CleaningOfflineQueueSummary>(
+    (summary, item) => ({
+      total: summary.total + 1,
+      orders: summary.orders + (item.kind === "order" ? 1 : 0),
+      stockChecks: summary.stockChecks + (item.kind === "stock-check" ? 1 : 0),
+      stockExits: summary.stockExits + (item.kind === "stock-exit" ? 1 : 0),
+    }),
+    { total: 0, orders: 0, stockChecks: 0, stockExits: 0 },
+  );
+}
+
+function isCleaningOfflineQueueItem(value: unknown): value is CleaningOfflineQueueItem {
+  if (!value || typeof value !== "object") return false;
+  const item = value as Partial<CleaningOfflineQueueItem>;
+  return (
+    typeof item.id === "string" &&
+    (item.kind === "order" || item.kind === "stock-check" || item.kind === "stock-exit") &&
+    typeof item.createdAt === "string" &&
+    typeof item.attempts === "number" &&
+    Boolean(item.payload)
+  );
+}
+
+function isCleaningOrderLike(value: unknown): value is CleaningOrder {
+  if (!value || typeof value !== "object") return false;
+  const order = value as Partial<CleaningOrder>;
+  return typeof order.id === "string" && order.solicitante === "Neia" && Array.isArray(order.itens);
+}
+
+function isStockCheckLike(value: unknown): value is StockCheck {
+  if (!value || typeof value !== "object") return false;
+  const check = value as Partial<StockCheck>;
+  return typeof check.id === "string" && check.conferente === "Neia" && Array.isArray(check.itens);
+}
+
+function isStockExitInputLike(value: unknown): value is StockExitInput {
+  if (!value || typeof value !== "object") return false;
+  const input = value as Partial<StockExitInput>;
+  return Boolean(input.product) && typeof input.quantity === "number" && typeof input.userId === "string" && typeof input.userName === "string";
+}
+
+function createOfflineOperationId() {
+  if (crypto.randomUUID) return crypto.randomUUID();
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (char) => {
+    const value = Math.floor(Math.random() * 16);
+    return (char === "x" ? value : (value & 0x3) | 0x8).toString(16);
+  });
+}
+
+function getErrorMessage(error: unknown) {
+  if (error instanceof Error) return error.message;
+  return "Falha ao sincronizar";
 }
 
 async function getRemoteCleaningProducts(): Promise<ProductRow[]> {
