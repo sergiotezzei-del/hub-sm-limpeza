@@ -1,4 +1,4 @@
-import { ChangeEvent, FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { activities, employees } from "./data";
 import { GuardShiftPanel, GuardSyncDiagnosticPanel } from "./modules/security/components/GuardShift";
@@ -15,6 +15,7 @@ import {
   addStockCheck,
   deleteOrder as removeStoredOrder,
   getEmployeeProfiles,
+  getCleaningOfflineQueueSummary,
   getInventoryProducts as getStoredInventoryProducts,
   getLocalEmployeeProfiles,
   getLocalInventoryProducts as getStoredLocalInventoryProducts,
@@ -30,6 +31,7 @@ import {
   registerStockExit,
   saveEmployeePhoto,
   saveInventoryProductDetails,
+  syncCleaningOfflineQueue,
   updateOrder as updateStoredOrder,
 } from "./storage";
 import type {
@@ -473,6 +475,12 @@ function App() {
   const [deleteTarget, setDeleteTarget] = useState<CleaningOrder | null>(null);
   const [cleaningPrepOpen, setCleaningPrepOpen] = useState(false);
   const [cleaningPrepRunning, setCleaningPrepRunning] = useState(false);
+  const [offlinePendingCount, setOfflinePendingCount] = useState(() => getCleaningOfflineQueueSummary().total);
+  const [offlineSyncing, setOfflineSyncing] = useState(false);
+  const [orderSubmitting, setOrderSubmitting] = useState(false);
+  const [stockCheckSubmitting, setStockCheckSubmitting] = useState(false);
+  const [stockExitSubmitting, setStockExitSubmitting] = useState(false);
+  const cleaningSubmitLocks = useRef({ order: false, stockCheck: false, stockExit: false });
 
   const onlineEnabled = isCloudStorageEnabled();
 
@@ -482,14 +490,25 @@ function App() {
     void refreshProfiles();
     void refreshInventory();
     void refreshStockMovements();
+    refreshOfflinePendingCount();
+    void syncOfflinePendencies();
 
     const interval = window.setInterval(() => {
       if (isCloudStorageEnabled()) {
+        void syncOfflinePendencies();
         void refreshOrders();
       }
     }, 30000);
 
-    return () => window.clearInterval(interval);
+    const handleOnline = () => {
+      void syncOfflinePendencies();
+    };
+    window.addEventListener("online", handleOnline);
+
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("online", handleOnline);
+    };
   }, []);
 
   useEffect(() => {
@@ -566,6 +585,38 @@ function App() {
     return currentMovements;
   }
 
+  function refreshOfflinePendingCount() {
+    const summary = getCleaningOfflineQueueSummary();
+    setOfflinePendingCount(summary.total);
+    return summary;
+  }
+
+  async function syncOfflinePendencies() {
+    const currentSummary = refreshOfflinePendingCount();
+    if (currentSummary.total === 0 || !isCloudStorageEnabled()) return currentSummary;
+
+    setOfflineSyncing(true);
+    setNotice("Sincronizando pendências...");
+
+    try {
+      const result = await syncCleaningOfflineQueue();
+      const nextSummary = refreshOfflinePendingCount();
+      if (result.synced > 0 && result.remaining === 0) {
+        setNotice("Pendências sincronizadas com sucesso.");
+        await Promise.all([refreshOrders(), refreshInventory(), refreshStockMovements()]);
+      } else if (result.remaining > 0) {
+        setNotice("Existem pendências salvas neste aparelho aguardando internet.");
+      }
+      return nextSummary;
+    } catch {
+      refreshOfflinePendingCount();
+      setNotice("Existem pendências salvas neste aparelho aguardando internet.");
+      return getCleaningOfflineQueueSummary();
+    } finally {
+      setOfflineSyncing(false);
+    }
+  }
+
   function goToLogin() {
     void signOutSupabaseAuth();
     window.sessionStorage.removeItem(SESSION_KEY);
@@ -615,6 +666,7 @@ function App() {
     void refreshProfiles();
     void refreshInventory();
     void refreshStockMovements();
+    void syncOfflinePendencies();
     setView(getInitialViewForManagedUser(user));
   }
 
@@ -650,6 +702,8 @@ function App() {
   }
 
   async function sendOrder() {
+    if (cleaningSubmitLocks.current.order) return;
+
     const selectedProducts = inventoryProducts
       .map((product) => {
         const quantity = Number(quantities[product.id]);
@@ -665,6 +719,9 @@ function App() {
       return;
     }
 
+    cleaningSubmitLocks.current.order = true;
+    setOrderSubmitting(true);
+
     const now = new Date();
     const order: CleaningOrder = {
       id: createId(),
@@ -676,22 +733,29 @@ function App() {
     };
 
     try {
-      await addOrder(order);
-      await refreshOrders();
+      const result = await addOrder(order);
+      refreshOfflinePendingCount();
+      if (result.synced) await refreshOrders();
       setQuantities({});
       setManualItems([]);
       setManualDraft(emptyManualDraft);
       setManualOpen(false);
-      setNotice(onlineEnabled ? "Pedido enviado para Tezzei." : "Pedido salvo neste aparelho.");
+      setNotice(result.synced ? "Pedido enviado para Tezzei." : "Pedido salvo neste aparelho. Pendente de sincronização.");
       setView(getAfterCleaningActionView());
     } catch {
       await refreshOrders();
-      setNotice("Pedido salvo neste aparelho. Falha ao sincronizar online.");
+      refreshOfflinePendingCount();
+      setNotice("Pedido salvo neste aparelho. Pendente de sincronização.");
       setView(getAfterCleaningActionView());
+    } finally {
+      cleaningSubmitLocks.current.order = false;
+      setOrderSubmitting(false);
     }
   }
 
   async function sendStockCheck() {
+    if (cleaningSubmitLocks.current.stockCheck) return;
+
     const items = inventoryProducts
       .map((product) => {
         const quantity = Number(stockQuantities[product.id]);
@@ -712,6 +776,9 @@ function App() {
       return;
     }
 
+    cleaningSubmitLocks.current.stockCheck = true;
+    setStockCheckSubmitting(true);
+
     const now = new Date();
     const check: StockCheck = {
       id: createId(),
@@ -722,14 +789,19 @@ function App() {
     };
 
     try {
-      await addStockCheck(check);
+      const result = await addStockCheck(check);
+      refreshOfflinePendingCount();
       setStockQuantities({});
       setStockObservations({});
-      setNotice("Conferência de estoque enviada para Tezzei.");
+      setNotice(result.synced ? "Conferência de estoque enviada para Tezzei." : "Conferência salva neste aparelho. Pendente de sincronização.");
       setView(getAfterCleaningActionView());
     } catch {
-      setNotice("Conferência salva neste aparelho. Falha ao sincronizar online.");
+      refreshOfflinePendingCount();
+      setNotice("Conferência salva neste aparelho. Pendente de sincronização.");
       setView(getAfterCleaningActionView());
+    } finally {
+      cleaningSubmitLocks.current.stockCheck = false;
+      setStockCheckSubmitting(false);
     }
   }
 
@@ -774,6 +846,8 @@ function App() {
   }
 
   async function confirmStockExit() {
+    if (cleaningSubmitLocks.current.stockExit) return;
+
     if (!selectedExitProduct) {
       setStockExitMessage("Bipe ou selecione um produto antes de confirmar.");
       return;
@@ -785,17 +859,25 @@ function App() {
       return;
     }
 
+    cleaningSubmitLocks.current.stockExit = true;
+    setStockExitSubmitting(true);
+
     try {
-      await registerStockExit({ product: selectedExitProduct, quantity, userId: stockExitUserId, userName: getStockExitUserName(stockExitUserId, managedUsers), observation: stockExitObservation });
-      await Promise.all([refreshInventory(), refreshStockMovements()]);
+      const result = await registerStockExit({ product: selectedExitProduct, quantity, userId: stockExitUserId, userName: getStockExitUserName(stockExitUserId, managedUsers), observation: stockExitObservation, operationId: createId() });
+      refreshOfflinePendingCount();
+      if (result.synced) await Promise.all([refreshInventory(), refreshStockMovements()]);
       setStockExitBarcode("");
       setStockExitProductId("");
       setStockExitQuantity("1");
       setStockExitObservation("");
-      setStockExitMessage("Saída registrada com sucesso.");
+      setStockExitMessage(result.synced ? "Saída registrada com sucesso." : "Saída salva neste aparelho. Pendente de sincronização.");
     } catch {
       await Promise.all([refreshInventory(), refreshStockMovements()]);
-      setStockExitMessage("Nao foi possivel registrar a saida online. Tente novamente.");
+      refreshOfflinePendingCount();
+      setStockExitMessage("Saída salva neste aparelho. Pendente de sincronização.");
+    } finally {
+      cleaningSubmitLocks.current.stockExit = false;
+      setStockExitSubmitting(false);
     }
   }
 
@@ -983,7 +1065,8 @@ function App() {
       setNotice("Pedido atualizado.");
     } catch {
       await refreshOrders();
-      setNotice("Pedido atualizado apenas neste aparelho. Falha ao sincronizar online.");
+      refreshOfflinePendingCount();
+      setNotice("Pedido atualizado neste aparelho. Pendente de sincronização.");
     }
   }
 
@@ -994,7 +1077,8 @@ function App() {
       setNotice("Pedido marcado como feito.");
     } catch {
       await refreshOrders();
-      setNotice("Pedido marcado apenas neste aparelho. Falha ao sincronizar online.");
+      refreshOfflinePendingCount();
+      setNotice("Pedido marcado neste aparelho. Pendente de sincronização.");
     }
   }
 
@@ -1009,7 +1093,8 @@ function App() {
     } catch {
       await refreshOrders();
       setDeleteTarget(null);
-      setNotice("Pedido excluído apenas neste aparelho. Falha ao sincronizar online.");
+      refreshOfflinePendingCount();
+      setNotice("Pedido excluído neste aparelho. Pendente de sincronização.");
     }
   }
 
@@ -1288,9 +1373,12 @@ function App() {
           employeeId={activeEmployeeId}
           profile={profiles[activeEmployeeId]}
           notice={notice}
+          offlinePendingCount={offlinePendingCount}
+          offlineSyncing={offlineSyncing}
           adminPreview={view === "employee-preview"}
           onLogout={goToLogin}
           onBackToProfiles={() => setView("profiles")}
+          onSyncOffline={() => { void syncOfflinePendencies(); }}
           onNewOrder={() => {
             setNotice("");
             setView("order-form");
@@ -1324,6 +1412,7 @@ function App() {
           onAddManualItem={addManualItem}
           onRemoveManualItem={removeManualItem}
           onSendOrder={sendOrder}
+          sending={orderSubmitting}
         />
       )}
 
@@ -1341,6 +1430,7 @@ function App() {
           onQuantityChange={(productId, value) => setStockQuantities((current) => ({ ...current, [productId]: value }))}
           onObservationChange={(productId, value) => setStockObservations((current) => ({ ...current, [productId]: value }))}
           onSendStockCheck={sendStockCheck}
+          sending={stockCheckSubmitting}
         />
       )}
 
@@ -1353,6 +1443,7 @@ function App() {
           quantity={stockExitQuantity}
           observation={stockExitObservation}
           message={stockExitMessage}
+          saving={stockExitSubmitting}
           adminMode={hasCurrentPermission("painel-admin")}
           onBack={() => setView(getAfterCleaningActionView())}
           onLogout={goToLogin}
@@ -1478,6 +1569,9 @@ function App() {
           onOpenOrderHistory={openOrderHistory}
           onOpenNeiaHistory={openNeiaHistory}
           onPrepareCleaning={openCleaningPreparation}
+          offlinePendingCount={offlinePendingCount}
+          offlineSyncing={offlineSyncing}
+          onSyncOffline={() => { void syncOfflinePendencies(); }}
         />
       )}
 
@@ -1549,13 +1643,14 @@ function LoginScreen({ password, loginError, onPasswordChange, onSubmit }: { pas
   );
 }
 
-function EmployeeScreen({ employeeId, profile, notice, adminPreview, onLogout, onBackToProfiles, onNewOrder, onStockCheck, onStockExit, onOpenHistory, onProfilePhotoChange }: { employeeId: EmployeeId; profile: EmployeeProfile; notice: string; adminPreview: boolean; onLogout: () => void; onBackToProfiles: () => void; onNewOrder: () => void; onStockCheck: () => void; onStockExit: () => void; onOpenHistory: () => void; onProfilePhotoChange: (employeeId: EmployeeId, file: File | null) => void }) {
+function EmployeeScreen({ employeeId, profile, notice, offlinePendingCount, offlineSyncing, adminPreview, onLogout, onBackToProfiles, onSyncOffline, onNewOrder, onStockCheck, onStockExit, onOpenHistory, onProfilePhotoChange }: { employeeId: EmployeeId; profile: EmployeeProfile; notice: string; offlinePendingCount: number; offlineSyncing: boolean; adminPreview: boolean; onLogout: () => void; onBackToProfiles: () => void; onSyncOffline: () => void; onNewOrder: () => void; onStockCheck: () => void; onStockExit: () => void; onOpenHistory: () => void; onProfilePhotoChange: (employeeId: EmployeeId, file: File | null) => void }) {
   const employee = employees[employeeId];
   const employeeActivities = activities.filter((activity) => activity.employeeId === employeeId);
   return (
     <section className="screen">
       <EmployeeHeader employeeId={employeeId} profile={profile} adminPreview={adminPreview} onLogout={onLogout} onBackToProfiles={onBackToProfiles} onProfilePhotoChange={onProfilePhotoChange} />
       {notice && <p className="success-message">{notice}</p>}
+      <OfflinePendingNotice count={offlinePendingCount} syncing={offlineSyncing} onSync={onSyncOffline} />
       <section className="info-grid work-schedule-card" aria-label="Horários">
         <InfoCard title="Horário" value={employee.schedule} />
         <InfoCard title="Almoço" value={employee.lunch} />
@@ -1610,7 +1705,7 @@ function EmployeeHeader({ employeeId, profile, adminPreview, onLogout, onBackToP
   );
 }
 
-function OrderFormScreen({ products, quantities, manualOpen, manualDraft, manualItems, notice, onBack, onLogout, onQuantityChange, onManualOpenChange, onManualDraftChange, onAddManualItem, onRemoveManualItem, onSendOrder }: { products: InventoryProduct[]; quantities: Record<string, string>; manualOpen: boolean; manualDraft: ManualDraft; manualItems: OrderItem[]; notice: string; onBack: () => void; onLogout: () => void; onQuantityChange: (productId: string, value: string) => void; onManualOpenChange: (value: boolean) => void; onManualDraftChange: (draft: ManualDraft) => void; onAddManualItem: () => void; onRemoveManualItem: (itemId: string) => void; onSendOrder: () => void }) {
+function OrderFormScreen({ products, quantities, manualOpen, manualDraft, manualItems, notice, sending, onBack, onLogout, onQuantityChange, onManualOpenChange, onManualDraftChange, onAddManualItem, onRemoveManualItem, onSendOrder }: { products: InventoryProduct[]; quantities: Record<string, string>; manualOpen: boolean; manualDraft: ManualDraft; manualItems: OrderItem[]; notice: string; sending: boolean; onBack: () => void; onLogout: () => void; onQuantityChange: (productId: string, value: string) => void; onManualOpenChange: (value: boolean) => void; onManualDraftChange: (draft: ManualDraft) => void; onAddManualItem: () => void; onRemoveManualItem: (itemId: string) => void; onSendOrder: () => void }) {
   return (
     <section className="screen">
       <TopBar title="Fazer Pedido Sinval" subtitle="Solicitante: Neia" onLogout={onLogout} />
@@ -1621,20 +1716,20 @@ function OrderFormScreen({ products, quantities, manualOpen, manualDraft, manual
       <button className="secondary-button wide-button" type="button" onClick={() => onManualOpenChange(!manualOpen)}>Adicionar pedido que não tem na lista</button>
       {manualOpen && <section className="manual-form"><label>Nome do produto<input type="text" value={manualDraft.name} onChange={(event) => onManualDraftChange({ ...manualDraft, name: event.target.value })} /></label><label>Quantidade<input type="number" inputMode="numeric" min="0" value={manualDraft.quantity} onChange={(event) => onManualDraftChange({ ...manualDraft, quantity: event.target.value })} /></label><label>Observação opcional<textarea value={manualDraft.observation} rows={3} onChange={(event) => onManualDraftChange({ ...manualDraft, observation: event.target.value })} /></label><button className="primary-button" type="button" onClick={onAddManualItem}>Adicionar ao pedido</button></section>}
       {manualItems.length > 0 && <section className="section-block"><h2>Produtos não cadastrados</h2><div className="activity-list">{manualItems.map((item) => <article className="activity-card" key={item.id}><div><p className="card-kicker">{item.unit}</p><h3>{item.productName}</h3></div><p>Quantidade: {item.quantity}</p>{item.observation && <p>{item.observation}</p>}<button className="danger-button" type="button" onClick={() => onRemoveManualItem(item.id)}>Remover</button></article>)}</div></section>}
-      <button className="primary-button wide-button sticky-action" type="button" onClick={onSendOrder}>Enviar Pedido</button>
+      <button className="primary-button wide-button sticky-action" type="button" disabled={sending} onClick={onSendOrder}>{sending ? "Salvando..." : "Enviar Pedido"}</button>
     </section>
   );
 }
 
-function StockCheckScreen({ products, quantities, observations, notice, onBack, onLogout, onQuantityChange, onObservationChange, onSendStockCheck }: { products: InventoryProduct[]; quantities: Record<string, string>; observations: Record<string, string>; notice: string; onBack: () => void; onLogout: () => void; onQuantityChange: (productId: string, value: string) => void; onObservationChange: (productId: string, value: string) => void; onSendStockCheck: () => void }) {
+function StockCheckScreen({ products, quantities, observations, notice, sending, onBack, onLogout, onQuantityChange, onObservationChange, onSendStockCheck }: { products: InventoryProduct[]; quantities: Record<string, string>; observations: Record<string, string>; notice: string; sending: boolean; onBack: () => void; onLogout: () => void; onQuantityChange: (productId: string, value: string) => void; onObservationChange: (productId: string, value: string) => void; onSendStockCheck: () => void }) {
   return (
-    <section className="screen"><TopBar title="Conferência de Estoque" subtitle="Solicitante: Neia" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}>Voltar</button>{notice && <p className="notice-message">{notice}</p>}<section className="product-list">{products.map((product) => <label className="product-row stock-row" key={product.id}><span><strong>{product.name}</strong><small>{product.unit}</small></span><input type="number" inputMode="decimal" min="0" placeholder="Qtd" value={quantities[product.id] ?? ""} onChange={(event) => onQuantityChange(product.id, event.target.value)} /><input type="text" placeholder="Obs." value={observations[product.id] ?? ""} onChange={(event) => onObservationChange(product.id, event.target.value)} /></label>)}</section><button className="primary-button wide-button sticky-action" type="button" onClick={onSendStockCheck}>Enviar Conferência</button></section>
+    <section className="screen"><TopBar title="Conferência de Estoque" subtitle="Solicitante: Neia" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}>Voltar</button>{notice && <p className="notice-message">{notice}</p>}<section className="product-list">{products.map((product) => <label className="product-row stock-row" key={product.id}><span><strong>{product.name}</strong><small>{product.unit}</small></span><input type="number" inputMode="decimal" min="0" placeholder="Qtd" value={quantities[product.id] ?? ""} onChange={(event) => onQuantityChange(product.id, event.target.value)} /><input type="text" placeholder="Obs." value={observations[product.id] ?? ""} onChange={(event) => onObservationChange(product.id, event.target.value)} /></label>)}</section><button className="primary-button wide-button sticky-action" type="button" disabled={sending} onClick={onSendStockCheck}>{sending ? "Salvando..." : "Enviar Conferência"}</button></section>
   );
 }
 
-function StockExitScreen({ inventoryProducts, selectedProduct, userId, barcode, quantity, observation, message, adminMode, onBack, onLogout, onUserChange, onBarcodeChange, onFileChange, onProductChange, onQuantityChange, onObservationChange, onConfirm }: { inventoryProducts: InventoryProduct[]; selectedProduct: InventoryProduct | null; userId: StockExitUserId; barcode: string; quantity: string; observation: string; message: string; adminMode: boolean; onBack: () => void; onLogout: () => void; onUserChange: (userId: StockExitUserId) => void; onBarcodeChange: (barcode: string) => void; onFileChange: (file: File | null) => void; onProductChange: (productId: string) => void; onQuantityChange: (quantity: string) => void; onObservationChange: (observation: string) => void; onConfirm: () => void }) {
+function StockExitScreen({ inventoryProducts, selectedProduct, userId, barcode, quantity, observation, message, saving, adminMode, onBack, onLogout, onUserChange, onBarcodeChange, onFileChange, onProductChange, onQuantityChange, onObservationChange, onConfirm }: { inventoryProducts: InventoryProduct[]; selectedProduct: InventoryProduct | null; userId: StockExitUserId; barcode: string; quantity: string; observation: string; message: string; saving: boolean; adminMode: boolean; onBack: () => void; onLogout: () => void; onUserChange: (userId: StockExitUserId) => void; onBarcodeChange: (barcode: string) => void; onFileChange: (file: File | null) => void; onProductChange: (productId: string) => void; onQuantityChange: (quantity: string) => void; onObservationChange: (observation: string) => void; onConfirm: () => void }) {
   return (
-    <section className="screen"><TopBar title="Saída de Produto" subtitle="Bipe o código de barras e confirme a retirada" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}>Voltar</button>{message && <p className="notice-message">{message}</p>}<section className="manual-form inventory-form">{adminMode && <label>Quem retirou<select value={userId} onChange={(event) => onUserChange(event.target.value as StockExitUserId)}>{employeeIds.map((employeeId) => <option key={employeeId} value={employeeId}>{employees[employeeId].name}</option>)}<option value="Sergio Tezzei">Sergio Tezzei</option></select></label>}<label className="scan-button">Abrir câmera / bipar código<input type="file" accept="image/*" capture="environment" onChange={(event) => { onFileChange(event.target.files?.[0] ?? null); event.target.value = ""; }} /></label><label>Código de barras<input type="text" inputMode="numeric" value={barcode} placeholder="Bipe ou digite o código" onChange={(event) => onBarcodeChange(event.target.value)} /></label><label>Produto encontrado / ajuste manual<select value={selectedProduct?.id ?? ""} onChange={(event) => onProductChange(event.target.value)}><option value="">Selecione o produto</option>{inventoryProducts.map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}</select></label>{selectedProduct && <article className="inventory-found-card"><span>Produto</span><strong>{selectedProduct.name}</strong><small>Estoque atual: {formatStockQuantity(selectedProduct.currentStock, selectedProduct.unit)}</small></article>}<label>Quantidade retirada<input type="number" inputMode="decimal" min="0" value={quantity} onChange={(event) => onQuantityChange(event.target.value)} /></label><label>Observação opcional<textarea rows={3} value={observation} onChange={(event) => onObservationChange(event.target.value)} /></label><button className="primary-button wide-button" type="button" onClick={onConfirm}>Confirmar saída</button></section></section>
+    <section className="screen"><TopBar title="Saída de Produto" subtitle="Bipe o código de barras e confirme a retirada" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}>Voltar</button>{message && <p className="notice-message">{message}</p>}<section className="manual-form inventory-form">{adminMode && <label>Quem retirou<select value={userId} onChange={(event) => onUserChange(event.target.value as StockExitUserId)}>{employeeIds.map((employeeId) => <option key={employeeId} value={employeeId}>{employees[employeeId].name}</option>)}<option value="Sergio Tezzei">Sergio Tezzei</option></select></label>}<label className="scan-button">Abrir câmera / bipar código<input type="file" accept="image/*" capture="environment" onChange={(event) => { onFileChange(event.target.files?.[0] ?? null); event.target.value = ""; }} /></label><label>Código de barras<input type="text" inputMode="numeric" value={barcode} placeholder="Bipe ou digite o código" onChange={(event) => onBarcodeChange(event.target.value)} /></label><label>Produto encontrado / ajuste manual<select value={selectedProduct?.id ?? ""} onChange={(event) => onProductChange(event.target.value)}><option value="">Selecione o produto</option>{inventoryProducts.map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}</select></label>{selectedProduct && <article className="inventory-found-card"><span>Produto</span><strong>{selectedProduct.name}</strong><small>Estoque atual: {formatStockQuantity(selectedProduct.currentStock, selectedProduct.unit)}</small></article>}<label>Quantidade retirada<input type="number" inputMode="decimal" min="0" value={quantity} onChange={(event) => onQuantityChange(event.target.value)} /></label><label>Observação opcional<textarea rows={3} value={observation} onChange={(event) => onObservationChange(event.target.value)} /></label><button className="primary-button wide-button" type="button" disabled={saving} onClick={onConfirm}>{saving ? "Salvando..." : "Confirmar saída"}</button></section></section>
   );
 }
 
@@ -3902,7 +3997,7 @@ function ShiftCard({ shift, label, featured = false }: { shift: GuardShift; labe
   return <article className={featured ? "shift-card featured" : "shift-card"}><span>{label ?? shift.shiftType}</span><strong>{shift.startText}</strong><p>Entrada: {shift.startTime}<br />Saída: {shift.endTime} — {shift.endText}</p>{shift.observation && <p className="shift-observation">{shift.observation}</p>}</article>;
 }
 
-function CleaningDashboardScreen({ newOrdersCount, permissions, onBack, onLogout, onOpenOrders, onOpenStockExit, onOpenBarcodeRegister, onOpenCurrentStock, onOpenStockHistory, onOpenProfiles, onOpenOrderHistory, onOpenNeiaHistory, onPrepareCleaning }: { newOrdersCount: number; permissions: UserPermission[]; onBack: () => void; onLogout: () => void; onOpenOrders: () => void; onOpenStockExit: () => void; onOpenBarcodeRegister: () => void; onOpenCurrentStock: () => void; onOpenStockHistory: () => void; onOpenProfiles: () => void; onOpenOrderHistory: () => void; onOpenNeiaHistory: () => void; onPrepareCleaning: () => void }) {
+function CleaningDashboardScreen({ newOrdersCount, permissions, offlinePendingCount, offlineSyncing, onBack, onLogout, onSyncOffline, onOpenOrders, onOpenStockExit, onOpenBarcodeRegister, onOpenCurrentStock, onOpenStockHistory, onOpenProfiles, onOpenOrderHistory, onOpenNeiaHistory, onPrepareCleaning }: { newOrdersCount: number; permissions: UserPermission[]; offlinePendingCount: number; offlineSyncing: boolean; onBack: () => void; onLogout: () => void; onSyncOffline: () => void; onOpenOrders: () => void; onOpenStockExit: () => void; onOpenBarcodeRegister: () => void; onOpenCurrentStock: () => void; onOpenStockHistory: () => void; onOpenProfiles: () => void; onOpenOrderHistory: () => void; onOpenNeiaHistory: () => void; onPrepareCleaning: () => void }) {
   const canCleaning = permissions.includes("limpeza");
   const canStock = permissions.includes("estoque");
   const canStockExit = permissions.includes("saida-estoque");
@@ -3919,7 +4014,7 @@ function CleaningDashboardScreen({ newOrdersCount, permissions, onBack, onLogout
     { key: "prepare-real-use", title: "Preparar Limpeza para uso real", detail: "Zerar historicos de teste sem apagar produtos", enabled: permissions.includes("painel-admin"), onClick: onPrepareCleaning },
   ];
 
-  return <section className="screen"><TopBar title="Gestão de Limpeza" subtitle="Neia, Selma, Helena, pedidos, estoque e auditoria" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}>Voltar</button>{canCleaning && newOrdersCount > 0 && <button className="alert-banner cleaning-alert-banner" type="button" onClick={onOpenOrders}>Pedido novo da Neia — precisa de atenção</button>}<section className="admin-grid cleaning-dashboard-grid">{cards.map((card) => <ModuleCard key={card.key} title={card.title} detail={card.detail} enabled={card.enabled} onClick={card.onClick} className="cleaning-control-card" attention={card.attention} />)}</section></section>;
+  return <section className="screen"><TopBar title="Gestão de Limpeza" subtitle="Neia, Selma, Helena, pedidos, estoque e auditoria" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}>Voltar</button><OfflinePendingNotice count={offlinePendingCount} syncing={offlineSyncing} onSync={onSyncOffline} />{canCleaning && newOrdersCount > 0 && <button className="alert-banner cleaning-alert-banner" type="button" onClick={onOpenOrders}>Pedido novo da Neia — precisa de atenção</button>}<section className="admin-grid cleaning-dashboard-grid">{cards.map((card) => <ModuleCard key={card.key} title={card.title} detail={card.detail} enabled={card.enabled} onClick={card.onClick} className="cleaning-control-card" attention={card.attention} />)}</section></section>;
 }
 
 function ProfilesScreen({ profiles, notice, onBack, onLogout, onPreviewEmployee, onProfilePhotoChange }: { profiles: Record<EmployeeId, EmployeeProfile>; notice: string; onBack: () => void; onLogout: () => void; onPreviewEmployee: (employeeId: EmployeeId) => void; onProfilePhotoChange: (employeeId: EmployeeId, file: File | null) => void }) {
@@ -3940,6 +4035,11 @@ function EditOrderItems({ items, onUpdateDraftItem, onRemoveDraftItem }: { items
 
 function TopBar({ title, subtitle, onLogout }: { title: string; subtitle: string; onLogout: () => void }) {
   return <header className="top-bar"><div><p className="eyebrow">{BRAND}</p><h1>{title}</h1><p>{subtitle}</p></div><button className="logout-button" type="button" onClick={onLogout}>Sair</button></header>;
+}
+
+function OfflinePendingNotice({ count, syncing, onSync }: { count: number; syncing: boolean; onSync: () => void }) {
+  if (count === 0 && !syncing) return null;
+  return <button className="offline-pending-banner" type="button" disabled={syncing} onClick={onSync}><strong>Pendências offline: {count}</strong><span>{syncing ? "Sincronizando pendências..." : "Existem pendências salvas neste aparelho aguardando internet."}</span></button>;
 }
 
 function InfoCard({ title, value }: { title: string; value: string }) {
@@ -4460,7 +4560,10 @@ function waitForNextFrame(): Promise<void> {
 
 function createId() {
   if (crypto.randomUUID) return crypto.randomUUID();
-  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (char) => {
+    const value = Math.floor(Math.random() * 16);
+    return (char === "x" ? value : (value & 0x3) | 0x8).toString(16);
+  });
 }
 
 function getInitials(name: string) {
