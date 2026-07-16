@@ -1456,7 +1456,7 @@ select:disabled {
   display: grid;
   gap: 14px;
   width: min(100%, 560px);
-  max-height: calc(100vh - 32px);
+  max-height: calc(100dvh - 24px);
   overflow: auto;
 }
 
@@ -1470,26 +1470,43 @@ select:disabled {
 }
 
 .plate-photo-dialog .vehicle-photo-preview {
-  min-height: 220px;
+  min-height: 210px;
+  max-height: 34vh;
+  background: #f8fafc;
+}
+
+.plate-photo-dialog .vehicle-photo-preview img {
+  object-fit: contain;
 }
 
 .plate-photo-search-form {
   display: grid;
-  gap: 12px;
+  gap: 10px;
   padding: 14px;
 }
 
 .plate-photo-search-form input {
-  min-height: 58px;
-  font-size: 1.12rem;
+  min-height: 62px;
+  font-size: 1.18rem;
   font-weight: 950;
   letter-spacing: 0;
   text-transform: uppercase;
+  border: 2px solid #fb923c;
+  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.12);
 }
 
-.plate-photo-search-form .primary-button,
-.plate-photo-search-form .ghost-button {
-  min-height: 52px;
+.plate-photo-search-form input:focus {
+  border-color: #ea580c;
+  box-shadow: 0 0 0 4px rgba(249, 115, 22, 0.2);
+}
+
+.plate-photo-search-button {
+  min-height: 58px;
+  font-size: 1.03rem;
+}
+
+.plate-photo-cancel-button {
+  min-height: 48px;
 }
 
 .parking-photo-grid {

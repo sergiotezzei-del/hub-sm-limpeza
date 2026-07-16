@@ -12,3 +12,9 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv;
 }
+
+declare module "tesseract.js/dist/tesseract.esm.min.js" {
+  import Tesseract = require("tesseract.js");
+  const tesseract: typeof Tesseract;
+  export default tesseract;
+}

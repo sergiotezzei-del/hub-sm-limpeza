@@ -13,6 +13,7 @@ import type { GuardRoundCheckin, GuardRoundCheckinSource, GuardRoundCheckinStatu
 import type { GuardMonitoringEntry, GuardMonitoringLoadState, GuardShiftStatus } from "./modules/security/types/shift.types";
 import type { VehicleLoadState, VehicleRecord, VehicleRecordDraft } from "./modules/security/types/vehicle.types";
 import { vehicleOwnerTypes } from "./modules/security/types/vehicle.types";
+import { recognizePlateFromPhoto } from "./utils/plateOcr";
 import {
   addOrder,
   addStockCheck,
@@ -2486,22 +2487,64 @@ function SecurityParkingScreen({ permissions, isAdmin, onBack, onLogout }: { per
 }
 
 function PlatePhotoSearchDialog({ photoData, initialPlate, onClose, onSearch }: { photoData: string; initialPlate: string; onClose: () => void; onSearch: (plate: string) => Promise<void> }) {
-  const [plateDraft, setPlateDraft] = useState(initialPlate.trim().toUpperCase());
-  const [message, setMessage] = useState("Não consegui ler a placa automaticamente. Digite para pesquisar.");
+  const plateInputRef = useRef<HTMLInputElement | null>(null);
+  const plateEditedRef = useRef(false);
+  const [platePhotoDraftPlate, setPlatePhotoDraftPlate] = useState(initialPlate.trim().toUpperCase());
+  const [plateOcrMessage, setPlateOcrMessage] = useState("Digite a placa vista na foto ou aguarde a tentativa de leitura automática.");
+  const [plateOcrRunning, setPlateOcrRunning] = useState(false);
   const [searching, setSearching] = useState(false);
 
+  useEffect(() => {
+    const focusTimer = window.setTimeout(() => {
+      plateInputRef.current?.focus();
+      plateInputRef.current?.select();
+    }, 80);
+    return () => window.clearTimeout(focusTimer);
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    setPlateOcrRunning(true);
+    setPlateOcrMessage("Tentando ler a placa...");
+
+    recognizePlateFromPhoto(photoData)
+      .then((result) => {
+        if (!active) return;
+        if (result.plate) {
+          const userAlreadyTyped = plateEditedRef.current;
+          if (!userAlreadyTyped) setPlatePhotoDraftPlate(result.plate);
+          setPlateOcrMessage(userAlreadyTyped ? `Leitura sugeriu: ${result.plate}. Mantive a placa digitada para conferência.` : `Placa sugerida: ${result.plate}. Confira antes de pesquisar.`);
+          window.setTimeout(() => {
+            plateInputRef.current?.focus();
+            plateInputRef.current?.select();
+          }, 40);
+          return;
+        }
+        setPlateOcrMessage("Não consegui identificar a placa com segurança. Digite a placa vista na foto.");
+      })
+      .catch(() => {
+        if (active) setPlateOcrMessage("Não consegui identificar a placa com segurança. Digite a placa vista na foto.");
+      })
+      .finally(() => {
+        if (active) setPlateOcrRunning(false);
+      });
+
+    return () => { active = false; };
+  }, [photoData]);
+
   async function submitPlateSearch() {
-    if (!normalizeVehiclePlate(plateDraft)) {
-      setMessage("Confira ou digite a placa para pesquisar.");
+    if (!normalizeVehiclePlate(platePhotoDraftPlate)) {
+      setPlateOcrMessage("Confira ou digite a placa para pesquisar.");
+      plateInputRef.current?.focus();
       return;
     }
 
     setSearching(true);
-    setMessage("Pesquisando veículo...");
+    setPlateOcrMessage("Pesquisando veículo...");
     try {
-      await onSearch(plateDraft);
+      await onSearch(platePhotoDraftPlate);
     } catch {
-      setMessage("Não foi possível pesquisar agora. Tente novamente.");
+      setPlateOcrMessage("Não foi possível pesquisar agora. Tente novamente.");
       setSearching(false);
     }
   }
@@ -2515,12 +2558,32 @@ function PlatePhotoSearchDialog({ photoData, initialPlate, onClose, onSearch }: 
         </div>
         <VehiclePhotoPreview label="Foto da placa capturada" photoData={photoData} />
         <section className="manual-form plate-photo-search-form">
-          <label>Confira ou digite a placa<input type="text" value={plateDraft} placeholder="Ex.: GJU-6539" autoCapitalize="characters" disabled={searching} onChange={(event) => setPlateDraft(event.target.value.toUpperCase())} /></label>
-          {message && <p className="notice-message">{message}</p>}
-          <div className="button-grid">
-            <button className="primary-button" type="button" disabled={searching} onClick={() => { void submitPlateSearch(); }}>{searching ? "Pesquisando..." : "Pesquisar veículo"}</button>
-            <button className="ghost-button" type="button" disabled={searching} onClick={onClose}>Cancelar</button>
-          </div>
+          <label>
+            Confira ou digite a placa
+            <input
+              ref={plateInputRef}
+              type="text"
+              value={platePhotoDraftPlate}
+              placeholder="Ex.: GJU-6539"
+              autoCapitalize="characters"
+              autoComplete="off"
+              autoFocus
+              disabled={searching}
+              onChange={(event) => {
+                plateEditedRef.current = true;
+                setPlatePhotoDraftPlate(event.target.value.toUpperCase());
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  void submitPlateSearch();
+                }
+              }}
+            />
+          </label>
+          <button className="primary-button plate-photo-search-button" type="button" disabled={searching} onClick={() => { void submitPlateSearch(); }}>{searching ? "Pesquisando..." : "Pesquisar veículo"}</button>
+          {plateOcrMessage && <p className="notice-message">{plateOcrMessage}</p>}
+          <button className="ghost-button plate-photo-cancel-button" type="button" disabled={searching} onClick={onClose}>Cancelar</button>
         </section>
       </section>
     </div>
