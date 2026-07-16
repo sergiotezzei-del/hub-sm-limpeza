@@ -2164,12 +2164,49 @@ type VehicleRecentSearch = {
   tone: VehicleResultTone;
 };
 
+type VehicleSearchTermType = "plate" | "text";
+
+const VEHICLE_PLATE_SEARCH_PATTERN = /^[A-Z]{3}([0-9]{4}|[0-9][A-Z][0-9]{2})$/;
+
 function normalizeOperationalText(value: string) {
   return value
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .trim()
     .toUpperCase();
+}
+
+function normalizeVehicleSearchText(value: string) {
+  return normalizeOperationalText(value).replace(/\s+/g, " ");
+}
+
+function getVehicleSearchTermType(term: string): VehicleSearchTermType {
+  return VEHICLE_PLATE_SEARCH_PATTERN.test(normalizeVehiclePlate(term)) ? "plate" : "text";
+}
+
+function vehicleMatchesSearchTerm(vehicle: VehicleRecord, term: string) {
+  const normalizedTerm = normalizeVehicleSearchText(term);
+  const compactTerm = normalizeVehiclePlate(term);
+  if (!normalizedTerm && !compactTerm) return false;
+
+  if (compactTerm && (
+    vehicle.normalizedPlate.includes(compactTerm)
+    || normalizeVehiclePlate(vehicle.plate).includes(compactTerm)
+  )) {
+    return true;
+  }
+
+  return [
+    vehicle.plate,
+    vehicle.normalizedPlate,
+    vehicle.ownerName,
+    vehicle.ownerType,
+    vehicle.department,
+    vehicle.brand,
+    vehicle.model,
+    vehicle.color,
+    vehicle.notes,
+  ].some((field) => normalizeVehicleSearchText(field).includes(normalizedTerm));
 }
 
 function getEmployeeDepartmentLabel(department: string) {
@@ -2221,12 +2258,17 @@ function SecurityParkingScreen({ permissions, isAdmin, onBack, onLogout }: { per
   const [vehicleState, setVehicleState] = useState<VehicleLoadState>({ vehicles: [], remoteReadable: false, remoteProtected: false });
   const [loading, setLoading] = useState(true);
   const [searchPlate, setSearchPlate] = useState("");
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
   const [capturedPlatePhoto, setCapturedPlatePhoto] = useState("");
   const [platePhotoDialogOpen, setPlatePhotoDialogOpen] = useState(false);
   const [searchMessage, setSearchMessage] = useState("");
   const [searchedPlate, setSearchedPlate] = useState("");
+  const [searchedTermType, setSearchedTermType] = useState<VehicleSearchTermType>("plate");
   const [resultVehicle, setResultVehicle] = useState<VehicleRecord | null>(null);
   const [resultOpen, setResultOpen] = useState(false);
+  const [searchResults, setSearchResults] = useState<VehicleRecord[]>([]);
+  const [searchResultsTerm, setSearchResultsTerm] = useState("");
+  const [searchResultsOpen, setSearchResultsOpen] = useState(false);
   const [draft, setDraft] = useState<VehicleRecordDraft>(() => createBlankVehicleDraft());
   const [selectedVehicleId, setSelectedVehicleId] = useState("");
   const [saving, setSaving] = useState(false);
@@ -2306,31 +2348,90 @@ function SecurityParkingScreen({ permissions, isAdmin, onBack, onLogout }: { per
     ].slice(0, 4));
   }
 
-  async function searchVehicleByPlate(plate: string) {
-    const normalizedPlate = normalizeVehiclePlate(plate);
-    if (!normalizedPlate) {
-      setSearchMessage("Digite a placa para pesquisar.");
+  function focusParkingSearchInput() {
+    window.setTimeout(() => {
+      searchInputRef.current?.focus();
+      searchInputRef.current?.select();
+    }, 80);
+  }
+
+  function openVehicleResult(vehicle: VehicleRecord | null, term: string, termType: VehicleSearchTermType) {
+    const displayTerm = term.trim().toUpperCase();
+    setSearchedPlate(vehicle?.plate || displayTerm);
+    setSearchedTermType(termType);
+    setResultVehicle(vehicle);
+    setResultOpen(true);
+    setSearchResultsOpen(false);
+    setSearchMessage(vehicle ? "" : termType === "plate" ? "Veículo não cadastrado." : "Nenhum veículo encontrado.");
+    if (vehicle) rememberVehicleSearch(vehicle.plate, vehicle);
+    else if (termType === "plate") rememberVehicleSearch(displayTerm, null);
+  }
+
+  async function searchVehicleByTerm(term: string) {
+    const trimmedTerm = term.trim();
+    const termType = getVehicleSearchTermType(trimmedTerm);
+    const normalizedPlate = normalizeVehiclePlate(trimmedTerm);
+    if (!trimmedTerm) {
+      setSearchMessage("Digite placa, nome, modelo ou departamento para pesquisar.");
+      focusParkingSearchInput();
       return;
     }
 
     const currentVehicles = vehicleState.remoteReadable ? vehicles : await refreshVehicles();
-    const foundVehicle = currentVehicles.find((vehicle) => vehicle.normalizedPlate === normalizedPlate) ?? null;
-    const displayPlate = plate.trim().toUpperCase();
-    setSearchedPlate(displayPlate || normalizedPlate);
-    setResultVehicle(foundVehicle);
-    setResultOpen(true);
-    setSearchMessage(foundVehicle ? "" : "Veículo não cadastrado.");
-    rememberVehicleSearch(displayPlate || normalizedPlate, foundVehicle);
+    const exactPlateVehicle = termType === "plate"
+      ? currentVehicles.find((vehicle) => vehicle.normalizedPlate === normalizedPlate) ?? null
+      : null;
+
+    if (exactPlateVehicle) {
+      openVehicleResult(exactPlateVehicle, trimmedTerm, "plate");
+      return;
+    }
+
+    const matches = currentVehicles.filter((vehicle) => vehicleMatchesSearchTerm(vehicle, trimmedTerm));
+    if (matches.length === 1) {
+      openVehicleResult(matches[0], trimmedTerm, termType);
+      return;
+    }
+
+    if (matches.length > 1) {
+      setSearchResults(matches);
+      setSearchResultsTerm(trimmedTerm);
+      setSearchResultsOpen(true);
+      setResultOpen(false);
+      setSearchMessage(`${matches.length} veículos encontrados.`);
+      return;
+    }
+
+    openVehicleResult(null, trimmedTerm, termType);
   }
 
   async function searchVehicle() {
-    await searchVehicleByPlate(searchPlate);
+    await searchVehicleByTerm(searchPlate);
+  }
+
+  async function searchVehicleByPlate(plate: string) {
+    await searchVehicleByTerm(plate);
   }
 
   async function searchCapturedPlatePhoto(plate: string) {
     setSearchPlate(plate.trim().toUpperCase());
-    await searchVehicleByPlate(plate);
+    await searchVehicleByTerm(plate);
     setPlatePhotoDialogOpen(false);
+  }
+
+  function startNewVehicleSearch() {
+    setResultOpen(false);
+    setSearchResultsOpen(false);
+    setSearchResults([]);
+    setSearchResultsTerm("");
+    setResultVehicle(null);
+    setSearchedPlate("");
+    setSearchPlate("");
+    setSearchMessage("");
+    setCapturedPlatePhoto("");
+    setPlatePhotoDialogOpen(false);
+    setActiveTab("search");
+    focusParkingSearchInput();
   }
 
   function startVehicleCreate(plate = "", platePhotoData = "") {
@@ -2408,7 +2509,23 @@ function SecurityParkingScreen({ permissions, isAdmin, onBack, onLogout }: { per
           </label>
           {capturedPlatePhoto && <VehiclePhotoPreview label="Foto da placa capturada" photoData={capturedPlatePhoto} />}
           <section className="manual-form parking-search-form">
-            <label>Digite a placa<input type="text" value={searchPlate} placeholder="Ex.: GJU-6539" autoCapitalize="characters" onChange={(event) => setSearchPlate(event.target.value.toUpperCase())} /></label>
+            <label>
+              Digite placa, nome, modelo ou departamento
+              <input
+                ref={searchInputRef}
+                type="text"
+                value={searchPlate}
+                placeholder="Ex.: GYN-5544, Raquel, HB20, Vendas"
+                autoCapitalize="characters"
+                onChange={(event) => setSearchPlate(event.target.value.toUpperCase())}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    void searchVehicle();
+                  }
+                }}
+              />
+            </label>
             <button className="primary-button wide-button" type="button" disabled={loading} onClick={() => { void searchVehicle(); }}>{loading ? "Carregando..." : "Pesquisar"}</button>
           </section>
           {searchMessage && <p className={searchMessage.includes("capturada") ? "success-message" : "notice-message"}>{searchMessage}</p>}
@@ -2462,8 +2579,9 @@ function SecurityParkingScreen({ permissions, isAdmin, onBack, onLogout }: { per
         <VehicleResultDialog
           plate={searchedPlate}
           vehicle={resultVehicle}
-          canRegister={canRegister}
+          canRegister={resultVehicle ? canRegister : canRegister && searchedTermType === "plate"}
           onClose={() => setResultOpen(false)}
+          onNewSearch={startNewVehicleSearch}
           onRegister={() => {
             setResultOpen(false);
             startVehicleCreate(searchedPlate, capturedPlatePhoto);
@@ -2472,6 +2590,16 @@ function SecurityParkingScreen({ permissions, isAdmin, onBack, onLogout }: { per
             setResultOpen(false);
             editVehicle(vehicle);
           }}
+        />
+      )}
+
+      {searchResultsOpen && (
+        <VehicleSearchResultsDialog
+          term={searchResultsTerm}
+          vehicles={searchResults}
+          onClose={() => setSearchResultsOpen(false)}
+          onNewSearch={startNewVehicleSearch}
+          onSelect={(vehicle) => openVehicleResult(vehicle, vehicle.plate, "plate")}
         />
       )}
 
@@ -2507,7 +2635,7 @@ function PlatePhotoSearchDialog({ photoData, initialPlate, knownPlates, onClose,
   useEffect(() => {
     let active = true;
     setPlateOcrRunning(true);
-    setPlateOcrMessage("Estou tentando ler a placa...");
+    setPlateOcrMessage("Tentando ler a placa...");
 
     recognizePlateFromPhoto(photoData, knownPlates)
       .then((result) => {
@@ -2515,7 +2643,7 @@ function PlatePhotoSearchDialog({ photoData, initialPlate, knownPlates, onClose,
         if (result.plate) {
           const userAlreadyTyped = plateEditedRef.current;
           if (!userAlreadyTyped) setPlatePhotoDraftPlate(result.plate);
-          const suggestionMessage = result.source === "known-fuzzy" ? `Placa sugerida pela base: ${result.plate}. Confira antes de pesquisar.` : `Placa sugerida: ${result.plate}. Confira antes de pesquisar.`;
+          const suggestionMessage = result.source === "known-fuzzy" ? `Placa provável pela base: ${result.plate}. Confira antes de pesquisar.` : `Placa sugerida: ${result.plate}. Confira antes de pesquisar.`;
           setPlateOcrMessage(userAlreadyTyped ? `Leitura sugeriu: ${result.plate}. Mantive a placa digitada para conferência.` : suggestionMessage);
           window.setTimeout(() => {
             plateInputRef.current?.focus();
@@ -2636,7 +2764,41 @@ function VehiclePhotoPreview({ label, photoData }: { label: string; photoData?: 
   return <div className="vehicle-photo-preview" aria-label={label}>{photoData ? <img src={photoData} alt={label} /> : <span>{label}</span>}</div>;
 }
 
-function VehicleResultDialog({ plate, vehicle, canRegister, onClose, onRegister, onEdit }: { plate: string; vehicle: VehicleRecord | null; canRegister: boolean; onClose: () => void; onRegister: () => void; onEdit: (vehicle: VehicleRecord) => void }) {
+function VehicleSearchResultsDialog({ term, vehicles, onClose, onNewSearch, onSelect }: { term: string; vehicles: VehicleRecord[]; onClose: () => void; onNewSearch: () => void; onSelect: (vehicle: VehicleRecord) => void }) {
+  return (
+    <div className="dialog-backdrop" role="presentation">
+      <section className="dialog vehicle-search-results-dialog" role="dialog" aria-modal="true" aria-label="Resultados da pesquisa de veículos">
+        <div className="vehicle-result-head">
+          <div>
+            <p className="card-kicker">Resultados</p>
+            <h2>{vehicles.length} veículos encontrados</h2>
+          </div>
+          <span className="vehicle-status-pill">Busca: {term}</span>
+        </div>
+        <div className="vehicle-search-results-list">
+          {vehicles.map((vehicle) => {
+            const status = getVehicleOperationalStatus(vehicle);
+            return (
+              <button key={vehicle.id} className={`vehicle-search-result-item vehicle-tone-${status.tone}`} type="button" onClick={() => onSelect(vehicle)}>
+                <span className="vehicle-search-result-plate">{vehicle.plate}</span>
+                <strong>{vehicle.ownerName || "Sem nome"}</strong>
+                <span>{vehicle.department || "Departamento não informado"}</span>
+                <small>{[vehicle.brand, vehicle.model, vehicle.color].filter(Boolean).join(" - ") || "Veículo sem detalhes"}</small>
+                <em>{status.label}</em>
+              </button>
+            );
+          })}
+        </div>
+        <div className="button-grid">
+          <button className="primary-button" type="button" onClick={onNewSearch}>Nova consulta</button>
+          <button className="ghost-button" type="button" onClick={onClose}>Fechar</button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function VehicleResultDialog({ plate, vehicle, canRegister, onClose, onNewSearch, onRegister, onEdit }: { plate: string; vehicle: VehicleRecord | null; canRegister: boolean; onClose: () => void; onNewSearch: () => void; onRegister: () => void; onEdit: (vehicle: VehicleRecord) => void }) {
   const status = getVehicleOperationalStatus(vehicle);
   return (
     <div className="dialog-backdrop" role="presentation">
@@ -2672,6 +2834,7 @@ function VehicleResultDialog({ plate, vehicle, canRegister, onClose, onRegister,
               <VehiclePhotoPreview label="Foto da placa" photoData={vehicle.platePhotoData} />
             </div>
             <div className="button-grid">
+              <button className="primary-button" type="button" onClick={onNewSearch}>Nova consulta</button>
               <button className="ghost-button" type="button" onClick={onClose}>Fechar</button>
               {canRegister && <button className="secondary-button" type="button" onClick={() => onEdit(vehicle)}>Editar cadastro</button>}
             </div>
@@ -2682,8 +2845,9 @@ function VehicleResultDialog({ plate, vehicle, canRegister, onClose, onRegister,
               <VehicleResultField label="Placa pesquisada" value={plate || "Não informada"} wide />
             </div>
             <div className="button-grid">
+              <button className="primary-button" type="button" onClick={onNewSearch}>Nova consulta</button>
               <button className="ghost-button" type="button" onClick={onClose}>Fechar</button>
-              {canRegister && <button className="primary-button" type="button" onClick={onRegister}>Cadastrar este veículo</button>}
+              {canRegister && <button className="secondary-button" type="button" onClick={onRegister}>Cadastrar este veículo</button>}
             </div>
           </>
         )}

@@ -200,10 +200,25 @@ function matchAgainstKnownPlates(candidates: string[], knownPlates: string[]): K
     }
   }
 
-  if (bestDistance <= 2) {
+  if (bestDistance === 1) {
     return bestPlates.size === 1
       ? { plate: [...bestPlates][0], source: "known-fuzzy", distance: bestDistance, ambiguous: false }
       : { plate: "", source: "known-fuzzy", distance: bestDistance, ambiguous: true };
+  }
+
+  if (bestDistance === 2) {
+    const closeMatches = known.filter((knownPlate) =>
+      normalizedCandidates.some((candidate) => levenshteinDistance(candidate, knownPlate) <= 2),
+    );
+    const hasStrongPlateCandidate = normalizedCandidates.some((candidate) => isValidPlate(candidate));
+
+    if (bestPlates.size === 1 && closeMatches.length === 1 && hasStrongPlateCandidate) {
+      return { plate: [...bestPlates][0], source: "known-fuzzy", distance: bestDistance, ambiguous: false };
+    }
+
+    if (closeMatches.length > 1 || bestPlates.size > 1) {
+      return { plate: "", source: "known-fuzzy", distance: bestDistance, ambiguous: true };
+    }
   }
 
   return null;
