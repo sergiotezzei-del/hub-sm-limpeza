@@ -2154,6 +2154,65 @@ function SecurityMenuScreen({ permissions, isAdmin, onBack, onLogout, onOpenGuar
 }
 
 type ParkingTab = "search" | "register";
+type VehicleResultTone = "ok" | "priority" | "warning" | "danger";
+
+type VehicleRecentSearch = {
+  normalizedPlate: string;
+  plate: string;
+  statusLabel: string;
+  tone: VehicleResultTone;
+};
+
+function normalizeOperationalText(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toUpperCase();
+}
+
+function getEmployeeDepartmentLabel(department: string) {
+  const normalized = normalizeOperationalText(department);
+  if (!normalized) return "";
+  if (normalized === "ADM" || normalized.includes("ADMINISTRATIVO") || normalized.includes("ADMINISTRACAO")) return "ADM";
+  if (normalized.includes("FINANCEIRO")) return "FINANCEIRO";
+  if (normalized.includes("VENDAS")) return "VENDAS";
+  if (normalized.includes("LOCACAO")) return "LOCAÇÃO";
+  if (normalized.includes("MARKETING")) return "MARKETING";
+  return department.trim().toUpperCase();
+}
+
+function isInternalParkingDepartment(department: string) {
+  const normalized = normalizeOperationalText(department);
+  return normalized === "ADM" || normalized.includes("ADMINISTRATIVO") || normalized.includes("ADMINISTRACAO") || normalized.includes("FINANCEIRO");
+}
+
+function getVehicleOperationalStatus(vehicle: VehicleRecord | null): { label: string; message: string; tone: VehicleResultTone } {
+  if (!vehicle) {
+    return { label: "NÃO CADASTRADO", message: "Veículo não cadastrado.", tone: "danger" };
+  }
+
+  if (!vehicle.active || !vehicle.parkingAuthorized) {
+    return { label: "NÃO AUTORIZADO", message: "Veículo inativo ou sem autorização para estacionar.", tone: "danger" };
+  }
+
+  const ownerType = normalizeOperationalText(vehicle.ownerType);
+  if (ownerType === "CLIENTE" || ownerType === "CORRETOR") {
+    return { label: ownerType, message: "Prioridade do pátio.", tone: "priority" };
+  }
+
+  if (ownerType === "FUNCIONARIO") {
+    const departmentLabel = getEmployeeDepartmentLabel(vehicle.department);
+    const isInternal = isInternalParkingDepartment(vehicle.department);
+    return {
+      label: departmentLabel ? `FUNCIONÁRIO ${departmentLabel}` : "FUNCIONÁRIO",
+      message: isInternal ? "ATENÇÃO: veículo de setor interno. Verificar se pode ocupar vaga do pátio." : "Veículo cadastrado e autorizado.",
+      tone: isInternal ? "warning" : "ok",
+    };
+  }
+
+  return { label: vehicle.ownerType.toUpperCase(), message: "Veículo cadastrado e autorizado.", tone: "ok" };
+}
 
 function SecurityParkingScreen({ permissions, isAdmin, onBack, onLogout }: { permissions: UserPermission[]; isAdmin: boolean; onBack: () => void; onLogout: () => void }) {
   const canRegister = isAdmin || permissions.includes("painel-admin") || permissions.includes("estacionamento-cadastro");
@@ -2170,6 +2229,7 @@ function SecurityParkingScreen({ permissions, isAdmin, onBack, onLogout }: { per
   const [selectedVehicleId, setSelectedVehicleId] = useState("");
   const [saving, setSaving] = useState(false);
   const [formMessage, setFormMessage] = useState("");
+  const [recentSearches, setRecentSearches] = useState<VehicleRecentSearch[]>([]);
   const vehicles = vehicleState.vehicles;
   const sortedVehicles = useMemo(() => [...vehicles].sort((first, second) => `${first.ownerName} ${first.plate}`.localeCompare(`${second.ownerName} ${second.plate}`)), [vehicles]);
 
@@ -2231,8 +2291,19 @@ function SecurityParkingScreen({ permissions, isAdmin, onBack, onLogout }: { per
     }
   }
 
-  async function searchVehicle() {
-    const normalizedPlate = normalizeVehiclePlate(searchPlate);
+  function rememberVehicleSearch(plate: string, vehicle: VehicleRecord | null) {
+    const normalizedPlate = normalizeVehiclePlate(plate);
+    if (!normalizedPlate) return;
+
+    const status = getVehicleOperationalStatus(vehicle);
+    setRecentSearches((current) => [
+      { normalizedPlate, plate: plate.trim().toUpperCase(), statusLabel: status.label, tone: status.tone },
+      ...current.filter((item) => item.normalizedPlate !== normalizedPlate),
+    ].slice(0, 4));
+  }
+
+  async function searchVehicleByPlate(plate: string) {
+    const normalizedPlate = normalizeVehiclePlate(plate);
     if (!normalizedPlate) {
       setSearchMessage("Digite a placa para pesquisar.");
       return;
@@ -2240,10 +2311,16 @@ function SecurityParkingScreen({ permissions, isAdmin, onBack, onLogout }: { per
 
     const currentVehicles = vehicleState.remoteReadable ? vehicles : await refreshVehicles();
     const foundVehicle = currentVehicles.find((vehicle) => vehicle.normalizedPlate === normalizedPlate) ?? null;
-    setSearchedPlate(searchPlate.trim().toUpperCase());
+    const displayPlate = plate.trim().toUpperCase();
+    setSearchedPlate(displayPlate || normalizedPlate);
     setResultVehicle(foundVehicle);
     setResultOpen(true);
     setSearchMessage(foundVehicle ? "" : "Veículo não cadastrado.");
+    rememberVehicleSearch(displayPlate || normalizedPlate, foundVehicle);
+  }
+
+  async function searchVehicle() {
+    await searchVehicleByPlate(searchPlate);
   }
 
   function startVehicleCreate(plate = "", platePhotoData = "") {
@@ -2325,6 +2402,30 @@ function SecurityParkingScreen({ permissions, isAdmin, onBack, onLogout }: { per
             <button className="primary-button wide-button" type="button" disabled={loading} onClick={() => { void searchVehicle(); }}>{loading ? "Carregando..." : "Pesquisar"}</button>
           </section>
           {searchMessage && <p className={searchMessage.includes("capturada") ? "success-message" : "notice-message"}>{searchMessage}</p>}
+          {recentSearches.length > 0 && (
+            <section className="parking-recent-searches" aria-label="Últimas consultas">
+              <div className="parking-recent-title">
+                <span>Últimas consultas</span>
+                <strong>Toque para pesquisar novamente</strong>
+              </div>
+              <div className="parking-recent-list">
+                {recentSearches.map((item) => (
+                  <button
+                    key={item.normalizedPlate}
+                    className={`parking-recent-item vehicle-tone-${item.tone}`}
+                    type="button"
+                    onClick={() => {
+                      setSearchPlate(item.plate);
+                      void searchVehicleByPlate(item.plate);
+                    }}
+                  >
+                    <strong>{item.plate}</strong>
+                    <span>{item.statusLabel}</span>
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
         </section>
       )}
 
@@ -2411,21 +2512,29 @@ function VehiclePhotoPreview({ label, photoData }: { label: string; photoData?: 
 }
 
 function VehicleResultDialog({ plate, vehicle, canRegister, onClose, onRegister, onEdit }: { plate: string; vehicle: VehicleRecord | null; canRegister: boolean; onClose: () => void; onRegister: () => void; onEdit: (vehicle: VehicleRecord) => void }) {
+  const status = getVehicleOperationalStatus(vehicle);
   return (
     <div className="dialog-backdrop" role="presentation">
       <section className="dialog vehicle-result-dialog" role="dialog" aria-modal="true" aria-label="Resultado da pesquisa de veículo">
+        <div className={`vehicle-status-hero vehicle-tone-${status.tone}`}>
+          <span>Status operacional</span>
+          <strong>{status.label}</strong>
+          <p>{status.message}</p>
+        </div>
         {vehicle ? (
           <>
             <div className="vehicle-result-head">
               <div>
-                <p className="card-kicker">Veículo encontrado</p>
+                <p className="card-kicker">Placa</p>
                 <h2>{vehicle.plate}</h2>
               </div>
-              <span className={vehicle.active ? "status-done" : "status-deleted"}>{vehicle.active ? vehicle.ownerType : "Inativo"}</span>
+              <span className={`vehicle-status-pill vehicle-tone-${status.tone}`}>{vehicle.active ? "Cadastro ativo" : "Cadastro inativo"}</span>
             </div>
             <div className="vehicle-result-grid">
-              <VehicleResultField label="Nome vinculado" value={vehicle.ownerName || "Não informado"} />
+              <VehicleResultField label="Placa" value={vehicle.plate} />
+              <VehicleResultField label="Nome" value={vehicle.ownerName || "Não informado"} />
               <VehicleResultField label="Departamento" value={vehicle.department || "Não informado"} />
+              <VehicleResultField label="Tipo de vínculo" value={vehicle.ownerType} />
               <VehicleResultField label="Marca" value={vehicle.brand || "Não informado"} />
               <VehicleResultField label="Modelo" value={vehicle.model || "Não informado"} />
               <VehicleResultField label="Cor" value={vehicle.color || "Não informado"} />
@@ -2444,8 +2553,9 @@ function VehicleResultDialog({ plate, vehicle, canRegister, onClose, onRegister,
           </>
         ) : (
           <>
-            <h2>Veículo não cadastrado</h2>
-            <p>Placa pesquisada: <strong>{plate}</strong></p>
+            <div className="vehicle-result-grid">
+              <VehicleResultField label="Placa pesquisada" value={plate || "Não informada"} wide />
+            </div>
             <div className="button-grid">
               <button className="ghost-button" type="button" onClick={onClose}>Fechar</button>
               {canRegister && <button className="primary-button" type="button" onClick={onRegister}>Cadastrar este veículo</button>}
