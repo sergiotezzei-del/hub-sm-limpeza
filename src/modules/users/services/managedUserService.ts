@@ -2,6 +2,9 @@ import type { ManagedUser } from "../../../types";
 import { getSupabaseAccessToken, SUPABASE_KEY_HEADER, SUPABASE_PUBLIC_KEY, SUPABASE_URL, supabaseConfigured } from "../../security/services/supabaseClient";
 
 const MANAGED_USERS_REQUEST_TIMEOUT_MS = 8000;
+const MANAGED_USERS_LOGIN_RPC_PATH = "rpc/login_managed_user";
+
+type ManagedUsersRequestMode = "admin" | "public";
 
 type ManagedUserRow = {
   id: string;
@@ -34,6 +37,8 @@ class ManagedUsersRemoteError extends Error {
   constructor(
     public readonly status: number,
     public readonly details: string,
+    public readonly path: string,
+    public readonly requestMode: ManagedUsersRequestMode,
   ) {
     super(details || `MANAGED_USERS_REMOTE_ERROR_${status}`);
     this.name = "ManagedUsersRemoteError";
@@ -50,9 +55,20 @@ export async function loadManagedUsersRemote() {
 
 export async function loginManagedUserRemoteByAccessCode(accessCode: string): Promise<ManagedUser | null> {
   const cleanAccessCode = accessCode.trim();
-  if (!cleanAccessCode || !supabaseConfigured) return null;
+  if (!cleanAccessCode) return null;
 
-  const response = await managedUsersRequest("rpc/login_managed_user", {
+  if (!supabaseConfigured) {
+    const details = "Supabase nao configurado para login remoto.";
+    logManagedUsersRequestError({
+      path: MANAGED_USERS_LOGIN_RPC_PATH,
+      requestMode: "public",
+      status: 0,
+      details,
+    });
+    throw new ManagedUsersRemoteError(0, details, MANAGED_USERS_LOGIN_RPC_PATH, "public");
+  }
+
+  const response = await managedUsersPublicRequest(MANAGED_USERS_LOGIN_RPC_PATH, {
     method: "POST",
     body: JSON.stringify({ p_access_code: cleanAccessCode }),
   });
@@ -100,6 +116,22 @@ export function isManagedUsersRemoteProtectedError(error: unknown) {
   return error instanceof ManagedUsersRemoteError && (error.status === 401 || error.status === 403);
 }
 
+export function getManagedUserRemoteLoginErrorMessage(error: unknown) {
+  if (!(error instanceof ManagedUsersRemoteError)) {
+    return "Não foi possível conectar ao Supabase. Verifique a internet e tente novamente.";
+  }
+
+  if (error.status === 400 || error.status === 404) {
+    return "Erro na função de login remoto. Atualize o sistema e tente novamente.";
+  }
+
+  if (error.status === 401 || error.status === 403) {
+    return "Acesso remoto bloqueado. Verifique a configuração do Supabase.";
+  }
+
+  return "Não foi possível conectar ao Supabase. Verifique a internet e tente novamente.";
+}
+
 function ensureManagedUsersRemoteReady() {
   if (!supabaseConfigured) {
     throw new ManagedUsersRemoteUnavailableError("Supabase nao configurado.");
@@ -111,25 +143,60 @@ function ensureManagedUsersRemoteReady() {
 }
 
 function managedUsersRequest(path: string, init: RequestInit = {}) {
+  const accessToken = getSupabaseAccessToken();
+  return managedUsersRemoteRequest(path, init, "admin", accessToken ?? SUPABASE_PUBLIC_KEY);
+}
+
+function managedUsersPublicRequest(path: string, init: RequestInit = {}) {
+  return managedUsersRemoteRequest(path, init, "public", SUPABASE_PUBLIC_KEY);
+}
+
+function managedUsersRemoteRequest(path: string, init: RequestInit, requestMode: ManagedUsersRequestMode, authorizationToken: string) {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), MANAGED_USERS_REQUEST_TIMEOUT_MS);
-  const accessToken = getSupabaseAccessToken();
 
   return fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
     ...init,
     signal: controller.signal,
     headers: {
       [SUPABASE_KEY_HEADER]: SUPABASE_PUBLIC_KEY,
-      Authorization: `Bearer ${accessToken ?? SUPABASE_PUBLIC_KEY}`,
+      Authorization: `Bearer ${authorizationToken}`,
       "Content-Type": "application/json",
       ...(init.headers as Record<string, string> | undefined),
     },
   }).then(async (response) => {
-    if (!response.ok) throw new ManagedUsersRemoteError(response.status, await response.text());
+    if (!response.ok) {
+      const details = await response.text();
+      logManagedUsersRequestError({
+        path,
+        requestMode,
+        status: response.status,
+        details,
+      });
+      throw new ManagedUsersRemoteError(response.status, details, path, requestMode);
+    }
     return response;
+  }).catch((error: unknown) => {
+    if (error instanceof ManagedUsersRemoteError) throw error;
+
+    const details = error instanceof DOMException && error.name === "AbortError"
+      ? `Timeout depois de ${MANAGED_USERS_REQUEST_TIMEOUT_MS}ms.`
+      : error instanceof Error ? error.message : "Falha de rede.";
+    logManagedUsersRequestError({
+      path,
+      requestMode,
+      status: 0,
+      details,
+    });
+    throw new ManagedUsersRemoteError(0, details, path, requestMode);
   }).finally(() => {
     window.clearTimeout(timeout);
   });
+}
+
+function logManagedUsersRequestError(details: { path: string; requestMode: ManagedUsersRequestMode; status: number; details: string }) {
+  if (!import.meta.env.DEV) return;
+  console.error("[managed_users] Falha na chamada remota", details);
 }
 
 function managedUserToRow(user: ManagedUser) {
