@@ -1373,12 +1373,83 @@ select:disabled {
 }
 
 .parking-photo-button {
-  min-height: 58px;
-  font-size: 1rem;
+  min-height: 64px;
+  font-size: 1.05rem;
 }
 
 .parking-search-form {
   padding: 14px;
+}
+
+.parking-search-form label {
+  font-size: 0.95rem;
+}
+
+.parking-search-form input {
+  min-height: 58px;
+  font-size: 1.12rem;
+  font-weight: 950;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.parking-search-form .wide-button {
+  min-height: 58px;
+  font-size: 1.05rem;
+}
+
+.parking-recent-searches {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  background: #f8fafc;
+  border: 1px solid #e5eaf1;
+  border-radius: 8px;
+}
+
+.parking-recent-title {
+  display: grid;
+  gap: 2px;
+}
+
+.parking-recent-title span {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.parking-recent-title strong {
+  color: var(--ink);
+  font-size: 0.92rem;
+}
+
+.parking-recent-list {
+  display: grid;
+  gap: 8px;
+}
+
+.parking-recent-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 48px;
+  padding: 10px 12px;
+  color: var(--ink);
+  background: #ffffff;
+  border: 1px solid #d8dee8;
+  border-left-width: 6px;
+  border-radius: 8px;
+  text-align: left;
+  font-weight: 900;
+}
+
+.parking-recent-item span {
+  color: #475569;
+  font-size: 0.76rem;
+  text-align: right;
+  text-transform: uppercase;
 }
 
 .parking-photo-grid {
@@ -1418,15 +1489,77 @@ select:disabled {
 }
 
 .vehicle-result-dialog {
+  display: grid;
+  gap: 14px;
   width: min(100%, 620px);
   max-height: calc(100vh - 32px);
   overflow: auto;
+}
+
+.vehicle-status-hero {
+  display: grid;
+  gap: 5px;
+  padding: 16px;
+  border: 1px solid #d8dee8;
+  border-radius: 8px;
+  text-align: center;
+}
+
+.vehicle-status-hero span {
+  font-size: 0.75rem;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.vehicle-status-hero strong {
+  font-size: clamp(1.45rem, 6vw, 2.1rem);
+  line-height: 1.05;
+}
+
+.vehicle-status-hero p {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 850;
+}
+
+.vehicle-status-pill {
+  padding: 7px 10px;
+  border: 1px solid #d8dee8;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.vehicle-tone-ok {
+  color: #14532d;
+  background: #dcfce7;
+  border-color: #86efac;
+}
+
+.vehicle-tone-priority {
+  color: #1e3a8a;
+  background: #dbeafe;
+  border-color: #93c5fd;
+}
+
+.vehicle-tone-warning {
+  color: #7c2d12;
+  background: #fef3c7;
+  border-color: #f59e0b;
+}
+
+.vehicle-tone-danger {
+  color: #991b1b;
+  background: #fee2e2;
+  border-color: #fca5a5;
 }
 
 .vehicle-result-head {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 12px;
 }
 
