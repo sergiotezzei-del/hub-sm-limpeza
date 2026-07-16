@@ -2221,6 +2221,7 @@ function SecurityParkingScreen({ permissions, isAdmin, onBack, onLogout }: { per
   const [loading, setLoading] = useState(true);
   const [searchPlate, setSearchPlate] = useState("");
   const [capturedPlatePhoto, setCapturedPlatePhoto] = useState("");
+  const [platePhotoDialogOpen, setPlatePhotoDialogOpen] = useState(false);
   const [searchMessage, setSearchMessage] = useState("");
   const [searchedPlate, setSearchedPlate] = useState("");
   const [resultVehicle, setResultVehicle] = useState<VehicleRecord | null>(null);
@@ -2274,7 +2275,8 @@ function SecurityParkingScreen({ permissions, isAdmin, onBack, onLogout }: { per
     try {
       const photoData = await imageFileToDataUrl(file);
       setCapturedPlatePhoto(photoData);
-      setSearchMessage("Foto da placa capturada. Digite ou confira a placa para pesquisar.");
+      setPlatePhotoDialogOpen(true);
+      setSearchMessage("Foto capturada. Confira a placa para pesquisar.");
     } catch {
       setSearchMessage("Não foi possível salvar a foto da placa. Digite a placa manualmente.");
     }
@@ -2321,6 +2323,12 @@ function SecurityParkingScreen({ permissions, isAdmin, onBack, onLogout }: { per
 
   async function searchVehicle() {
     await searchVehicleByPlate(searchPlate);
+  }
+
+  async function searchCapturedPlatePhoto(plate: string) {
+    setSearchPlate(plate.trim().toUpperCase());
+    await searchVehicleByPlate(plate);
+    setPlatePhotoDialogOpen(false);
   }
 
   function startVehicleCreate(plate = "", platePhotoData = "") {
@@ -2464,7 +2472,58 @@ function SecurityParkingScreen({ permissions, isAdmin, onBack, onLogout }: { per
           }}
         />
       )}
+
+      {platePhotoDialogOpen && capturedPlatePhoto && (
+        <PlatePhotoSearchDialog
+          photoData={capturedPlatePhoto}
+          initialPlate={searchPlate}
+          onClose={() => setPlatePhotoDialogOpen(false)}
+          onSearch={(plate) => searchCapturedPlatePhoto(plate)}
+        />
+      )}
     </section>
+  );
+}
+
+function PlatePhotoSearchDialog({ photoData, initialPlate, onClose, onSearch }: { photoData: string; initialPlate: string; onClose: () => void; onSearch: (plate: string) => Promise<void> }) {
+  const [plateDraft, setPlateDraft] = useState(initialPlate.trim().toUpperCase());
+  const [message, setMessage] = useState("Não consegui ler a placa automaticamente. Digite para pesquisar.");
+  const [searching, setSearching] = useState(false);
+
+  async function submitPlateSearch() {
+    if (!normalizeVehiclePlate(plateDraft)) {
+      setMessage("Confira ou digite a placa para pesquisar.");
+      return;
+    }
+
+    setSearching(true);
+    setMessage("Pesquisando veículo...");
+    try {
+      await onSearch(plateDraft);
+    } catch {
+      setMessage("Não foi possível pesquisar agora. Tente novamente.");
+      setSearching(false);
+    }
+  }
+
+  return (
+    <div className="dialog-backdrop" role="presentation">
+      <section className="dialog plate-photo-dialog" role="dialog" aria-modal="true" aria-label="Conferir placa fotografada">
+        <div className="plate-photo-dialog-head">
+          <p className="card-kicker">Foto capturada</p>
+          <h2>Confira a placa</h2>
+        </div>
+        <VehiclePhotoPreview label="Foto da placa capturada" photoData={photoData} />
+        <section className="manual-form plate-photo-search-form">
+          <label>Confira ou digite a placa<input type="text" value={plateDraft} placeholder="Ex.: GJU-6539" autoCapitalize="characters" disabled={searching} onChange={(event) => setPlateDraft(event.target.value.toUpperCase())} /></label>
+          {message && <p className="notice-message">{message}</p>}
+          <div className="button-grid">
+            <button className="primary-button" type="button" disabled={searching} onClick={() => { void submitPlateSearch(); }}>{searching ? "Pesquisando..." : "Pesquisar veículo"}</button>
+            <button className="ghost-button" type="button" disabled={searching} onClick={onClose}>Cancelar</button>
+          </div>
+        </section>
+      </section>
+    </div>
   );
 }
 
