@@ -8,6 +8,7 @@ import { DEFAULT_GUARD_ROUND_POINTS, DEFAULT_GUARD_ROUND_SCHEDULES, loadGuardRou
 import { loadGuardMonitoringEntries } from "./modules/security/services/shiftService";
 import { signOutSupabaseAuth } from "./modules/security/services/supabaseClient";
 import { createBlankVehicleDraft, loadVehicleRecords, normalizeVehiclePlate, saveVehicleRecord, vehicleToDraft } from "./modules/security/services/vehicleService";
+import { deleteManagedUserRemote, isManagedUsersRemoteProtectedError, loadManagedUsersRemote, saveManagedUserRemote, syncLocalManagedUsersToCloud } from "./modules/users/services/managedUserService";
 import type { GuardPaymentLoadState, GuardPaymentProfile, GuardPaymentRecord, GuardPaymentStatus } from "./modules/security/types/payment.types";
 import type { GuardRoundCheckin, GuardRoundCheckinSource, GuardRoundCheckinStatus, GuardRoundLoadState, GuardRoundPoint, GuardRoundReportEntry, GuardRoundReportStatus, GuardRoundSchedule } from "./modules/security/types/round.types";
 import type { GuardMonitoringEntry, GuardMonitoringLoadState, GuardShiftStatus } from "./modules/security/types/shift.types";
@@ -234,6 +235,15 @@ type SavedSession = {
 
 const BRAND = "SANTA MARIA SOLUÇÕES IMOBILIÁRIAS";
 const FOOTER = "TEZZEI - Operações & Processos";
+type ManagedUsersSyncState = {
+  source: "local" | "supabase";
+  message: string;
+  loading: boolean;
+  syncing: boolean;
+  remoteProtected: boolean;
+  lastSyncedAt?: string;
+};
+
 const SESSION_KEY = "hub-sm-active-session";
 const USERS_KEY = "hub-sm-users-permissions";
 const PRODUCT_PHOTO_SOURCE_MAX_BYTES = 10 * 1024 * 1024;
@@ -452,6 +462,13 @@ function App() {
   const [historyOrders, setHistoryOrders] = useState<CleaningOrder[]>([]);
   const [profiles, setProfiles] = useState<Record<EmployeeId, EmployeeProfile>>(() => getLocalEmployeeProfiles());
   const [managedUsers, setManagedUsers] = useState<ManagedUser[]>(() => getLocalManagedUsers());
+  const [managedUsersSync, setManagedUsersSync] = useState<ManagedUsersSyncState>({
+    source: "local",
+    message: "Usando usuários locais neste aparelho.",
+    loading: false,
+    syncing: false,
+    remoteProtected: false,
+  });
   const [inventoryProducts, setInventoryProducts] = useState<InventoryProduct[]>(() => getStoredLocalInventoryProducts());
   const [stockMovements, setStockMovements] = useState<StockMovement[]>(() => getStoredLocalStockMovements());
   const [quantities, setQuantities] = useState<Record<string, string>>({});
@@ -498,6 +515,7 @@ function App() {
     void refreshProfiles();
     void refreshInventory();
     void refreshStockMovements();
+    void refreshManagedUsersFromCloud({ showNotice: false });
     refreshOfflinePendingCount();
     void syncOfflinePendencies();
 
@@ -593,6 +611,81 @@ function App() {
     return currentMovements;
   }
 
+  async function refreshManagedUsersFromCloud({ showNotice = true } = {}) {
+    setManagedUsersSync((current) => ({ ...current, loading: true }));
+
+    try {
+      const remoteUsers = await loadManagedUsersRemote();
+      const nextUsers = mergeManagedUserSources(remoteUsers, getLocalManagedUsers());
+      saveLocalManagedUsers(nextUsers);
+      setManagedUsers(nextUsers);
+      const message = "Usuários sincronizados com Supabase.";
+      setManagedUsersSync({
+        source: "supabase",
+        message,
+        loading: false,
+        syncing: false,
+        remoteProtected: false,
+        lastSyncedAt: new Date().toISOString(),
+      });
+      if (showNotice) setNotice(message);
+      return nextUsers;
+    } catch (error) {
+      const fallbackUsers = getLocalManagedUsers();
+      setManagedUsers(fallbackUsers);
+      const remoteProtected = isManagedUsersRemoteProtectedError(error);
+      const message = remoteProtected
+        ? "Usuários protegidos por RLS. Faça login como Admin com sessão Supabase autorizada."
+        : "Usando usuários locais neste aparelho.";
+      setManagedUsersSync((current) => ({
+        ...current,
+        source: "local",
+        message,
+        loading: false,
+        syncing: false,
+        remoteProtected,
+      }));
+      if (showNotice) setNotice(message);
+      return fallbackUsers;
+    }
+  }
+
+  async function syncManagedUsersToCloud() {
+    setManagedUsersSync((current) => ({ ...current, syncing: true }));
+    setNotice("Sincronizando usuários deste aparelho...");
+
+    try {
+      const remoteUsers = await syncLocalManagedUsersToCloud(managedUsers);
+      const nextUsers = mergeManagedUserSources(remoteUsers, getLocalManagedUsers());
+      saveLocalManagedUsers(nextUsers);
+      setManagedUsers(nextUsers);
+      const message = "Usuários deste aparelho sincronizados com Supabase.";
+      setManagedUsersSync({
+        source: "supabase",
+        message: "Usuários sincronizados com Supabase.",
+        loading: false,
+        syncing: false,
+        remoteProtected: false,
+        lastSyncedAt: new Date().toISOString(),
+      });
+      setNotice(message);
+    } catch (error) {
+      const remoteProtected = isManagedUsersRemoteProtectedError(error);
+      const message = remoteProtected
+        ? "Não foi possível sincronizar: acesso protegido por RLS."
+        : "Não foi possível sincronizar agora. Usuários continuam salvos neste aparelho.";
+      setManagedUsersSync((current) => ({
+        ...current,
+        source: "local",
+        message: remoteProtected ? "Usuários protegidos por RLS." : "Usando usuários locais neste aparelho.",
+        loading: false,
+        syncing: false,
+        remoteProtected,
+      }));
+      setNotice(message);
+    }
+  }
+
   function refreshOfflinePendingCount() {
     const summary = getCleaningOfflineQueueSummary();
     setOfflinePendingCount(summary.total);
@@ -642,7 +735,12 @@ function App() {
   async function handleLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const cleanPassword = password.trim();
-    const user = findManagedUserByAccessCode(cleanPassword, managedUsers);
+    let user = findManagedUserByAccessCode(cleanPassword, managedUsers);
+
+    if (!user) {
+      const refreshedUsers = await refreshManagedUsersFromCloud({ showNotice: false });
+      user = findManagedUserByAccessCode(cleanPassword, refreshedUsers);
+    }
 
     if (!user) {
       setLoginError("Senha incorreta");
@@ -661,6 +759,7 @@ function App() {
       await signInGuardSupabaseAuth(user.linkedGuardId, cleanPassword);
     } else if (user.id === "tezzei") {
       await signInAdminSupabaseAuth(cleanPassword);
+      void refreshManagedUsersFromCloud({ showNotice: false });
     } else {
       void signOutSupabaseAuth();
     }
@@ -1292,6 +1391,7 @@ function App() {
     setNotice("");
     setSelectedGuardName(null);
     setView("users-permissions");
+    void refreshManagedUsersFromCloud({ showNotice: false });
   }
 
   function openCleaningPreparation() {
@@ -1322,7 +1422,7 @@ function App() {
     }
   }
 
-  function saveManagedUser(user: ManagedUser) {
+  async function saveManagedUser(user: ManagedUser) {
     const cleanAccessCode = user.accessCode.trim();
     const cleanName = user.name.trim();
 
@@ -1347,14 +1447,40 @@ function App() {
       createdAt: previousUser?.createdAt ?? user.createdAt ?? now,
       updatedAt: now,
     };
-    const nextUsers = upsertManagedUser(managedUsers, normalizedUser);
-    saveLocalManagedUsers(nextUsers);
-    setManagedUsers(nextUsers);
-    setNotice("Usuário salvo.");
-    return true;
+    try {
+      const remoteUser = await saveManagedUserRemote(normalizedUser);
+      const nextUsers = upsertManagedUser(managedUsers, normalizeManagedUser(remoteUser));
+      saveLocalManagedUsers(nextUsers);
+      setManagedUsers(nextUsers);
+      setManagedUsersSync({
+        source: "supabase",
+        message: "Usuários sincronizados com Supabase.",
+        loading: false,
+        syncing: false,
+        remoteProtected: false,
+        lastSyncedAt: new Date().toISOString(),
+      });
+      setNotice("Usuário salvo e sincronizado.");
+      return true;
+    } catch (error) {
+      const nextUsers = upsertManagedUser(managedUsers, normalizedUser);
+      saveLocalManagedUsers(nextUsers);
+      setManagedUsers(nextUsers);
+      const remoteProtected = isManagedUsersRemoteProtectedError(error);
+      setManagedUsersSync((current) => ({
+        ...current,
+        source: "local",
+        message: remoteProtected ? "Usuários protegidos por RLS." : "Usando usuários locais neste aparelho.",
+        loading: false,
+        syncing: false,
+        remoteProtected,
+      }));
+      setNotice(remoteProtected ? "Usuário salvo neste aparelho. Supabase protegido por RLS." : "Usuário salvo neste aparelho. Sincronize quando o Supabase estiver disponível.");
+      return true;
+    }
   }
 
-  function deleteManagedUser(userId: string) {
+  async function deleteManagedUser(userId: string) {
     const user = managedUsers.find((current) => current.id === userId);
     if (!user) return;
     if (user.system || user.protected) {
@@ -1363,9 +1489,33 @@ function App() {
     }
 
     const nextUsers = managedUsers.filter((current) => current.id !== userId);
-    saveLocalManagedUsers(nextUsers);
-    setManagedUsers(nextUsers);
-    setNotice("Usuário apagado.");
+    try {
+      await deleteManagedUserRemote(userId);
+      saveLocalManagedUsers(nextUsers);
+      setManagedUsers(nextUsers);
+      setManagedUsersSync({
+        source: "supabase",
+        message: "Usuários sincronizados com Supabase.",
+        loading: false,
+        syncing: false,
+        remoteProtected: false,
+        lastSyncedAt: new Date().toISOString(),
+      });
+      setNotice("Usuário apagado e sincronizado.");
+    } catch (error) {
+      saveLocalManagedUsers(nextUsers);
+      setManagedUsers(nextUsers);
+      const remoteProtected = isManagedUsersRemoteProtectedError(error);
+      setManagedUsersSync((current) => ({
+        ...current,
+        source: "local",
+        message: remoteProtected ? "Usuários protegidos por RLS." : "Usando usuários locais neste aparelho.",
+        loading: false,
+        syncing: false,
+        remoteProtected,
+      }));
+      setNotice(remoteProtected ? "Usuário apagado neste aparelho. Supabase protegido por RLS." : "Usuário apagado neste aparelho. Sincronize quando o Supabase estiver disponível.");
+    }
   }
 
   async function handlePhotoChange(employeeId: EmployeeId, file: File | null) {
@@ -1561,11 +1711,13 @@ function App() {
       {view === "users-permissions" && (
         <UsersPermissionsScreen
           users={managedUsers}
+          syncState={managedUsersSync}
           notice={notice}
           onBack={() => setView(getCurrentHomeView())}
           onLogout={goToLogin}
           onSaveUser={saveManagedUser}
           onDeleteUser={deleteManagedUser}
+          onSyncLocalUsers={syncManagedUsersToCloud}
         />
       )}
 
@@ -1884,11 +2036,14 @@ function UserAccessScreen({ user, permissions, notice, onLogout, onOpenCleaningD
   );
 }
 
-function UsersPermissionsScreen({ users, notice, onBack, onLogout, onSaveUser, onDeleteUser }: { users: ManagedUser[]; notice: string; onBack: () => void; onLogout: () => void; onSaveUser: (user: ManagedUser) => boolean; onDeleteUser: (userId: string) => void }) {
+function UsersPermissionsScreen({ users, syncState, notice, onBack, onLogout, onSaveUser, onDeleteUser, onSyncLocalUsers }: { users: ManagedUser[]; syncState: ManagedUsersSyncState; notice: string; onBack: () => void; onLogout: () => void; onSaveUser: (user: ManagedUser) => Promise<boolean>; onDeleteUser: (userId: string) => Promise<void>; onSyncLocalUsers: () => Promise<void> }) {
   const [selectedUserId, setSelectedUserId] = useState(users[0]?.id ?? "");
   const selectedUser = users.find((user) => user.id === selectedUserId) ?? users[0] ?? createBlankManagedUser();
   const [creating, setCreating] = useState(false);
   const [draft, setDraft] = useState<ManagedUser>(() => cloneManagedUser(selectedUser));
+  const [savingUser, setSavingUser] = useState(false);
+  const [deletingUser, setDeletingUser] = useState(false);
+  const actionBusy = savingUser || deletingUser || syncState.loading || syncState.syncing;
 
   useEffect(() => {
     const nextUser = users.find((user) => user.id === selectedUserId) ?? users[0] ?? createBlankManagedUser();
@@ -1923,22 +2078,101 @@ function UsersPermissionsScreen({ users, notice, onBack, onLogout, onSaveUser, o
     });
   }
 
-  function saveDraft() {
-    const saved = onSaveUser(draft);
-    if (saved) {
-      setCreating(false);
-      setSelectedUserId(draft.id);
+  async function saveDraft() {
+    if (savingUser) return;
+    setSavingUser(true);
+    try {
+      const saved = await onSaveUser(draft);
+      if (saved) {
+        setCreating(false);
+        setSelectedUserId(draft.id);
+      }
+    } finally {
+      setSavingUser(false);
     }
   }
 
-  function deleteDraft() {
+  async function deleteDraft() {
     if (!window.confirm("Apagar este usuário?")) return;
-    onDeleteUser(draft.id);
-    setCreating(false);
-    setSelectedUserId(users[0]?.id ?? "");
+    setDeletingUser(true);
+    try {
+      await onDeleteUser(draft.id);
+      setCreating(false);
+      setSelectedUserId(users[0]?.id ?? "");
+    } finally {
+      setDeletingUser(false);
+    }
   }
 
-  return <section className="screen users-screen"><TopBar title="Usuários e Permissões" subtitle="Acessos, setores e módulos do HUB SM" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}>Voltar</button>{notice && <p className={notice.includes("salvo") || notice.includes("apagado") ? "success-message" : "notice-message"}>{notice}</p>}<section className="users-layout"><aside className="users-list"><button className="primary-button wide-button" type="button" onClick={startNewUser}>Cadastrar novo usuário</button>{users.map((user) => <button key={user.id} type="button" className={`user-list-card ${user.active ? "has-access" : "no-access"} ${user.id === selectedUserId && !creating ? "selected" : ""}`} onClick={() => selectUser(user.id)}><UserAvatar user={user} /><span>{user.name}</span><strong>{user.jobTitle}</strong><small>{user.department} — {user.active ? "Ativo" : "Inativo"}</small></button>)}</aside><section className="user-editor"><div className="user-editor-head"><UserAvatar user={draft} large /><div><p className="card-kicker">{creating ? "Novo usuário" : "Editar usuário"}</p><h2>{draft.name || "Usuário sem nome"}</h2><small>{draft.department} — {draft.userType}</small></div></div><section className="manual-form user-form"><label>Nome<input type="text" value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></label><label>Senha / código de acesso<input type="text" value={draft.accessCode} onChange={(event) => setDraft({ ...draft, accessCode: event.target.value })} /></label><label>Cargo / função<input type="text" value={draft.jobTitle} onChange={(event) => setDraft({ ...draft, jobTitle: event.target.value })} /></label><label>Setor / departamento<select value={draft.department} onChange={(event) => setDraft({ ...draft, department: event.target.value as UserDepartment })}>{userDepartments.map((department) => <option key={department} value={department}>{department}</option>)}</select></label><label>Tipo de usuário<select value={draft.userType} onChange={(event) => setDraft({ ...draft, userType: event.target.value as AppUserType })}>{userTypes.map((userType) => <option key={userType} value={userType}>{userType}</option>)}</select></label><label className="checkbox-row"><input type="checkbox" checked={draft.active} disabled={draft.protected} onChange={(event) => setDraft({ ...draft, active: event.target.checked })} /><span>Usuário ativo</span></label><label className="photo-button user-photo-button">Definir foto do usuário<input type="file" accept="image/*" capture="environment" onChange={(event) => { void handleUserPhoto(event.target.files?.[0] ?? null); event.target.value = ""; }} /></label>{draft.photoData && <button className="ghost-button" type="button" onClick={() => setDraft({ ...draft, photoData: undefined })}>Remover foto</button>}</section><section className="permissions-panel"><h2>Permissões por módulo</h2><div className="permissions-grid">{permissionOptions.map((permission) => { const checked = draft.id === "tezzei" || draft.permissions.includes(permission.id); return <label className={`checkbox-row permission-row ${checked ? "has-access" : "no-access"}`} key={permission.id}><input type="checkbox" checked={checked} disabled={draft.id === "tezzei"} onChange={() => togglePermission(permission.id)} /><span>{permission.label}</span></label>; })}</div></section><div className="button-grid user-actions"><button className="primary-button" type="button" onClick={saveDraft}>Salvar usuário</button><button className="secondary-button" type="button" disabled={draft.protected || !draft.active} onClick={() => setDraft({ ...draft, active: false })}>Inativar usuário</button>{!draft.system && !draft.protected && <button className="danger-button" type="button" onClick={deleteDraft}>Apagar usuário</button>}</div></section></section></section>;
+  return (
+    <section className="screen users-screen">
+      <TopBar title="Usuários e Permissões" subtitle="Acessos, setores e módulos do HUB SM" onLogout={onLogout} />
+      <button className="ghost-button" type="button" onClick={onBack}>Voltar</button>
+      <section className={syncState.source === "supabase" ? "users-sync-panel synced" : "users-sync-panel local"}>
+        <div>
+          <p className="card-kicker">Origem dos usuários</p>
+          <strong>{syncState.loading ? "Verificando sincronização..." : syncState.message}</strong>
+          {syncState.lastSyncedAt && <small>Última sincronização: {formatDateTime(syncState.lastSyncedAt)}</small>}
+        </div>
+        <button className="secondary-button" type="button" disabled={actionBusy} onClick={() => { void onSyncLocalUsers(); }}>
+          {syncState.syncing ? "Sincronizando..." : "Sincronizar usuários deste aparelho"}
+        </button>
+      </section>
+      {notice && <p className={notice.includes("salvo") || notice.includes("apagado") || notice.includes("sincronizado") ? "success-message" : "notice-message"}>{notice}</p>}
+      <section className="users-layout">
+        <aside className="users-list">
+          <button className="primary-button wide-button" type="button" disabled={actionBusy} onClick={startNewUser}>Cadastrar novo usuário</button>
+          {users.map((user) => (
+            <button key={user.id} type="button" className={`user-list-card ${user.active ? "has-access" : "no-access"} ${user.id === selectedUserId && !creating ? "selected" : ""}`} disabled={actionBusy} onClick={() => selectUser(user.id)}>
+              <UserAvatar user={user} />
+              <span>{user.name}</span>
+              <strong>{user.jobTitle}</strong>
+              <small>{user.department} — {user.active ? "Ativo" : "Inativo"}</small>
+            </button>
+          ))}
+        </aside>
+        <section className="user-editor">
+          <div className="user-editor-head">
+            <UserAvatar user={draft} large />
+            <div>
+              <p className="card-kicker">{creating ? "Novo usuário" : "Editar usuário"}</p>
+              <h2>{draft.name || "Usuário sem nome"}</h2>
+              <small>{draft.department} — {draft.userType}</small>
+            </div>
+          </div>
+          <section className="manual-form user-form">
+            <label>Nome<input type="text" value={draft.name} disabled={actionBusy} onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></label>
+            <label>Senha / código de acesso<input type="text" value={draft.accessCode} disabled={actionBusy} onChange={(event) => setDraft({ ...draft, accessCode: event.target.value })} /></label>
+            <label>Cargo / função<input type="text" value={draft.jobTitle} disabled={actionBusy} onChange={(event) => setDraft({ ...draft, jobTitle: event.target.value })} /></label>
+            <label>Setor / departamento<select value={draft.department} disabled={actionBusy} onChange={(event) => setDraft({ ...draft, department: event.target.value as UserDepartment })}>{userDepartments.map((department) => <option key={department} value={department}>{department}</option>)}</select></label>
+            <label>Tipo de usuário<select value={draft.userType} disabled={actionBusy} onChange={(event) => setDraft({ ...draft, userType: event.target.value as AppUserType })}>{userTypes.map((userType) => <option key={userType} value={userType}>{userType}</option>)}</select></label>
+            <label className="checkbox-row"><input type="checkbox" checked={draft.active} disabled={actionBusy || draft.protected} onChange={(event) => setDraft({ ...draft, active: event.target.checked })} /><span>Usuário ativo</span></label>
+            <label className="photo-button user-photo-button">Definir foto do usuário<input type="file" accept="image/*" capture="environment" disabled={actionBusy} onChange={(event) => { void handleUserPhoto(event.target.files?.[0] ?? null); event.target.value = ""; }} /></label>
+            {draft.photoData && <button className="ghost-button" type="button" disabled={actionBusy} onClick={() => setDraft({ ...draft, photoData: undefined })}>Remover foto</button>}
+          </section>
+          <section className="permissions-panel">
+            <h2>Permissões por módulo</h2>
+            <div className="permissions-grid">
+              {permissionOptions.map((permission) => {
+                const checked = draft.id === "tezzei" || draft.permissions.includes(permission.id);
+                return (
+                  <label className={`checkbox-row permission-row ${checked ? "has-access" : "no-access"}`} key={permission.id}>
+                    <input type="checkbox" checked={checked} disabled={actionBusy || draft.id === "tezzei"} onChange={() => togglePermission(permission.id)} />
+                    <span>{permission.label}</span>
+                  </label>
+                );
+              })}
+            </div>
+          </section>
+          <div className="button-grid user-actions">
+            <button className="primary-button" type="button" disabled={actionBusy} onClick={saveDraft}>{savingUser ? "Salvando..." : "Salvar usuário"}</button>
+            <button className="secondary-button" type="button" disabled={actionBusy || draft.protected || !draft.active} onClick={() => setDraft({ ...draft, active: false })}>Inativar usuário</button>
+            {!draft.system && !draft.protected && <button className="danger-button" type="button" disabled={actionBusy} onClick={deleteDraft}>{deletingUser ? "Apagando..." : "Apagar usuário"}</button>}
+          </div>
+        </section>
+      </section>
+    </section>
+  );
 }
 
 function UserAvatar({ user, large = false }: { user: ManagedUser; large?: boolean }) {
@@ -5101,6 +5335,17 @@ function mergeManagedUsers(storedUsers: unknown[]) {
     .map(normalizeManagedUser);
 
   return [...systemUsers, ...customUsers];
+}
+
+function mergeManagedUserSources(remoteUsers: ManagedUser[], localUsers: ManagedUser[]) {
+  const remoteIds = new Set(remoteUsers.map((user) => user.id));
+  const remoteAccessCodes = new Set(remoteUsers.map((user) => user.accessCode));
+  const unsyncedLocalUsers = localUsers.filter((user) =>
+    !remoteIds.has(user.id)
+    && !remoteAccessCodes.has(user.accessCode)
+  );
+
+  return mergeManagedUsers([...remoteUsers, ...unsyncedLocalUsers]);
 }
 
 function isManagedUserLike(value: unknown): value is ManagedUser {
