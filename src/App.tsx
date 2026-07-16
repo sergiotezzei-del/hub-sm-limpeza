@@ -2234,6 +2234,7 @@ function SecurityParkingScreen({ permissions, isAdmin, onBack, onLogout }: { per
   const [recentSearches, setRecentSearches] = useState<VehicleRecentSearch[]>([]);
   const vehicles = vehicleState.vehicles;
   const sortedVehicles = useMemo(() => [...vehicles].sort((first, second) => `${first.ownerName} ${first.plate}`.localeCompare(`${second.ownerName} ${second.plate}`)), [vehicles]);
+  const knownParkingPlates = useMemo(() => vehicles.map((vehicle) => vehicle.normalizedPlate).filter(Boolean), [vehicles]);
 
   useEffect(() => {
     let active = true;
@@ -2478,6 +2479,7 @@ function SecurityParkingScreen({ permissions, isAdmin, onBack, onLogout }: { per
         <PlatePhotoSearchDialog
           photoData={capturedPlatePhoto}
           initialPlate={searchPlate}
+          knownPlates={knownParkingPlates}
           onClose={() => setPlatePhotoDialogOpen(false)}
           onSearch={(plate) => searchCapturedPlatePhoto(plate)}
         />
@@ -2486,7 +2488,7 @@ function SecurityParkingScreen({ permissions, isAdmin, onBack, onLogout }: { per
   );
 }
 
-function PlatePhotoSearchDialog({ photoData, initialPlate, onClose, onSearch }: { photoData: string; initialPlate: string; onClose: () => void; onSearch: (plate: string) => Promise<void> }) {
+function PlatePhotoSearchDialog({ photoData, initialPlate, knownPlates, onClose, onSearch }: { photoData: string; initialPlate: string; knownPlates: string[]; onClose: () => void; onSearch: (plate: string) => Promise<void> }) {
   const plateInputRef = useRef<HTMLInputElement | null>(null);
   const plateEditedRef = useRef(false);
   const [platePhotoDraftPlate, setPlatePhotoDraftPlate] = useState(initialPlate.trim().toUpperCase());
@@ -2505,32 +2507,33 @@ function PlatePhotoSearchDialog({ photoData, initialPlate, onClose, onSearch }: 
   useEffect(() => {
     let active = true;
     setPlateOcrRunning(true);
-    setPlateOcrMessage("Tentando ler a placa...");
+    setPlateOcrMessage("Estou tentando ler a placa...");
 
-    recognizePlateFromPhoto(photoData)
+    recognizePlateFromPhoto(photoData, knownPlates)
       .then((result) => {
         if (!active) return;
         if (result.plate) {
           const userAlreadyTyped = plateEditedRef.current;
           if (!userAlreadyTyped) setPlatePhotoDraftPlate(result.plate);
-          setPlateOcrMessage(userAlreadyTyped ? `Leitura sugeriu: ${result.plate}. Mantive a placa digitada para conferência.` : `Placa sugerida: ${result.plate}. Confira antes de pesquisar.`);
+          const suggestionMessage = result.source === "known-fuzzy" ? `Placa sugerida pela base: ${result.plate}. Confira antes de pesquisar.` : `Placa sugerida: ${result.plate}. Confira antes de pesquisar.`;
+          setPlateOcrMessage(userAlreadyTyped ? `Leitura sugeriu: ${result.plate}. Mantive a placa digitada para conferência.` : suggestionMessage);
           window.setTimeout(() => {
             plateInputRef.current?.focus();
             plateInputRef.current?.select();
           }, 40);
           return;
         }
-        setPlateOcrMessage("Não consegui identificar a placa com segurança. Digite a placa vista na foto.");
+        setPlateOcrMessage(result.source === "ambiguous" ? "Encontrei mais de uma possibilidade. Digite a placa vista na foto." : "Não consegui identificar com segurança. Digite a placa vista na foto.");
       })
       .catch(() => {
-        if (active) setPlateOcrMessage("Não consegui identificar a placa com segurança. Digite a placa vista na foto.");
+        if (active) setPlateOcrMessage("Não consegui identificar com segurança. Digite a placa vista na foto.");
       })
       .finally(() => {
         if (active) setPlateOcrRunning(false);
       });
 
     return () => { active = false; };
-  }, [photoData]);
+  }, [photoData, knownPlates]);
 
   async function submitPlateSearch() {
     if (!normalizeVehiclePlate(platePhotoDraftPlate)) {
