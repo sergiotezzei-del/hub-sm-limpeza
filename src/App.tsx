@@ -8,7 +8,7 @@ import { DEFAULT_GUARD_ROUND_POINTS, DEFAULT_GUARD_ROUND_SCHEDULES, loadGuardRou
 import { loadGuardMonitoringEntries } from "./modules/security/services/shiftService";
 import { signOutSupabaseAuth } from "./modules/security/services/supabaseClient";
 import { createBlankVehicleDraft, loadVehicleRecords, normalizeVehiclePlate, saveVehicleRecord, vehicleToDraft } from "./modules/security/services/vehicleService";
-import { deleteManagedUserRemote, isManagedUsersRemoteProtectedError, loadManagedUsersRemote, saveManagedUserRemote, syncLocalManagedUsersToCloud } from "./modules/users/services/managedUserService";
+import { deleteManagedUserRemote, isManagedUsersRemoteProtectedError, loadManagedUsersRemote, loginManagedUserRemoteByAccessCode, saveManagedUserRemote, syncLocalManagedUsersToCloud } from "./modules/users/services/managedUserService";
 import type { GuardPaymentLoadState, GuardPaymentProfile, GuardPaymentRecord, GuardPaymentStatus } from "./modules/security/types/payment.types";
 import type { GuardRoundCheckin, GuardRoundCheckinSource, GuardRoundCheckinStatus, GuardRoundLoadState, GuardRoundPoint, GuardRoundReportEntry, GuardRoundReportStatus, GuardRoundSchedule } from "./modules/security/types/round.types";
 import type { GuardMonitoringEntry, GuardMonitoringLoadState, GuardShiftStatus } from "./modules/security/types/shift.types";
@@ -736,10 +736,37 @@ function App() {
     event.preventDefault();
     const cleanPassword = password.trim();
     let user = findManagedUserByAccessCode(cleanPassword, managedUsers);
+    let loginNotice = "";
 
-    if (!user) {
-      const refreshedUsers = await refreshManagedUsersFromCloud({ showNotice: false });
-      user = findManagedUserByAccessCode(cleanPassword, refreshedUsers);
+    if (cleanPassword && (!user || !user.system)) {
+      try {
+        const remoteUser = await loginManagedUserRemoteByAccessCode(cleanPassword);
+
+        if (remoteUser) {
+          const normalizedRemoteUser = normalizeManagedUser(remoteUser);
+          const nextUsers = upsertManagedUser(managedUsers, normalizedRemoteUser);
+          saveLocalManagedUsers(nextUsers);
+          setManagedUsers(nextUsers);
+          setManagedUsersSync({
+            source: "supabase",
+            message: "Usuários sincronizados com Supabase.",
+            loading: false,
+            syncing: false,
+            remoteProtected: false,
+            lastSyncedAt: new Date().toISOString(),
+          });
+          user = normalizedRemoteUser;
+          loginNotice = "Usuário sincronizado. Entrando...";
+        } else if (!user || !user.system) {
+          setLoginError("Senha incorreta");
+          return;
+        }
+      } catch {
+        if (!user) {
+          setLoginError("Não foi possível consultar usuários sincronizados. Verifique a internet ou tente novamente.");
+          return;
+        }
+      }
     }
 
     if (!user) {
@@ -768,7 +795,7 @@ function App() {
     setPreviewEmployeeId(null);
     setSelectedGuardName(user.linkedGuardId ? guardUserMap[user.linkedGuardId] : null);
     setLoginError("");
-    setNotice("");
+    setNotice(loginNotice);
     void refreshOrders();
     void refreshProfiles();
     void refreshInventory();

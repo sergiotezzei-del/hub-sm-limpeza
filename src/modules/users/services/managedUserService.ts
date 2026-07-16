@@ -21,6 +21,8 @@ type ManagedUserRow = {
   updated_at: string;
 };
 
+type ManagedUserLoginRow = Omit<ManagedUserRow, "access_code">;
+
 export class ManagedUsersRemoteUnavailableError extends Error {
   constructor(message: string) {
     super(message);
@@ -44,6 +46,20 @@ export async function loadManagedUsersRemote() {
   const response = await managedUsersRequest("managed_users?select=*&order=name.asc");
   const rows = (await response.json()) as ManagedUserRow[];
   return rows.map(mapManagedUserRow);
+}
+
+export async function loginManagedUserRemoteByAccessCode(accessCode: string): Promise<ManagedUser | null> {
+  const cleanAccessCode = accessCode.trim();
+  if (!cleanAccessCode || !supabaseConfigured) return null;
+
+  const response = await managedUsersRequest("rpc/login_managed_user", {
+    method: "POST",
+    body: JSON.stringify({ p_access_code: cleanAccessCode }),
+  });
+  const rows = await response.json() as ManagedUserLoginRow[];
+  const row = rows[0];
+
+  return row ? mapManagedUserLoginRow(row, cleanAccessCode) : null;
 }
 
 export async function saveManagedUserRemote(user: ManagedUser) {
@@ -141,6 +157,26 @@ function mapManagedUserRow(row: ManagedUserRow): ManagedUser {
     id: row.id,
     name: row.name,
     accessCode: row.access_code,
+    userType: (row.user_type || "Consulta") as ManagedUser["userType"],
+    jobTitle: row.job_title || row.user_type || "Consulta",
+    department: (row.department || "Administração") as ManagedUser["department"],
+    photoData: row.photo_data || undefined,
+    permissions: Array.isArray(row.permissions) ? row.permissions as ManagedUser["permissions"] : [],
+    active: row.active ?? true,
+    protected: row.protected ?? false,
+    system: row.system ?? false,
+    linkedEmployeeId: row.linked_employee_id as ManagedUser["linkedEmployeeId"] | undefined,
+    linkedGuardId: row.linked_guard_id as ManagedUser["linkedGuardId"] | undefined,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function mapManagedUserLoginRow(row: ManagedUserLoginRow, accessCode: string): ManagedUser {
+  return {
+    id: row.id,
+    name: row.name,
+    accessCode,
     userType: (row.user_type || "Consulta") as ManagedUser["userType"],
     jobTitle: row.job_title || row.user_type || "Consulta",
     department: (row.department || "Administração") as ManagedUser["department"],
