@@ -21,6 +21,12 @@
   --neutral-card: #ffffff;
   --neutral-soft: #f8fafc;
   --shadow-card: 0 8px 18px rgba(31, 41, 51, 0.05);
+  --icon-default: #334155;
+  --icon-muted: #667085;
+  --icon-success: #15803d;
+  --icon-warning: #f97316;
+  --icon-danger: #dc2626;
+  --icon-info: #2563eb;
 }
 
 * {
@@ -248,6 +254,69 @@ select:disabled {
   width: 100%;
 }
 
+.app-icon {
+  width: var(--app-icon-size, 20px);
+  height: var(--app-icon-size, 20px);
+  flex: 0 0 auto;
+  color: currentColor;
+}
+
+.module-icon {
+  color: currentColor;
+}
+
+.module-icon-circle {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  color: var(--orange-dark) !important;
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  border-radius: 8px;
+}
+
+.action-icon,
+.status-icon {
+  color: currentColor;
+}
+
+.icon-success {
+  color: var(--icon-success);
+}
+
+.icon-warning {
+  color: var(--icon-warning);
+}
+
+.icon-danger {
+  color: var(--icon-danger);
+}
+
+.icon-info {
+  color: var(--icon-info);
+}
+
+.icon-muted {
+  color: var(--icon-muted);
+}
+
+.primary-button,
+.secondary-button,
+.ghost-button,
+.danger-button,
+.success-button,
+.logout-button,
+.alert-banner,
+.scan-button,
+.photo-button,
+.monitoring-tabs button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
 .sticky-action {
   position: sticky;
   bottom: 14px;
@@ -431,6 +500,25 @@ select:disabled {
     transform 0.16s ease;
 }
 
+.module-card.with-icon {
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  column-gap: 14px;
+}
+
+.module-card-copy {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.module-card-title {
+  color: var(--muted) !important;
+  font-size: 0.92rem;
+  font-weight: 900;
+  line-height: 1.15;
+}
+
 .module-card.has-access {
   background: #ffffff !important;
   background-color: #ffffff !important;
@@ -458,6 +546,12 @@ select:disabled {
 .module-card.no-access span,
 .module-card.no-access strong {
   color: #667085 !important;
+}
+
+.module-card.no-access .module-icon-circle {
+  color: var(--icon-muted) !important;
+  background: #ffffff;
+  border-color: #e5eaf1;
 }
 
 .module-card.action-card.has-access {
@@ -498,6 +592,21 @@ select:disabled {
 .module-card.action-card.has-access:hover .attention-pill,
 .module-card.action-card.has-access:focus-visible .attention-pill,
 .module-card.action-card.has-access:active .attention-pill {
+  color: #7c2d12;
+  background: #ffffff;
+}
+
+.module-card.action-card.has-access:hover .module-icon-circle,
+.module-card.action-card.has-access:focus-visible .module-icon-circle,
+.module-card.action-card.has-access:active .module-icon-circle {
+  color: #ffffff !important;
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.42);
+}
+
+.module-card.action-card.has-access:hover .access-pill,
+.module-card.action-card.has-access:focus-visible .access-pill,
+.module-card.action-card.has-access:active .access-pill {
   color: #7c2d12;
   background: #ffffff;
 }
@@ -1381,6 +1490,7 @@ select:disabled {
 }
 
 .monitoring-tabs button {
+  flex-wrap: wrap;
   min-height: 48px;
   padding: 10px 12px;
   color: #334155;
@@ -1903,6 +2013,9 @@ select:disabled {
 }
 
 .monitoring-alert-card span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   color: var(--ink);
   font-size: 0.82rem;
   font-weight: 950;

@@ -1,5 +1,6 @@
 import { ChangeEvent, FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
+import { AppIcon, type AppIconName } from "./components/AppIcon";
 import { activities, employees } from "./data";
 import { GuardShiftPanel, GuardSyncDiagnosticPanel } from "./modules/security/components/GuardShift";
 import { signInAdminSupabaseAuth, signInGuardSupabaseAuth } from "./modules/security/services/guardAuthBridge";
@@ -1949,7 +1950,7 @@ function StockCheckScreen({ products, quantities, observations, notice, sending,
 
 function StockExitScreen({ inventoryProducts, selectedProduct, userId, barcode, quantity, observation, message, saving, adminMode, onBack, onLogout, onUserChange, onBarcodeChange, onFileChange, onProductChange, onQuantityChange, onObservationChange, onConfirm }: { inventoryProducts: InventoryProduct[]; selectedProduct: InventoryProduct | null; userId: StockExitUserId; barcode: string; quantity: string; observation: string; message: string; saving: boolean; adminMode: boolean; onBack: () => void; onLogout: () => void; onUserChange: (userId: StockExitUserId) => void; onBarcodeChange: (barcode: string) => void; onFileChange: (file: File | null) => void; onProductChange: (productId: string) => void; onQuantityChange: (quantity: string) => void; onObservationChange: (observation: string) => void; onConfirm: () => void }) {
   return (
-    <section className="screen"><TopBar title="Saída de Produto" subtitle="Bipe o código de barras e confirme a retirada" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}>Voltar</button>{message && <p className="notice-message">{message}</p>}<section className="manual-form inventory-form">{adminMode && <label>Quem retirou<select value={userId} onChange={(event) => onUserChange(event.target.value as StockExitUserId)}>{employeeIds.map((employeeId) => <option key={employeeId} value={employeeId}>{employees[employeeId].name}</option>)}<option value="Sergio Tezzei">Sergio Tezzei</option></select></label>}<label className="scan-button">Abrir câmera / bipar código<input type="file" accept="image/*" capture="environment" onChange={(event) => { onFileChange(event.target.files?.[0] ?? null); event.target.value = ""; }} /></label><label>Código de barras<input type="text" inputMode="numeric" value={barcode} placeholder="Bipe ou digite o código" onChange={(event) => onBarcodeChange(event.target.value)} /></label><label>Produto encontrado / ajuste manual<select value={selectedProduct?.id ?? ""} onChange={(event) => onProductChange(event.target.value)}><option value="">Selecione o produto</option>{inventoryProducts.map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}</select></label>{selectedProduct && <article className="inventory-found-card"><span>Produto</span><strong>{selectedProduct.name}</strong><small>Estoque atual: {formatStockQuantity(selectedProduct.currentStock, selectedProduct.unit)}</small></article>}<label>Quantidade retirada<input type="number" inputMode="decimal" min="0" value={quantity} onChange={(event) => onQuantityChange(event.target.value)} /></label><label>Observação opcional<textarea rows={3} value={observation} onChange={(event) => onObservationChange(event.target.value)} /></label><button className="primary-button wide-button" type="button" disabled={saving} onClick={onConfirm}>{saving ? "Salvando..." : "Confirmar saída"}</button></section></section>
+    <section className="screen"><TopBar title="Saída de Produto" subtitle="Bipe o código de barras e confirme a retirada" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}><AppIcon name="back" size="sm" className="action-icon" />Voltar</button>{message && <p className="notice-message">{message}</p>}<section className="manual-form inventory-form">{adminMode && <label>Quem retirou<select value={userId} onChange={(event) => onUserChange(event.target.value as StockExitUserId)}>{employeeIds.map((employeeId) => <option key={employeeId} value={employeeId}>{employees[employeeId].name}</option>)}<option value="Sergio Tezzei">Sergio Tezzei</option></select></label>}<label className="scan-button"><AppIcon name="camera" size="sm" className="action-icon" />Abrir câmera / bipar código<input type="file" accept="image/*" capture="environment" onChange={(event) => { onFileChange(event.target.files?.[0] ?? null); event.target.value = ""; }} /></label><label>Código de barras<input type="text" inputMode="numeric" value={barcode} placeholder="Bipe ou digite o código" onChange={(event) => onBarcodeChange(event.target.value)} /></label><label>Produto encontrado / ajuste manual<select value={selectedProduct?.id ?? ""} onChange={(event) => onProductChange(event.target.value)}><option value="">Selecione o produto</option>{inventoryProducts.map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}</select></label>{selectedProduct && <article className="inventory-found-card"><span>Produto</span><strong>{selectedProduct.name}</strong><small>Estoque atual: {formatStockQuantity(selectedProduct.currentStock, selectedProduct.unit)}</small></article>}<label>Quantidade retirada<input type="number" inputMode="decimal" min="0" value={quantity} onChange={(event) => onQuantityChange(event.target.value)} /></label><label>Observação opcional<textarea rows={3} value={observation} onChange={(event) => onObservationChange(event.target.value)} /></label><button className="primary-button wide-button" type="button" disabled={saving} onClick={onConfirm}><AppIcon name="save" size="sm" className="action-icon" />{saving ? "Salvando..." : "Confirmar saída"}</button></section></section>
   );
 }
 
@@ -2008,14 +2009,14 @@ function ProductRegisterScreen({ inventoryProducts, selectedProduct, mode, produ
           <input type="number" inputMode="decimal" min="0" value={minStock} disabled={saving} onChange={(event) => onMinStockChange(event.target.value)} />
         </label>
         <label className="scan-button">
-          Abrir câmera / ler código
+          <AppIcon name="camera" size="sm" className="action-icon" />Abrir câmera / ler código
           <input type="file" accept="image/*" capture="environment" disabled={saving} onChange={(event) => { onBarcodeFileChange(event.target.files?.[0] ?? null); event.target.value = ""; }} />
         </label>
         <label>
           Código de barras
           <input type="text" inputMode="numeric" value={barcode} placeholder="Bipe ou digite o código" disabled={saving} onChange={(event) => onBarcodeChange(event.target.value)} />
         </label>
-        <button className="primary-button wide-button" type="button" disabled={saving} onClick={() => { void onSave(); }}>{saving ? "Salvando..." : "Salvar Produto"}</button>
+        <button className="primary-button wide-button" type="button" disabled={saving} onClick={() => { void onSave(); }}><AppIcon name="save" size="sm" className="action-icon" />{saving ? "Salvando..." : "Salvar Produto"}</button>
       </section>
     </section>
   );
@@ -2026,7 +2027,7 @@ function StockExitHistoryScreen({ movements, onBack, onLogout }: { movements: St
 }
 
 function CurrentStockScreen({ inventoryProducts, onBack, onLogout, onEditProduct }: { inventoryProducts: InventoryProduct[]; onBack: () => void; onLogout: () => void; onEditProduct: (productId: string) => void }) {
-  return <section className="screen"><TopBar title="Estoque Atual" subtitle="Produtos cadastrados para controle de limpeza" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}>Voltar para Limpeza</button><section className="product-list current-stock-list">{inventoryProducts.map((product) => <article className="product-row inventory-stock-row" key={product.id}><ProductPhoto productName={product.name} photoData={product.photoData} /><span><strong>{product.name}</strong><small>{product.barcode ? `Código: ${product.barcode}` : "Sem código cadastrado"}</small></span><strong className="stock-quantity">{formatStockQuantity(product.currentStock, product.unit)}</strong><button className="secondary-button inventory-edit-button" type="button" onClick={() => onEditProduct(product.id)}>Editar</button></article>)}</section></section>;
+  return <section className="screen"><TopBar title="Estoque Atual" subtitle="Produtos cadastrados para controle de limpeza" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}><AppIcon name="back" size="sm" className="action-icon" />Voltar para Limpeza</button><section className="product-list current-stock-list">{inventoryProducts.map((product) => <article className="product-row inventory-stock-row" key={product.id}><ProductPhoto productName={product.name} photoData={product.photoData} /><span><strong>{product.name}</strong><small>{product.barcode ? `Código: ${product.barcode}` : "Sem código cadastrado"}</small></span><strong className="stock-quantity">{formatStockQuantity(product.currentStock, product.unit)}</strong><button className="secondary-button inventory-edit-button" type="button" onClick={() => onEditProduct(product.id)}><AppIcon name="edit" size="sm" className="action-icon" />Editar</button></article>)}</section></section>;
 }
 
 function ProductPhoto({ productName, photoData }: { productName: string; photoData?: string }) {
@@ -2034,18 +2035,18 @@ function ProductPhoto({ productName, photoData }: { productName: string; photoDa
 }
 
 function UserAccessScreen({ user, permissions, notice, onLogout, onOpenCleaningDashboard, onOpenStockExit, onOpenSecurity }: { user: ManagedUser; permissions: UserPermission[]; notice: string; onLogout: () => void; onOpenCleaningDashboard: () => void; onOpenStockExit: () => void; onOpenSecurity: () => void }) {
-  const moduleCards: Array<{ permission: UserPermission; title: string; detail: string; onClick?: () => void; className?: string }> = [
-    { permission: "limpeza", title: "Limpeza", detail: "Rotinas e pedidos", onClick: onOpenCleaningDashboard, className: "cleaning-card" },
-    { permission: "saida-estoque", title: "Saída de estoque", detail: "Bipar retirada do estoque", onClick: onOpenStockExit },
-    { permission: "seguranca", title: "Segurança", detail: "Guardas e escalas", onClick: onOpenSecurity, className: "security-card" },
-    { permission: "guardas", title: "Guardas", detail: "Escalas e plantões", onClick: onOpenSecurity, className: "security-card" },
-    { permission: "estoque", title: "Estoque", detail: "Produtos e códigos" },
-    { permission: "cafe", title: "Máquina de Café", detail: "Insumos e reposição" },
-    { permission: "agua", title: "Água", detail: "Fardos e copos" },
-    { permission: "manutencao", title: "Manutenção", detail: "Chamados internos" },
-    { permission: "chaves", title: "Chaves", detail: "Controle de acessos" },
-    { permission: "patrimonio", title: "Patrimônio", detail: "Itens e equipamentos" },
-    { permission: "relatorios", title: "Relatórios", detail: "Consultas liberadas" },
+  const moduleCards: Array<{ permission: UserPermission; title: string; detail: string; onClick?: () => void; className?: string; icon?: AppIconName }> = [
+    { permission: "limpeza", title: "Limpeza", detail: "Rotinas e pedidos", onClick: onOpenCleaningDashboard, className: "cleaning-card", icon: "cleaning" },
+    { permission: "saida-estoque", title: "Saída de estoque", detail: "Bipar retirada do estoque", onClick: onOpenStockExit, icon: "stock" },
+    { permission: "seguranca", title: "Segurança", detail: "Guardas e escalas", onClick: onOpenSecurity, className: "security-card", icon: "security" },
+    { permission: "guardas", title: "Guardas", detail: "Escalas e plantões", onClick: onOpenSecurity, className: "security-card", icon: "guards" },
+    { permission: "estoque", title: "Estoque", detail: "Produtos e códigos", icon: "stock" },
+    { permission: "cafe", title: "Máquina de Café", detail: "Insumos e reposição", icon: "coffee" },
+    { permission: "agua", title: "Água", detail: "Fardos e copos", icon: "water" },
+    { permission: "manutencao", title: "Manutenção", detail: "Chamados internos", icon: "settings" },
+    { permission: "chaves", title: "Chaves", detail: "Controle de acessos", icon: "settings" },
+    { permission: "patrimonio", title: "Patrimônio", detail: "Itens e equipamentos", icon: "stock" },
+    { permission: "relatorios", title: "Relatórios", detail: "Consultas liberadas", icon: "reports" },
   ];
   const hasAnyModule = permissions.length > 0;
 
@@ -2055,7 +2056,7 @@ function UserAccessScreen({ user, permissions, notice, onLogout, onOpenCleaningD
       {notice && <p className="notice-message">{notice}</p>}
       <section className="admin-grid module-grid">
         {moduleCards.map((card) => (
-          <ModuleCard key={card.permission} title={card.title} detail={card.detail} enabled={permissions.includes(card.permission)} onClick={card.onClick} className={card.className} />
+          <ModuleCard key={card.permission} title={card.title} detail={card.detail} enabled={permissions.includes(card.permission)} onClick={card.onClick} className={card.className} icon={card.icon} />
         ))}
       </section>
       {!hasAnyModule && <section className="empty-state"><h2>Nenhum módulo liberado</h2><p>Solicite permissão ao admin.</p></section>}
@@ -2134,7 +2135,7 @@ function UsersPermissionsScreen({ users, syncState, notice, onBack, onLogout, on
   return (
     <section className="screen users-screen">
       <TopBar title="Usuários e Permissões" subtitle="Acessos, setores e módulos do HUB SM" onLogout={onLogout} />
-      <button className="ghost-button" type="button" onClick={onBack}>Voltar</button>
+      <button className="ghost-button" type="button" onClick={onBack}><AppIcon name="back" size="sm" className="action-icon" />Voltar</button>
       <section className={syncState.source === "supabase" ? "users-sync-panel synced" : "users-sync-panel local"}>
         <div>
           <p className="card-kicker">Origem dos usuários</p>
@@ -2142,13 +2143,13 @@ function UsersPermissionsScreen({ users, syncState, notice, onBack, onLogout, on
           {syncState.lastSyncedAt && <small>Última sincronização: {formatDateTime(syncState.lastSyncedAt)}</small>}
         </div>
         <button className="secondary-button" type="button" disabled={actionBusy} onClick={() => { void onSyncLocalUsers(); }}>
-          {syncState.syncing ? "Sincronizando..." : "Sincronizar usuários deste aparelho"}
+          <AppIcon name="users" size="sm" className="action-icon" />{syncState.syncing ? "Sincronizando..." : "Sincronizar usuários deste aparelho"}
         </button>
       </section>
       {notice && <p className={notice.includes("salvo") || notice.includes("apagado") || notice.includes("sincronizado") ? "success-message" : "notice-message"}>{notice}</p>}
       <section className="users-layout">
         <aside className="users-list">
-          <button className="primary-button wide-button" type="button" disabled={actionBusy} onClick={startNewUser}>Cadastrar novo usuário</button>
+          <button className="primary-button wide-button" type="button" disabled={actionBusy} onClick={startNewUser}><AppIcon name="users" size="sm" className="action-icon" />Cadastrar novo usuário</button>
           {users.map((user) => (
             <button key={user.id} type="button" className={`user-list-card ${user.active ? "has-access" : "no-access"} ${user.id === selectedUserId && !creating ? "selected" : ""}`} disabled={actionBusy} onClick={() => selectUser(user.id)}>
               <UserAvatar user={user} />
@@ -2192,9 +2193,9 @@ function UsersPermissionsScreen({ users, syncState, notice, onBack, onLogout, on
             </div>
           </section>
           <div className="button-grid user-actions">
-            <button className="primary-button" type="button" disabled={actionBusy} onClick={saveDraft}>{savingUser ? "Salvando..." : "Salvar usuário"}</button>
-            <button className="secondary-button" type="button" disabled={actionBusy || draft.protected || !draft.active} onClick={() => setDraft({ ...draft, active: false })}>Inativar usuário</button>
-            {!draft.system && !draft.protected && <button className="danger-button" type="button" disabled={actionBusy} onClick={deleteDraft}>{deletingUser ? "Apagando..." : "Apagar usuário"}</button>}
+            <button className="primary-button" type="button" disabled={actionBusy} onClick={saveDraft}><AppIcon name="save" size="sm" className="action-icon" />{savingUser ? "Salvando..." : "Salvar usuário"}</button>
+            <button className="secondary-button" type="button" disabled={actionBusy || draft.protected || !draft.active} onClick={() => setDraft({ ...draft, active: false })}><AppIcon name="blocked" size="sm" className="action-icon" />Inativar usuário</button>
+            {!draft.system && !draft.protected && <button className="danger-button" type="button" disabled={actionBusy} onClick={deleteDraft}><AppIcon name="blocked" size="sm" className="action-icon" />{deletingUser ? "Apagando..." : "Apagar usuário"}</button>}
           </div>
         </section>
       </section>
@@ -2232,17 +2233,25 @@ type SectorModuleCard = {
   onClick?: () => void;
   className?: string;
   attention?: string;
+  icon?: AppIconName;
 };
 
-function ModuleCard({ title, detail, enabled = true, onClick, className = "", attention }: { title: string; detail: string; enabled?: boolean; onClick?: () => void; className?: string; attention?: string }) {
+function ModuleCard({ title, detail, enabled = true, onClick, className = "", attention, icon }: { title: string; detail: string; enabled?: boolean; onClick?: () => void; className?: string; attention?: string; icon?: AppIconName }) {
   const hasAttention = enabled && Boolean(attention);
-  const cardClass = ["admin-card", "module-card", enabled ? "has-access" : "no-access", enabled && onClick ? "action-card" : "", className, hasAttention ? "needs-attention" : ""].filter(Boolean).join(" ");
+  const cardClass = ["admin-card", "module-card", icon ? "with-icon" : "", enabled ? "has-access" : "no-access", enabled && onClick ? "action-card" : "", className, hasAttention ? "needs-attention" : ""].filter(Boolean).join(" ");
   const content = (
     <>
-      <span>{title}</span>
-      <strong>{detail}</strong>
-      {hasAttention && <small className="attention-pill">{attention}</small>}
-      {!enabled && <small className="access-pill">Sem acesso</small>}
+      {icon && (
+        <span className="module-icon-circle" aria-hidden="true">
+          <AppIcon name={icon} size="lg" className="module-icon" />
+        </span>
+      )}
+      <span className="module-card-copy">
+        <span className="module-card-title">{title}</span>
+        <strong>{detail}</strong>
+        {hasAttention && <small className="attention-pill">{attention}</small>}
+        {!enabled && <small className="access-pill">Sem acesso</small>}
+      </span>
     </>
   );
 
@@ -2256,13 +2265,13 @@ function ModuleCard({ title, detail, enabled = true, onClick, className = "", at
 function UserSectorHomeScreen({ user, permissions, notice, onLogout, onOpenCleaningDashboard, onOpenStockExit, onOpenCopaCafe, onOpenMaintenance, onOpenGeneralStock, onOpenPatrimony, onOpenReports, onOpenSecurity }: { user: ManagedUser; permissions: UserPermission[]; notice: string; onLogout: () => void; onOpenCleaningDashboard: () => void; onOpenStockExit: () => void; onOpenCopaCafe: () => void; onOpenMaintenance: () => void; onOpenGeneralStock: () => void; onOpenPatrimony: () => void; onOpenReports: () => void; onOpenSecurity: () => void }) {
   const canCleaning = permissions.includes("limpeza") || permissions.includes("saida-estoque");
   const cards: SectorModuleCard[] = [
-    { key: "limpeza", title: "Limpeza", detail: "Rotinas, produtos, pedidos e histórico da equipe de limpeza.", enabled: canCleaning, onClick: permissions.includes("limpeza") ? onOpenCleaningDashboard : onOpenStockExit, className: "cleaning-card" },
-    { key: "copa-cafe", title: "Copa & Café", detail: "Máquina de café, água, copos, bebidas e insumos da copa.", enabled: permissions.includes("cafe") || permissions.includes("agua"), onClick: onOpenCopaCafe },
-    { key: "seguranca", title: "Segurança", detail: "Guardas, rondas, monitoramento, estacionamento e fechamento dos serviços.", enabled: permissions.includes("seguranca") || permissions.includes("guardas") || permissions.includes("estacionamento-consulta") || permissions.includes("estacionamento-cadastro"), onClick: onOpenSecurity, className: "security-card" },
-    { key: "manutencao", title: "Manutenção", detail: "Chamados, obras, fornecedores e pendências prediais.", enabled: permissions.includes("manutencao"), onClick: onOpenMaintenance },
-    { key: "estoque-geral", title: "Estoque Geral", detail: "Materiais diversos, ferramentas, informática e itens de apoio.", enabled: permissions.includes("estoque"), onClick: onOpenGeneralStock },
-    { key: "patrimonio", title: "Patrimônio", detail: "Equipamentos, móveis, rede, câmeras, chaves e inventário.", enabled: permissions.includes("patrimonio") || permissions.includes("chaves"), onClick: onOpenPatrimony },
-    { key: "relatorios", title: "Relatórios", detail: "Consultas e relatórios por área operacional.", enabled: permissions.includes("relatorios"), onClick: onOpenReports },
+    { key: "limpeza", title: "Limpeza", detail: "Rotinas, produtos, pedidos e histórico da equipe de limpeza.", enabled: canCleaning, onClick: permissions.includes("limpeza") ? onOpenCleaningDashboard : onOpenStockExit, className: "cleaning-card", icon: "cleaning" },
+    { key: "copa-cafe", title: "Copa & Café", detail: "Máquina de café, água, copos, bebidas e insumos da copa.", enabled: permissions.includes("cafe") || permissions.includes("agua"), onClick: onOpenCopaCafe, icon: "coffee" },
+    { key: "seguranca", title: "Segurança", detail: "Guardas, rondas, monitoramento, estacionamento e fechamento dos serviços.", enabled: permissions.includes("seguranca") || permissions.includes("guardas") || permissions.includes("estacionamento-consulta") || permissions.includes("estacionamento-cadastro"), onClick: onOpenSecurity, className: "security-card", icon: "security" },
+    { key: "manutencao", title: "Manutenção", detail: "Chamados, obras, fornecedores e pendências prediais.", enabled: permissions.includes("manutencao"), onClick: onOpenMaintenance, icon: "settings" },
+    { key: "estoque-geral", title: "Estoque Geral", detail: "Materiais diversos, ferramentas, informática e itens de apoio.", enabled: permissions.includes("estoque"), onClick: onOpenGeneralStock, icon: "stock" },
+    { key: "patrimonio", title: "Patrimônio", detail: "Equipamentos, móveis, rede, câmeras, chaves e inventário.", enabled: permissions.includes("patrimonio") || permissions.includes("chaves"), onClick: onOpenPatrimony, icon: "stock" },
+    { key: "relatorios", title: "Relatórios", detail: "Consultas e relatórios por área operacional.", enabled: permissions.includes("relatorios"), onClick: onOpenReports, icon: "reports" },
   ];
   const hasAnyModule = permissions.length > 0;
 
@@ -2271,7 +2280,7 @@ function UserSectorHomeScreen({ user, permissions, notice, onLogout, onOpenClean
       <ProfileHero name={user.name} role={user.jobTitle} department={user.department} photoData={user.photoData} subtitle={user.userType} actions={<button className="logout-button" type="button" onClick={onLogout}>Sair</button>} />
       {notice && <p className="notice-message">{notice}</p>}
       <section className="admin-grid module-grid">
-        {cards.map((card) => <ModuleCard key={card.key} title={card.title} detail={card.detail} enabled={card.enabled} onClick={card.onClick} className={card.className} attention={card.attention} />)}
+        {cards.map((card) => <ModuleCard key={card.key} title={card.title} detail={card.detail} enabled={card.enabled} onClick={card.onClick} className={card.className} attention={card.attention} icon={card.icon} />)}
       </section>
       {!hasAnyModule && <section className="empty-state"><h2>Nenhum módulo liberado</h2><p>Solicite permissão ao admin.</p></section>}
     </section>
@@ -2280,21 +2289,21 @@ function UserSectorHomeScreen({ user, permissions, notice, onLogout, onOpenClean
 
 function AdminSectorHomeScreen({ newOrdersCount, onlineEnabled, permissions, onLogout, onOpenCleaningDashboard, onOpenCopaCafe, onOpenSecurity, onOpenMaintenance, onOpenGeneralStock, onOpenPatrimony, onOpenReports, onOpenUsersPermissions }: { newOrdersCount: number; onlineEnabled: boolean; permissions: UserPermission[]; onLogout: () => void; onOpenCleaningDashboard: () => void; onOpenCopaCafe: () => void; onOpenSecurity: () => void; onOpenMaintenance: () => void; onOpenGeneralStock: () => void; onOpenPatrimony: () => void; onOpenReports: () => void; onOpenUsersPermissions: () => void }) {
   const cards: SectorModuleCard[] = [
-    { key: "limpeza", title: "Limpeza", detail: "Rotinas, produtos, pedidos e histórico da equipe de limpeza.", enabled: permissions.includes("limpeza"), onClick: onOpenCleaningDashboard, className: "cleaning-card", attention: newOrdersCount > 0 ? `${newOrdersCount} pedido(s) pendente(s)` : undefined },
-    { key: "copa-cafe", title: "Copa & Café", detail: "Máquina de café, água, copos, bebidas e insumos da copa.", enabled: permissions.includes("cafe") || permissions.includes("agua"), onClick: onOpenCopaCafe },
-    { key: "seguranca", title: "Segurança", detail: "Guardas, rondas, monitoramento, estacionamento e fechamento dos serviços.", enabled: permissions.includes("seguranca"), onClick: onOpenSecurity, className: "security-card" },
-    { key: "manutencao", title: "Manutenção", detail: "Chamados, obras, fornecedores e pendências prediais.", enabled: permissions.includes("manutencao"), onClick: onOpenMaintenance },
-    { key: "estoque-geral", title: "Estoque Geral", detail: "Materiais diversos, ferramentas, informática e itens de apoio.", enabled: permissions.includes("estoque"), onClick: onOpenGeneralStock },
-    { key: "patrimonio", title: "Patrimônio", detail: "Equipamentos, móveis, rede, câmeras, chaves e inventário.", enabled: permissions.includes("patrimonio") || permissions.includes("chaves"), onClick: onOpenPatrimony },
-    { key: "relatorios", title: "Relatórios", detail: "Consultas e relatórios por área operacional.", enabled: permissions.includes("relatorios"), onClick: onOpenReports },
-    { key: "usuarios-permissoes", title: "Usuários & Permissões", detail: "Cadastro de usuários, acessos e permissões do sistema.", enabled: permissions.includes("painel-admin"), onClick: onOpenUsersPermissions, className: "users-card" },
+    { key: "limpeza", title: "Limpeza", detail: "Rotinas, produtos, pedidos e histórico da equipe de limpeza.", enabled: permissions.includes("limpeza"), onClick: onOpenCleaningDashboard, className: "cleaning-card", attention: newOrdersCount > 0 ? `${newOrdersCount} pedido(s) pendente(s)` : undefined, icon: "cleaning" },
+    { key: "copa-cafe", title: "Copa & Café", detail: "Máquina de café, água, copos, bebidas e insumos da copa.", enabled: permissions.includes("cafe") || permissions.includes("agua"), onClick: onOpenCopaCafe, icon: "coffee" },
+    { key: "seguranca", title: "Segurança", detail: "Guardas, rondas, monitoramento, estacionamento e fechamento dos serviços.", enabled: permissions.includes("seguranca"), onClick: onOpenSecurity, className: "security-card", icon: "security" },
+    { key: "manutencao", title: "Manutenção", detail: "Chamados, obras, fornecedores e pendências prediais.", enabled: permissions.includes("manutencao"), onClick: onOpenMaintenance, icon: "settings" },
+    { key: "estoque-geral", title: "Estoque Geral", detail: "Materiais diversos, ferramentas, informática e itens de apoio.", enabled: permissions.includes("estoque"), onClick: onOpenGeneralStock, icon: "stock" },
+    { key: "patrimonio", title: "Patrimônio", detail: "Equipamentos, móveis, rede, câmeras, chaves e inventário.", enabled: permissions.includes("patrimonio") || permissions.includes("chaves"), onClick: onOpenPatrimony, icon: "stock" },
+    { key: "relatorios", title: "Relatórios", detail: "Consultas e relatórios por área operacional.", enabled: permissions.includes("relatorios"), onClick: onOpenReports, icon: "reports" },
+    { key: "usuarios-permissoes", title: "Usuários & Permissões", detail: "Cadastro de usuários, acessos e permissões do sistema.", enabled: permissions.includes("painel-admin"), onClick: onOpenUsersPermissions, className: "users-card", icon: "users" },
   ];
 
   return (
     <section className="screen">
       <TopBar title="Painel Tezzei" subtitle={onlineEnabled ? "Central Operacional HUB SM — online" : "Central Operacional HUB SM — local"} onLogout={onLogout} />
       <section className="admin-grid module-grid">
-        {cards.map((card) => <ModuleCard key={card.key} title={card.title} detail={card.detail} enabled={card.enabled} onClick={card.onClick} className={card.className} attention={card.attention} />)}
+        {cards.map((card) => <ModuleCard key={card.key} title={card.title} detail={card.detail} enabled={card.enabled} onClick={card.onClick} className={card.className} attention={card.attention} icon={card.icon} />)}
       </section>
     </section>
   );
@@ -2306,7 +2315,7 @@ function OperationalSectorScreen({ title, subtitle, cards, onBack, onLogout }: {
       <TopBar title={title} subtitle={subtitle} onLogout={onLogout} />
       <button className="ghost-button" type="button" onClick={onBack}>Voltar</button>
       <section className="admin-grid module-grid">
-        {cards.map((card) => <ModuleCard key={card.key} title={card.title} detail={card.detail} enabled={card.enabled} onClick={card.onClick} className={card.className} attention={card.attention} />)}
+        {cards.map((card) => <ModuleCard key={card.key} title={card.title} detail={card.detail} enabled={card.enabled} onClick={card.onClick} className={card.className} attention={card.attention} icon={card.icon} />)}
       </section>
     </section>
   );
@@ -2317,16 +2326,16 @@ function CopaCafeMenuScreen({ permissions, onBack, onLogout }: { permissions: Us
   const canWater = permissions.includes("agua");
   const canShared = canCoffee || canWater;
   const cards: SectorModuleCard[] = [
-    { key: "coffee-machine", title: "Máquina de Café", detail: "Operação, doses e acompanhamento da máquina.", enabled: canCoffee },
-    { key: "coffee-readings", title: "Leituras da máquina", detail: "Conferência das leituras e consumo registrado.", enabled: canCoffee },
-    { key: "coffee-stock", title: "Estoque de insumos da máquina", detail: "Grãos, leite, chocolate, açúcar e reposição.", enabled: canCoffee },
-    { key: "nestle-order", title: "Pedido Nestlé", detail: "Solicitações e reposições com fornecedor.", enabled: canCoffee },
-    { key: "water", title: "Água", detail: "Controle de fardos, galões e consumo.", enabled: canWater },
-    { key: "water-stock", title: "Estoque de água", detail: "Saldo de água separado do estoque geral.", enabled: canWater },
-    { key: "water-purchases", title: "Compras de água", detail: "Pedidos, compras e reposições de água.", enabled: canWater },
-    { key: "cups-disposables", title: "Copos e descartáveis", detail: "Copos, mexedores, guardanapos e descartáveis.", enabled: canShared },
-    { key: "fridge-drinks", title: "Bebidas da geladeira", detail: "Bebidas e itens refrigerados da copa.", enabled: canShared },
-    { key: "gourmet-items", title: "Itens da área gourmet", detail: "Itens de apoio da área gourmet dentro da copa.", enabled: canShared },
+    { key: "coffee-machine", title: "Máquina de Café", detail: "Operação, doses e acompanhamento da máquina.", enabled: canCoffee, icon: "coffee" },
+    { key: "coffee-readings", title: "Leituras da máquina", detail: "Conferência das leituras e consumo registrado.", enabled: canCoffee, icon: "reports" },
+    { key: "coffee-stock", title: "Estoque de insumos da máquina", detail: "Grãos, leite, chocolate, açúcar e reposição.", enabled: canCoffee, icon: "stock" },
+    { key: "nestle-order", title: "Pedido Nestlé", detail: "Solicitações e reposições com fornecedor.", enabled: canCoffee, icon: "coffee" },
+    { key: "water", title: "Água", detail: "Controle de fardos, galões e consumo.", enabled: canWater, icon: "water" },
+    { key: "water-stock", title: "Estoque de água", detail: "Saldo de água separado do estoque geral.", enabled: canWater, icon: "stock" },
+    { key: "water-purchases", title: "Compras de água", detail: "Pedidos, compras e reposições de água.", enabled: canWater, icon: "water" },
+    { key: "cups-disposables", title: "Copos e descartáveis", detail: "Copos, mexedores, guardanapos e descartáveis.", enabled: canShared, icon: "coffee" },
+    { key: "fridge-drinks", title: "Bebidas da geladeira", detail: "Bebidas e itens refrigerados da copa.", enabled: canShared, icon: "water" },
+    { key: "gourmet-items", title: "Itens da área gourmet", detail: "Itens de apoio da área gourmet dentro da copa.", enabled: canShared, icon: "settings" },
   ];
   return <OperationalSectorScreen title="Copa & Café" subtitle="Café, água, bebidas e insumos da copa" cards={cards} onBack={onBack} onLogout={onLogout} />;
 }
@@ -2334,12 +2343,12 @@ function CopaCafeMenuScreen({ permissions, onBack, onLogout }: { permissions: Us
 function MaintenanceMenuScreen({ permissions, onBack, onLogout }: { permissions: UserPermission[]; onBack: () => void; onLogout: () => void }) {
   const canMaintenance = permissions.includes("manutencao");
   const cards: SectorModuleCard[] = [
-    { key: "tickets", title: "Chamados", detail: "Solicitações e ocorrências prediais.", enabled: canMaintenance },
-    { key: "works", title: "Obras / Reformas", detail: "Acompanhamento de obras e reformas.", enabled: canMaintenance },
-    { key: "suppliers", title: "Fornecedores", detail: "Contatos e prestadores de manutenção.", enabled: canMaintenance },
-    { key: "quotes", title: "Orçamentos", detail: "Cotações e valores em análise.", enabled: canMaintenance },
-    { key: "pending", title: "Pendências", detail: "Itens abertos e próximas ações.", enabled: canMaintenance },
-    { key: "history", title: "Histórico de manutenção", detail: "Registro de serviços já acompanhados.", enabled: canMaintenance },
+    { key: "tickets", title: "Chamados", detail: "Solicitações e ocorrências prediais.", enabled: canMaintenance, icon: "settings" },
+    { key: "works", title: "Obras / Reformas", detail: "Acompanhamento de obras e reformas.", enabled: canMaintenance, icon: "settings" },
+    { key: "suppliers", title: "Fornecedores", detail: "Contatos e prestadores de manutenção.", enabled: canMaintenance, icon: "users" },
+    { key: "quotes", title: "Orçamentos", detail: "Cotações e valores em análise.", enabled: canMaintenance, icon: "payment" },
+    { key: "pending", title: "Pendências", detail: "Itens abertos e próximas ações.", enabled: canMaintenance, icon: "warning" },
+    { key: "history", title: "Histórico de manutenção", detail: "Registro de serviços já acompanhados.", enabled: canMaintenance, icon: "reports" },
   ];
   return <OperationalSectorScreen title="Manutenção" subtitle="Chamados, obras, fornecedores e pendências prediais" cards={cards} onBack={onBack} onLogout={onLogout} />;
 }
@@ -2347,11 +2356,11 @@ function MaintenanceMenuScreen({ permissions, onBack, onLogout }: { permissions:
 function GeneralStockMenuScreen({ permissions, onBack, onLogout }: { permissions: UserPermission[]; onBack: () => void; onLogout: () => void }) {
   const canStock = permissions.includes("estoque");
   const cards: SectorModuleCard[] = [
-    { key: "misc", title: "Materiais diversos", detail: "Itens de apoio que não pertencem a limpeza nem copa.", enabled: canStock },
-    { key: "tools", title: "Ferramentas", detail: "Ferramentas e acessórios de uso geral.", enabled: canStock },
-    { key: "electric", title: "Elétrica", detail: "Lâmpadas, tomadas, cabos e materiais elétricos.", enabled: canStock },
-    { key: "it", title: "Informática", detail: "Mouse, teclado, cabos, pendrive e itens de TI.", enabled: canStock },
-    { key: "construction", title: "Material de obra", detail: "Materiais de obra e apoio a pequenos reparos.", enabled: canStock },
+    { key: "misc", title: "Materiais diversos", detail: "Itens de apoio que não pertencem a limpeza nem copa.", enabled: canStock, icon: "stock" },
+    { key: "tools", title: "Ferramentas", detail: "Ferramentas e acessórios de uso geral.", enabled: canStock, icon: "settings" },
+    { key: "electric", title: "Elétrica", detail: "Lâmpadas, tomadas, cabos e materiais elétricos.", enabled: canStock, icon: "settings" },
+    { key: "it", title: "Informática", detail: "Mouse, teclado, cabos, pendrive e itens de TI.", enabled: canStock, icon: "settings" },
+    { key: "construction", title: "Material de obra", detail: "Materiais de obra e apoio a pequenos reparos.", enabled: canStock, icon: "stock" },
   ];
   return <OperationalSectorScreen title="Estoque Geral" subtitle="Materiais diversos, ferramentas, informática e itens de apoio" cards={cards} onBack={onBack} onLogout={onLogout} />;
 }
@@ -2360,13 +2369,13 @@ function PatrimonyMenuScreen({ permissions, onBack, onLogout }: { permissions: U
   const canPatrimony = permissions.includes("patrimonio");
   const canKeys = permissions.includes("chaves");
   const cards: SectorModuleCard[] = [
-    { key: "equipment", title: "Equipamentos", detail: "Equipamentos controlados pelo patrimônio.", enabled: canPatrimony },
-    { key: "furniture", title: "Móveis", detail: "Móveis e itens físicos das áreas comuns.", enabled: canPatrimony },
-    { key: "printers", title: "Impressoras", detail: "Impressoras, suprimentos e controle patrimonial.", enabled: canPatrimony },
-    { key: "cameras", title: "Câmeras", detail: "Câmeras e equipamentos de segurança patrimonial.", enabled: canPatrimony },
-    { key: "network", title: "Rede / Wi-Fi", detail: "Rede, Wi-Fi e equipamentos de conectividade.", enabled: canPatrimony },
-    { key: "keys", title: "Chaves", detail: "Controle de chaves e acessos físicos.", enabled: canKeys },
-    { key: "inventory", title: "Inventário patrimonial", detail: "Inventário de bens, locais e responsáveis.", enabled: canPatrimony },
+    { key: "equipment", title: "Equipamentos", detail: "Equipamentos controlados pelo patrimônio.", enabled: canPatrimony, icon: "stock" },
+    { key: "furniture", title: "Móveis", detail: "Móveis e itens físicos das áreas comuns.", enabled: canPatrimony, icon: "stock" },
+    { key: "printers", title: "Impressoras", detail: "Impressoras, suprimentos e controle patrimonial.", enabled: canPatrimony, icon: "reports" },
+    { key: "cameras", title: "Câmeras", detail: "Câmeras e equipamentos de segurança patrimonial.", enabled: canPatrimony, icon: "camera" },
+    { key: "network", title: "Rede / Wi-Fi", detail: "Rede, Wi-Fi e equipamentos de conectividade.", enabled: canPatrimony, icon: "settings" },
+    { key: "keys", title: "Chaves", detail: "Controle de chaves e acessos físicos.", enabled: canKeys, icon: "security" },
+    { key: "inventory", title: "Inventário patrimonial", detail: "Inventário de bens, locais e responsáveis.", enabled: canPatrimony, icon: "reports" },
   ];
   return <OperationalSectorScreen title="Patrimônio" subtitle="Equipamentos, móveis, rede, câmeras, chaves e inventário" cards={cards} onBack={onBack} onLogout={onLogout} />;
 }
@@ -2374,35 +2383,35 @@ function PatrimonyMenuScreen({ permissions, onBack, onLogout }: { permissions: U
 function ReportsMenuScreen({ permissions, onBack, onLogout }: { permissions: UserPermission[]; onBack: () => void; onLogout: () => void }) {
   const canReports = permissions.includes("relatorios");
   const cards: SectorModuleCard[] = [
-    { key: "cleaning", title: "Limpeza", detail: "Relatórios de pedidos, estoque e histórico da limpeza.", enabled: canReports },
-    { key: "copa-cafe", title: "Copa & Café", detail: "Relatórios de café, água, bebidas e insumos.", enabled: canReports },
-    { key: "security", title: "Segurança", detail: "Relatórios de guardas, serviços, rondas e QR Codes.", enabled: canReports },
-    { key: "maintenance", title: "Manutenção", detail: "Relatórios de chamados, obras e pendências.", enabled: canReports },
-    { key: "stock", title: "Estoque", detail: "Relatórios de materiais diversos e itens de apoio.", enabled: canReports },
-    { key: "general", title: "Geral", detail: "Consultas consolidadas por área operacional.", enabled: canReports },
+    { key: "cleaning", title: "Limpeza", detail: "Relatórios de pedidos, estoque e histórico da limpeza.", enabled: canReports, icon: "cleaning" },
+    { key: "copa-cafe", title: "Copa & Café", detail: "Relatórios de café, água, bebidas e insumos.", enabled: canReports, icon: "coffee" },
+    { key: "security", title: "Segurança", detail: "Relatórios de guardas, serviços, rondas e QR Codes.", enabled: canReports, icon: "security" },
+    { key: "maintenance", title: "Manutenção", detail: "Relatórios de chamados, obras e pendências.", enabled: canReports, icon: "settings" },
+    { key: "stock", title: "Estoque", detail: "Relatórios de materiais diversos e itens de apoio.", enabled: canReports, icon: "stock" },
+    { key: "general", title: "Geral", detail: "Consultas consolidadas por área operacional.", enabled: canReports, icon: "reports" },
   ];
   return <OperationalSectorScreen title="Relatórios" subtitle="Consultas e relatórios por área operacional" cards={cards} onBack={onBack} onLogout={onLogout} />;
 }
 
 function AdminScreen({ newOrdersCount, onlineEnabled, permissions, onLogout, onOpenCleaningDashboard, onOpenSecurity, onOpenUsersPermissions }: { newOrdersCount: number; onlineEnabled: boolean; permissions: UserPermission[]; onLogout: () => void; onOpenCleaningDashboard: () => void; onOpenSecurity: () => void; onOpenUsersPermissions: () => void }) {
-  const cards: Array<{ permission: UserPermission; title: string; detail: string; onClick?: () => void; className?: string; attention?: string }> = [
-    { permission: "limpeza", title: "Limpeza", detail: newOrdersCount > 0 ? `${newOrdersCount} pedido(s) pendente(s)` : "Rotinas, pedidos Sinval e equipe", onClick: onOpenCleaningDashboard, className: "cleaning-card", attention: newOrdersCount > 0 ? "Precisa de atenção" : undefined },
-    { permission: "estoque", title: "Estoque", detail: "Produtos, códigos e saídas" },
-    { permission: "cafe", title: "Máquina de Café", detail: "Insumos, doses e reposição" },
-    { permission: "agua", title: "Água", detail: "Controle de fardos e copos" },
-    { permission: "manutencao", title: "Manutenção", detail: "Chamados e tarefas internas" },
-    { permission: "chaves", title: "Chaves", detail: "Controle de acessos" },
-    { permission: "seguranca", title: "Segurança", detail: "Guardas e escalas", onClick: onOpenSecurity, className: "security-card" },
-    { permission: "patrimonio", title: "Patrimônio", detail: "Itens, equipamentos e auditoria" },
-    { permission: "relatorios", title: "Relatórios", detail: "Consultas e auditoria" },
-    { permission: "painel-admin", title: "Usuários e Permissões", detail: "Acessos, setores e módulos", onClick: onOpenUsersPermissions, className: "users-card" },
+  const cards: Array<{ permission: UserPermission; title: string; detail: string; onClick?: () => void; className?: string; attention?: string; icon?: AppIconName }> = [
+    { permission: "limpeza", title: "Limpeza", detail: newOrdersCount > 0 ? `${newOrdersCount} pedido(s) pendente(s)` : "Rotinas, pedidos Sinval e equipe", onClick: onOpenCleaningDashboard, className: "cleaning-card", attention: newOrdersCount > 0 ? "Precisa de atenção" : undefined, icon: "cleaning" },
+    { permission: "estoque", title: "Estoque", detail: "Produtos, códigos e saídas", icon: "stock" },
+    { permission: "cafe", title: "Máquina de Café", detail: "Insumos, doses e reposição", icon: "coffee" },
+    { permission: "agua", title: "Água", detail: "Controle de fardos e copos", icon: "water" },
+    { permission: "manutencao", title: "Manutenção", detail: "Chamados e tarefas internas", icon: "settings" },
+    { permission: "chaves", title: "Chaves", detail: "Controle de acessos", icon: "security" },
+    { permission: "seguranca", title: "Segurança", detail: "Guardas e escalas", onClick: onOpenSecurity, className: "security-card", icon: "security" },
+    { permission: "patrimonio", title: "Patrimônio", detail: "Itens, equipamentos e auditoria", icon: "stock" },
+    { permission: "relatorios", title: "Relatórios", detail: "Consultas e auditoria", icon: "reports" },
+    { permission: "painel-admin", title: "Usuários e Permissões", detail: "Acessos, setores e módulos", onClick: onOpenUsersPermissions, className: "users-card", icon: "users" },
   ];
 
   return (
     <section className="screen">
       <TopBar title="Painel Tezzei" subtitle={onlineEnabled ? "Central Operacional HUB SM — online" : "Central Operacional HUB SM — local"} onLogout={onLogout} />
       <section className="admin-grid module-grid">
-        {cards.map((card) => <ModuleCard key={card.permission} title={card.title} detail={card.detail} enabled={permissions.includes(card.permission)} onClick={card.onClick} className={card.className} attention={card.attention} />)}
+        {cards.map((card) => <ModuleCard key={card.permission} title={card.title} detail={card.detail} enabled={permissions.includes(card.permission)} onClick={card.onClick} className={card.className} attention={card.attention} icon={card.icon} />)}
       </section>
     </section>
   );
@@ -2412,7 +2421,7 @@ function SecurityMenuScreen({ permissions, isAdmin, onBack, onLogout, onOpenGuar
   const canGuards = permissions.includes("guardas");
   const canMonitoring = isAdmin && permissions.includes("painel-admin");
   const canParking = permissions.includes("estacionamento-consulta") || permissions.includes("estacionamento-cadastro") || permissions.includes("painel-admin");
-  return <section className="screen"><TopBar title="Segurança" subtitle="Controle de segurança" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}>Voltar</button><section className="admin-grid security-grid"><ModuleCard title="Guardas" detail="Controle dos guardas" enabled={canGuards} onClick={onOpenGuards} className="security-card" />{isAdmin && <ModuleCard title="Monitoramento" detail="Entradas, saídas e rondas" enabled={canMonitoring} onClick={onOpenMonitoring} className="security-card" />}<ModuleCard title="Estacionamento" detail="Consulta e cadastro de veículos" enabled={canParking} onClick={onOpenParking} className="security-card" /></section></section>;
+  return <section className="screen"><TopBar title="Segurança" subtitle="Controle de segurança" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}><AppIcon name="back" size="sm" className="action-icon" />Voltar</button><section className="admin-grid security-grid"><ModuleCard title="Guardas" detail="Controle dos guardas" enabled={canGuards} onClick={onOpenGuards} className="security-card" icon="guards" />{isAdmin && <ModuleCard title="Monitoramento" detail="Entradas, saídas e rondas" enabled={canMonitoring} onClick={onOpenMonitoring} className="security-card" icon="reports" />}<ModuleCard title="Estacionamento" detail="Consulta e cadastro de veículos" enabled={canParking} onClick={onOpenParking} className="security-card" icon="parking" /></section></section>;
 }
 
 type ParkingTab = "search" | "register";
@@ -2774,16 +2783,16 @@ function SecurityParkingScreen({ permissions, isAdmin, onBack, onLogout }: { per
   return (
     <section className="screen parking-screen">
       <TopBar title="Estacionamento" subtitle="Consulta rápida de placas e controle de veículos" onLogout={onLogout} />
-      <button className="ghost-button" type="button" onClick={onBack}>Voltar para Segurança</button>
+      <button className="ghost-button" type="button" onClick={onBack}><AppIcon name="back" size="sm" className="action-icon" />Voltar para Segurança</button>
       {vehicleState.message && <p className="notice-message">{vehicleState.message}</p>}
       <div className="monitoring-tabs parking-tabs">
-        <button className={activeTab === "search" ? "active" : ""} type="button" onClick={() => setActiveTab("search")}>Pesquisar Veículo</button>
-        {canRegister && <button className={activeTab === "register" ? "active" : ""} type="button" onClick={() => setActiveTab("register")}>Cadastro de Veículos</button>}
+        <button className={activeTab === "search" ? "active" : ""} type="button" onClick={() => setActiveTab("search")}><AppIcon name="search" size="sm" className="action-icon" />Pesquisar Veículo</button>
+        {canRegister && <button className={activeTab === "register" ? "active" : ""} type="button" onClick={() => setActiveTab("register")}><AppIcon name="vehicle" size="sm" className="action-icon" />Cadastro de Veículos</button>}
       </div>
 
       {activeTab === "search" && (
         <section className="parking-search-panel">
-          <button className="scan-button parking-photo-button" type="button" onClick={openPlateCaptureGuide}>Tirar foto da placa</button>
+          <button className="scan-button parking-photo-button" type="button" onClick={openPlateCaptureGuide}><AppIcon name="camera" size="lg" className="action-icon" />Tirar foto da placa</button>
           <input ref={platePhotoFileInputRef} className="parking-photo-input" type="file" accept="image/*" capture="environment" onChange={(event) => { void handlePlatePhoto(event.target.files?.[0] ?? null); event.target.value = ""; }} />
           {capturedPlatePhoto && <VehiclePhotoPreview label="Foto da placa capturada" photoData={capturedPlatePhoto} />}
           <section className="manual-form parking-search-form">
@@ -2804,7 +2813,7 @@ function SecurityParkingScreen({ permissions, isAdmin, onBack, onLogout }: { per
                 }}
               />
             </label>
-            <button className="primary-button wide-button" type="button" disabled={loading} onClick={() => { void searchVehicle(); }}>{loading ? "Carregando..." : "Pesquisar"}</button>
+            <button className="primary-button wide-button" type="button" disabled={loading} onClick={() => { void searchVehicle(); }}><AppIcon name="search" size="sm" className="action-icon" />{loading ? "Carregando..." : "Pesquisar"}</button>
           </section>
           {searchMessage && <p className={searchMessage.includes("capturada") ? "success-message" : "notice-message"}>{searchMessage}</p>}
           {recentSearches.length > 0 && (
@@ -2837,7 +2846,7 @@ function SecurityParkingScreen({ permissions, isAdmin, onBack, onLogout }: { per
       {activeTab === "register" && canRegister && (
         <section className="parking-register-panel">
           <div className="button-grid">
-            <button className="secondary-button" type="button" disabled={saving} onClick={() => startVehicleCreate()}>Cadastrar novo veículo</button>
+            <button className="secondary-button" type="button" disabled={saving} onClick={() => startVehicleCreate()}><AppIcon name="vehicle" size="sm" className="action-icon" />Cadastrar novo veículo</button>
             {sortedVehicles.length > 0 && (
               <label>
                 Editar veículo existente
@@ -2921,7 +2930,7 @@ function PlateCaptureGuideDialog({ onClose, onCapture }: { onClose: () => void; 
           <li>Prefira foto horizontal se possível.</li>
         </ul>
         <div className="button-grid">
-          <button className="primary-button" type="button" onClick={onCapture}>Abrir câmera</button>
+          <button className="primary-button" type="button" onClick={onCapture}><AppIcon name="camera" size="sm" className="action-icon" />Abrir câmera</button>
           <button className="ghost-button" type="button" onClick={onClose}>Cancelar</button>
         </div>
       </section>
@@ -3026,10 +3035,10 @@ function PlatePhotoSearchDialog({ photoData, initialPlate, knownPlates, onClose,
               }}
             />
           </label>
-          <button className="primary-button plate-photo-search-button" type="button" disabled={searching} onClick={() => { void submitPlateSearch(); }}>{searching ? "Pesquisando..." : "Pesquisar veículo"}</button>
+          <button className="primary-button plate-photo-search-button" type="button" disabled={searching} onClick={() => { void submitPlateSearch(); }}><AppIcon name="search" size="sm" className="action-icon" />{searching ? "Pesquisando..." : "Pesquisar veículo"}</button>
           {plateOcrMessage && <p className="notice-message">{plateOcrMessage}</p>}
           <div className="button-grid plate-photo-actions">
-            <button className="secondary-button" type="button" disabled={searching} onClick={onRetake}>Refazer foto</button>
+            <button className="secondary-button" type="button" disabled={searching} onClick={onRetake}><AppIcon name="camera" size="sm" className="action-icon" />Refazer foto</button>
             <button className="ghost-button plate-photo-cancel-button" type="button" disabled={searching} onClick={onClose}>Cancelar</button>
           </div>
         </section>
@@ -3057,8 +3066,8 @@ function VehicleRegisterForm({ draft, saving, onDraftChange, onPhotoChange, onSa
       <label className="checkbox-row"><input type="checkbox" checked={draft.active} disabled={saving} onChange={(event) => onDraftChange({ ...draft, active: event.target.checked })} /><span>Veículo ativo</span></label>
       <label>Observações<textarea rows={3} value={draft.notes} disabled={saving} onChange={(event) => onDraftChange({ ...draft, notes: event.target.value })} /></label>
       <div className="button-grid">
-        <button className="primary-button" type="button" disabled={saving} onClick={onSave}>{saving ? "Salvando..." : "Salvar veículo"}</button>
-        <button className="secondary-button" type="button" disabled={saving || !draft.id || !draft.active} onClick={onInactivate}>Inativar veículo</button>
+        <button className="primary-button" type="button" disabled={saving} onClick={onSave}><AppIcon name="save" size="sm" className="action-icon" />{saving ? "Salvando..." : "Salvar veículo"}</button>
+        <button className="secondary-button" type="button" disabled={saving || !draft.id || !draft.active} onClick={onInactivate}><AppIcon name="blocked" size="sm" className="action-icon" />Inativar veículo</button>
       </div>
     </section>
   );
@@ -3069,10 +3078,10 @@ function VehiclePhotoField({ label, photoData, disabled, onChange, onRemove }: {
     <article className="vehicle-photo-field">
       <VehiclePhotoPreview label={label} photoData={photoData} />
       <label className="photo-button">
-        {label}
+        <AppIcon name="camera" size="sm" className="action-icon" />{label}
         <input type="file" accept="image/*" capture="environment" disabled={disabled} onChange={(event) => { onChange(event.target.files?.[0] ?? null); event.target.value = ""; }} />
       </label>
-      {photoData && <button className="ghost-button" type="button" disabled={disabled} onClick={onRemove}>Remover foto</button>}
+      {photoData && <button className="ghost-button" type="button" disabled={disabled} onClick={onRemove}><AppIcon name="blocked" size="sm" className="action-icon" />Remover foto</button>}
     </article>
   );
 }
@@ -3107,7 +3116,7 @@ function VehicleSearchResultsDialog({ term, vehicles, onClose, onNewSearch, onSe
           })}
         </div>
         <div className="button-grid">
-          <button className="primary-button" type="button" onClick={onNewSearch}>Nova consulta</button>
+          <button className="primary-button" type="button" onClick={onNewSearch}><AppIcon name="search" size="sm" className="action-icon" />Nova consulta</button>
           <button className="ghost-button" type="button" onClick={onClose}>Fechar</button>
         </div>
       </section>
@@ -3151,9 +3160,9 @@ function VehicleResultDialog({ plate, vehicle, canRegister, onClose, onNewSearch
               <VehiclePhotoPreview label="Foto da placa" photoData={vehicle.platePhotoData} />
             </div>
             <div className="button-grid">
-              <button className="primary-button" type="button" onClick={onNewSearch}>Nova consulta</button>
+              <button className="primary-button" type="button" onClick={onNewSearch}><AppIcon name="search" size="sm" className="action-icon" />Nova consulta</button>
               <button className="ghost-button" type="button" onClick={onClose}>Fechar</button>
-              {canRegister && <button className="secondary-button" type="button" onClick={() => onEdit(vehicle)}>Editar cadastro</button>}
+              {canRegister && <button className="secondary-button" type="button" onClick={() => onEdit(vehicle)}><AppIcon name="edit" size="sm" className="action-icon" />Editar cadastro</button>}
             </div>
           </>
         ) : (
@@ -3162,9 +3171,9 @@ function VehicleResultDialog({ plate, vehicle, canRegister, onClose, onNewSearch
               <VehicleResultField label="Placa pesquisada" value={plate || "Não informada"} wide />
             </div>
             <div className="button-grid">
-              <button className="primary-button" type="button" onClick={onNewSearch}>Nova consulta</button>
+              <button className="primary-button" type="button" onClick={onNewSearch}><AppIcon name="search" size="sm" className="action-icon" />Nova consulta</button>
               <button className="ghost-button" type="button" onClick={onClose}>Fechar</button>
-              {canRegister && <button className="secondary-button" type="button" onClick={onRegister}>Cadastrar este veículo</button>}
+              {canRegister && <button className="secondary-button" type="button" onClick={onRegister}><AppIcon name="vehicle" size="sm" className="action-icon" />Cadastrar este veículo</button>}
             </div>
           </>
         )}
@@ -3309,11 +3318,11 @@ function SecurityMonitoringScreen({ onBack, onLogout }: { onBack: () => void; on
   return (
     <section className="screen monitoring-screen">
       <TopBar title="Monitoramento de Guardas" subtitle="Relatórios de entrada, saída e rondas" onLogout={onLogout} />
-      <button className="ghost-button" type="button" onClick={onBack}>Voltar para Segurança</button>
+      <button className="ghost-button" type="button" onClick={onBack}><AppIcon name="back" size="sm" className="action-icon" />Voltar para Segurança</button>
       <div className="monitoring-tabs" role="tablist" aria-label="Relatórios de monitoramento">
-        <button className={activeTab === "entries" ? "active" : ""} type="button" onClick={() => setActiveTab("entries")}>Entrada / Ativação de Serviço</button>
-        <button className={activeTab === "rounds" ? "active" : ""} type="button" onClick={() => setActiveTab("rounds")}>Rondas</button>
-        <button className={activeTab === "qrcode" ? "active" : ""} type="button" onClick={() => setActiveTab("qrcode")}>QR Code</button>
+        <button className={activeTab === "entries" ? "active" : ""} type="button" onClick={() => setActiveTab("entries")}><AppIcon name="security" size="sm" className="action-icon" />Entrada / Ativação de Serviço</button>
+        <button className={activeTab === "rounds" ? "active" : ""} type="button" onClick={() => setActiveTab("rounds")}><AppIcon name="guards" size="sm" className="action-icon" />Rondas</button>
+        <button className={activeTab === "qrcode" ? "active" : ""} type="button" onClick={() => setActiveTab("qrcode")}><AppIcon name="qr" size="sm" className="action-icon" />QR Code</button>
       </div>
 
       {activeTab !== "qrcode" && (
@@ -3382,7 +3391,7 @@ function SecurityGuardsPaymentScreen({ onBack, onLogout }: { onBack: () => void;
   return (
     <section className="screen monitoring-screen guards-payment-screen">
       <TopBar title="Fechamento / Pagamento" subtitle="Conferência dos plantões dos guardas" onLogout={onLogout} />
-      <button className="ghost-button" type="button" onClick={onBack}>Voltar para Guardas</button>
+      <button className="ghost-button" type="button" onClick={onBack}><AppIcon name="back" size="sm" className="action-icon" />Voltar para Guardas</button>
       <PaymentReportSection />
     </section>
   );
@@ -3397,7 +3406,7 @@ function MonitoringAlertsPanel({ alerts }: { alerts: MonitoringAlert[] }) {
           <strong>Tudo certo no monitoramento selecionado.</strong>
         </div>
         <article className="monitoring-alert-card alert-ok">
-          <span>Tudo certo</span>
+          <span><AppIcon name="success" size="sm" className="status-icon icon-success" />Tudo certo</span>
           <p>Nenhum alerta para os filtros atuais.</p>
         </article>
       </section>
@@ -3413,7 +3422,7 @@ function MonitoringAlertsPanel({ alerts }: { alerts: MonitoringAlert[] }) {
       <div className="monitoring-alert-list">
         {alerts.map((alert) => (
           <article className={`monitoring-alert-card alert-${alert.level}`} key={alert.id}>
-            <span>{alert.title}</span>
+            <span><AppIcon name={alert.level === "danger" ? "blocked" : "warning"} size="sm" className={`status-icon ${alert.level === "danger" ? "icon-danger" : "icon-warning"}`} />{alert.title}</span>
             <p>{alert.message}</p>
           </article>
         ))}
@@ -3980,7 +3989,7 @@ function RoundQrCodesPanel({ points }: { points: GuardRoundPoint[] }) {
           <strong>Etiquetas para operação física</strong>
           <p>Use estes QR Codes nos pontos físicos da ronda. Cada código identifica um ponto ativo da sequência.</p>
         </div>
-        <button className="secondary-button round-print-button" type="button" onClick={handlePrintQrCodes}>Imprimir QR Codes</button>
+        <button className="secondary-button round-print-button" type="button" onClick={handlePrintQrCodes}><AppIcon name="qr" size="sm" className="action-icon" />Imprimir QR Codes</button>
       </div>
       <div className="round-qr-grid">
         {sortedPoints.map((point) => (
@@ -4018,7 +4027,7 @@ function RoundQrCodeCard({ point, copied, onCopy }: { point: GuardRoundPoint; co
         <QRCodeSVG value={point.qrToken} size={132} marginSize={1} level="M" />
       </div>
       <code className="round-qr-token">{point.qrToken}</code>
-      <button className="secondary-button" type="button" onClick={() => onCopy(point.qrToken)}>Copiar token</button>
+      <button className="secondary-button" type="button" onClick={() => onCopy(point.qrToken)}><AppIcon name="qr" size="sm" className="action-icon" />Copiar token</button>
       {copied && <small className="round-copy-status">Token copiado.</small>}
     </section>
   );
@@ -5028,7 +5037,7 @@ function parseDateOnly(value: string) {
 }
 
 function SecurityGuardsScreen({ onBack, onLogout, onOpenGuard, onOpenPayment, showPayment }: { onBack: () => void; onLogout: () => void; onOpenGuard: (guardName: GuardName) => void; onOpenPayment: () => void; showPayment: boolean }) {
-  return <section className="screen"><TopBar title="Guardas" subtitle="Selecione o guarda" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}>Voltar para Segurança</button><GuardSyncDiagnosticPanel /><section className="admin-grid security-grid"><TodayDutyCard />{guardNames.map((guardName) => <ModuleCard key={guardName} title={guardName} detail="Guarda Santa Maria" enabled onClick={() => onOpenGuard(guardName)} className="security-card" />)}{showPayment && <ModuleCard title="Fechamento / Pagamento" detail="Conferência dos plantões" enabled onClick={onOpenPayment} className="security-card" />}</section></section>;
+  return <section className="screen"><TopBar title="Guardas" subtitle="Selecione o guarda" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}><AppIcon name="back" size="sm" className="action-icon" />Voltar para Segurança</button><GuardSyncDiagnosticPanel /><section className="admin-grid security-grid"><TodayDutyCard />{guardNames.map((guardName) => <ModuleCard key={guardName} title={guardName} detail="Guarda Santa Maria" enabled onClick={() => onOpenGuard(guardName)} className="security-card" icon="guards" />)}{showPayment && <ModuleCard title="Fechamento / Pagamento" detail="Conferência dos plantões" enabled onClick={onOpenPayment} className="security-card" icon="payment" />}</section></section>;
 }
 
 function SecurityGuardDetailScreen({ guardLocalId, guardName, onBack, onLogout }: { guardLocalId: GuardId; guardName: GuardName; onBack: () => void; onLogout: () => void }) {
@@ -5067,19 +5076,19 @@ function CleaningDashboardScreen({ newOrdersCount, permissions, offlinePendingCo
   const canStock = permissions.includes("estoque");
   const canStockExit = permissions.includes("saida-estoque");
   const canReports = permissions.includes("relatorios");
-  const cards = [
-    { key: "orders", title: "Pedidos Sinval", detail: newOrdersCount > 0 ? `${newOrdersCount} pedido(s) pendente(s)` : "Nenhum pedido pendente", enabled: canCleaning, onClick: onOpenOrders, attention: newOrdersCount > 0 ? "Verificar agora" : undefined },
-    { key: "stock-exit", title: "Saída de Produto", detail: "Bipar retirada do estoque", enabled: canStockExit, onClick: onOpenStockExit },
-    { key: "product-register", title: "Cadastro de Produtos", detail: "Produtos, códigos e foto", enabled: canStock, onClick: onOpenBarcodeRegister },
-    { key: "current-stock", title: "Estoque Atual", detail: "Produtos e códigos cadastrados", enabled: canStock, onClick: onOpenCurrentStock },
-    { key: "stock-history", title: "Histórico de Saídas", detail: "Quem usou, quando e quanto", enabled: canStock, onClick: onOpenStockHistory },
-    { key: "neia-history", title: "Histórico Neia", detail: "Todos os pedidos feitos pela Neia", enabled: canCleaning, onClick: onOpenNeiaHistory },
-    { key: "order-history", title: "Histórico / Auditoria", detail: "Concluídos e excluídos", enabled: canReports, onClick: onOpenOrderHistory },
-    { key: "profiles", title: "Perfis da equipe", detail: "Acessar telas da Neia, Selma e Helena", enabled: canCleaning, onClick: onOpenProfiles },
-    { key: "prepare-real-use", title: "Preparar Limpeza para uso real", detail: "Zerar historicos de teste sem apagar produtos", enabled: permissions.includes("painel-admin"), onClick: onPrepareCleaning },
+  const cards: SectorModuleCard[] = [
+    { key: "orders", title: "Pedidos Sinval", detail: newOrdersCount > 0 ? `${newOrdersCount} pedido(s) pendente(s)` : "Nenhum pedido pendente", enabled: canCleaning, onClick: onOpenOrders, attention: newOrdersCount > 0 ? "Verificar agora" : undefined, icon: "cleaning" },
+    { key: "stock-exit", title: "Saída de Produto", detail: "Bipar retirada do estoque", enabled: canStockExit, onClick: onOpenStockExit, icon: "stock" },
+    { key: "product-register", title: "Cadastro de Produtos", detail: "Produtos, códigos e foto", enabled: canStock, onClick: onOpenBarcodeRegister, icon: "edit" },
+    { key: "current-stock", title: "Estoque Atual", detail: "Produtos e códigos cadastrados", enabled: canStock, onClick: onOpenCurrentStock, icon: "stock" },
+    { key: "stock-history", title: "Histórico de Saídas", detail: "Quem usou, quando e quanto", enabled: canStock, onClick: onOpenStockHistory, icon: "reports" },
+    { key: "neia-history", title: "Histórico Neia", detail: "Todos os pedidos feitos pela Neia", enabled: canCleaning, onClick: onOpenNeiaHistory, icon: "reports" },
+    { key: "order-history", title: "Histórico / Auditoria", detail: "Concluídos e excluídos", enabled: canReports, onClick: onOpenOrderHistory, icon: "reports" },
+    { key: "profiles", title: "Perfis da equipe", detail: "Acessar telas da Neia, Selma e Helena", enabled: canCleaning, onClick: onOpenProfiles, icon: "users" },
+    { key: "prepare-real-use", title: "Preparar Limpeza para uso real", detail: "Zerar historicos de teste sem apagar produtos", enabled: permissions.includes("painel-admin"), onClick: onPrepareCleaning, icon: "settings" },
   ];
 
-  return <section className="screen"><TopBar title="Gestão de Limpeza" subtitle="Neia, Selma, Helena, pedidos, estoque e auditoria" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}>Voltar</button><OfflinePendingNotice count={offlinePendingCount} syncing={offlineSyncing} onSync={onSyncOffline} />{canCleaning && newOrdersCount > 0 && <button className="alert-banner cleaning-alert-banner" type="button" onClick={onOpenOrders}>Pedido novo da Neia — precisa de atenção</button>}<section className="admin-grid cleaning-dashboard-grid">{cards.map((card) => <ModuleCard key={card.key} title={card.title} detail={card.detail} enabled={card.enabled} onClick={card.onClick} className="cleaning-control-card" attention={card.attention} />)}</section></section>;
+  return <section className="screen"><TopBar title="Gestão de Limpeza" subtitle="Neia, Selma, Helena, pedidos, estoque e auditoria" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}><AppIcon name="back" size="sm" className="action-icon" />Voltar</button><OfflinePendingNotice count={offlinePendingCount} syncing={offlineSyncing} onSync={onSyncOffline} />{canCleaning && newOrdersCount > 0 && <button className="alert-banner cleaning-alert-banner" type="button" onClick={onOpenOrders}><AppIcon name="warning" size="sm" className="action-icon" />Pedido novo da Neia — precisa de atenção</button>}<section className="admin-grid cleaning-dashboard-grid">{cards.map((card) => <ModuleCard key={card.key} title={card.title} detail={card.detail} enabled={card.enabled} onClick={card.onClick} className="cleaning-control-card" attention={card.attention} icon={card.icon} />)}</section></section>;
 }
 
 function ProfilesScreen({ profiles, notice, onBack, onLogout, onPreviewEmployee, onProfilePhotoChange }: { profiles: Record<EmployeeId, EmployeeProfile>; notice: string; onBack: () => void; onLogout: () => void; onPreviewEmployee: (employeeId: EmployeeId) => void; onProfilePhotoChange: (employeeId: EmployeeId, file: File | null) => void }) {
