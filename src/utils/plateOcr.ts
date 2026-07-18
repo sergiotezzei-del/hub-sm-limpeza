@@ -21,14 +21,27 @@ type CropSpec = {
   width: number;
   height: number;
   scale: number;
+  weight: number;
+  variants: ImageProcessVariant[];
   psms: Array<"line" | "block" | "sparse">;
 };
 
 type OcrAttempt = {
   cropName: string;
+  processName: string;
   dataUrl: string;
-  inverted: boolean;
+  weight: number;
   psms: Array<"line" | "block" | "sparse">;
+};
+
+type ImageProcessVariant = {
+  name: string;
+  contrast: number;
+  brightness: number;
+  threshold: "none" | "otsu" | "fixed";
+  fixedThreshold?: number;
+  inverted: boolean;
+  sharpen: boolean;
 };
 
 type KnownPlateMatch = {
@@ -38,6 +51,17 @@ type KnownPlateMatch = {
   ambiguous: boolean;
 };
 
+type RankedPlateCandidate = {
+  plate: string;
+  score: number;
+  source: "ocr" | "known-fuzzy";
+  distance: number;
+  cropName: string;
+  processName: string;
+  psm: "line" | "block" | "sparse";
+  confidence: number;
+};
+
 const OCR_ALLOWED_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-";
 const OLD_PLATE_PATTERN = /^[A-Z]{3}[0-9]{4}$/;
 const MERCOSUL_PLATE_PATTERN = /^[A-Z]{3}[0-9][A-Z][0-9]{2}$/;
@@ -45,6 +69,25 @@ const OCR_TIMEOUT_MS = 12_000;
 const MAX_OCR_WIDTH = 1700;
 const MAX_OCR_HEIGHT = 1200;
 const MAX_OCR_PIXELS = 1_600_000;
+const MIN_DIRECT_CANDIDATE_SCORE = 82;
+const MIN_FUZZY_CANDIDATE_SCORE = 96;
+const AMBIGUOUS_SCORE_GAP = 18;
+
+const PLATE_PROCESS_VARIANTS: ImageProcessVariant[] = [
+  { name: "contraste", contrast: 1.85, brightness: 8, threshold: "none", inverted: false, sharpen: true },
+  { name: "binarizado", contrast: 2, brightness: 0, threshold: "otsu", inverted: false, sharpen: true },
+  { name: "binarizado-invertido", contrast: 2, brightness: 0, threshold: "otsu", inverted: true, sharpen: true },
+];
+
+const LIGHT_PROCESS_VARIANTS: ImageProcessVariant[] = [
+  { name: "contraste", contrast: 1.7, brightness: 6, threshold: "none", inverted: false, sharpen: true },
+  { name: "binarizado", contrast: 1.9, brightness: 0, threshold: "otsu", inverted: false, sharpen: true },
+];
+
+const FALLBACK_PROCESS_VARIANTS: ImageProcessVariant[] = [
+  { name: "contraste", contrast: 1.55, brightness: 4, threshold: "none", inverted: false, sharpen: false },
+  { name: "binarizado", contrast: 1.75, brightness: 0, threshold: "otsu", inverted: false, sharpen: false },
+];
 
 const DIGIT_TO_LETTER: Record<string, string> = {
   "0": "O",
@@ -183,8 +226,9 @@ function matchAgainstKnownPlates(candidates: string[], knownPlates: string[]): K
   const normalizedCandidates = uniqueValues(candidates.map(normalizePlateValue).filter((plate) => plate.length === 7));
   if (known.length === 0 || normalizedCandidates.length === 0) return null;
 
-  const exactMatch = normalizedCandidates.find((candidate) => known.includes(candidate));
-  if (exactMatch) return { plate: exactMatch, source: "ocr", distance: 0, ambiguous: false };
+  const exactMatches = normalizedCandidates.filter((candidate) => known.includes(candidate));
+  if (exactMatches.length === 1) return { plate: exactMatches[0], source: "ocr", distance: 0, ambiguous: false };
+  if (exactMatches.length > 1) return { plate: "", source: "ocr", distance: 0, ambiguous: true };
 
   let bestDistance = Number.POSITIVE_INFINITY;
   const bestPlates = new Set<string>();
@@ -257,7 +301,17 @@ function clampCrop(value: number, max: number) {
 }
 
 function buildCropSpecs(width: number, height: number): CropSpec[] {
-  const crop = (name: string, x: number, y: number, cropWidth: number, cropHeight: number, scale: number, psms: CropSpec["psms"]): CropSpec => {
+  const crop = (
+    name: string,
+    x: number,
+    y: number,
+    cropWidth: number,
+    cropHeight: number,
+    scale: number,
+    weight: number,
+    variants: ImageProcessVariant[],
+    psms: CropSpec["psms"],
+  ): CropSpec => {
     const left = clampCrop(Math.round(x * width), width - 1);
     const top = clampCrop(Math.round(y * height), height - 1);
     const right = clampCrop(Math.round((x + cropWidth) * width), width);
@@ -269,17 +323,20 @@ function buildCropSpecs(width: number, height: number): CropSpec[] {
       width: Math.max(1, right - left),
       height: Math.max(1, bottom - top),
       scale,
+      weight,
+      variants,
       psms,
     };
   };
 
   return [
-    crop("centro-inferior", 0.08, 0.45, 0.84, 0.4, 3, ["line", "block"]),
-    crop("inferior-50", 0, 0.5, 1, 0.5, 2.5, ["line", "block"]),
-    crop("inferior-65", 0, 0.35, 1, 0.65, 2.2, ["line", "block"]),
-    crop("faixa-central", 0.04, 0.32, 0.92, 0.36, 2.4, ["line", "block"]),
-    crop("inferior-central-agressivo", 0.18, 0.52, 0.64, 0.25, 3, ["line", "block"]),
-    crop("imagem-inteira", 0, 0, 1, 1, 1.4, ["block", "sparse"]),
+    crop("faixa-placa-baixa", 0.1, 0.58, 0.8, 0.22, 3, 42, PLATE_PROCESS_VARIANTS, ["line"]),
+    crop("baixo-proximo", 0.16, 0.62, 0.68, 0.22, 3, 40, PLATE_PROCESS_VARIANTS, ["line"]),
+    crop("centro-inferior", 0.08, 0.44, 0.84, 0.42, 2.8, 34, LIGHT_PROCESS_VARIANTS, ["line", "block"]),
+    crop("inferior-50", 0, 0.5, 1, 0.5, 2.4, 30, LIGHT_PROCESS_VARIANTS, ["line"]),
+    crop("inferior-60", 0, 0.4, 1, 0.6, 2.2, 28, LIGHT_PROCESS_VARIANTS.slice(1), ["line"]),
+    crop("faixa-horizontal-central", 0.04, 0.34, 0.92, 0.28, 2.4, 24, LIGHT_PROCESS_VARIANTS.slice(1), ["line"]),
+    crop("imagem-inteira", 0, 0, 1, 1, 1.35, 6, FALLBACK_PROCESS_VARIANTS, ["block", "sparse"]),
   ];
 }
 
@@ -329,7 +386,23 @@ function otsuThreshold(grayscale: Uint8ClampedArray) {
   return threshold;
 }
 
-function preprocessCrop(source: LoadedImageSource, crop: CropSpec, inverted: boolean) {
+function sharpenGrayscale(source: Uint8ClampedArray, width: number, height: number) {
+  const output = new Uint8ClampedArray(source);
+  for (let y = 1; y < height - 1; y += 1) {
+    for (let x = 1; x < width - 1; x += 1) {
+      const index = y * width + x;
+      const value = (source[index] * 5)
+        - source[index - 1]
+        - source[index + 1]
+        - source[index - width]
+        - source[index + width];
+      output[index] = Math.max(0, Math.min(255, value));
+    }
+  }
+  return output;
+}
+
+function preprocessCrop(source: LoadedImageSource, crop: CropSpec, variant: ImageProcessVariant) {
   const target = calculateSafeTargetSize(crop);
   const canvas = document.createElement("canvas");
   canvas.width = target.width;
@@ -342,20 +415,24 @@ function preprocessCrop(source: LoadedImageSource, crop: CropSpec, inverted: boo
 
   const imageData = context.getImageData(0, 0, target.width, target.height);
   const grayscale = new Uint8ClampedArray(target.width * target.height);
-  const contrast = 1.55;
 
   for (let pixel = 0, grayIndex = 0; pixel < imageData.data.length; pixel += 4, grayIndex += 1) {
     const red = imageData.data[pixel];
     const green = imageData.data[pixel + 1];
     const blue = imageData.data[pixel + 2];
     const gray = red * 0.299 + green * 0.587 + blue * 0.114;
-    grayscale[grayIndex] = Math.max(0, Math.min(255, Math.round((gray - 128) * contrast + 128)));
+    grayscale[grayIndex] = Math.max(0, Math.min(255, Math.round((gray - 128) * variant.contrast + 128 + variant.brightness)));
   }
 
-  const threshold = otsuThreshold(grayscale);
+  const processed = variant.sharpen ? sharpenGrayscale(grayscale, target.width, target.height) : grayscale;
+  const threshold = variant.threshold === "otsu" ? otsuThreshold(processed) : variant.fixedThreshold ?? 128;
+
   for (let pixel = 0, grayIndex = 0; pixel < imageData.data.length; pixel += 4, grayIndex += 1) {
-    const binary = grayscale[grayIndex] > threshold ? 255 : 0;
-    const value = inverted ? 255 - binary : binary;
+    const grayscaleValue = processed[grayIndex];
+    const baseValue = variant.threshold === "none"
+      ? grayscaleValue
+      : grayscaleValue > threshold ? 255 : 0;
+    const value = variant.inverted ? 255 - baseValue : baseValue;
     imageData.data[pixel] = value;
     imageData.data[pixel + 1] = value;
     imageData.data[pixel + 2] = value;
@@ -370,9 +447,17 @@ async function buildOcrAttempts(photoData: string) {
   try {
     const attempts: OcrAttempt[] = [];
     for (const crop of buildCropSpecs(source.width, source.height)) {
-      for (const inverted of [false, true]) {
-        const dataUrl = preprocessCrop(source, crop, inverted);
-        if (dataUrl) attempts.push({ cropName: crop.name, dataUrl, inverted, psms: crop.psms });
+      for (const variant of crop.variants) {
+        const dataUrl = preprocessCrop(source, crop, variant);
+        if (dataUrl) {
+          attempts.push({
+            cropName: crop.name,
+            processName: variant.name,
+            dataUrl,
+            weight: crop.weight,
+            psms: crop.psms,
+          });
+        }
       }
     }
     return attempts;
@@ -399,6 +484,73 @@ function debugOcr(payload: Record<string, unknown>) {
   if (isDevelopmentMode()) console.debug("[plate-ocr]", payload);
 }
 
+function getTesseractConfidence(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value)
+    ? Math.max(0, Math.min(100, value))
+    : 0;
+}
+
+function scoreCandidate(
+  plate: string,
+  attempt: OcrAttempt,
+  psm: RankedPlateCandidate["psm"],
+  confidence: number,
+  source: RankedPlateCandidate["source"],
+  distance: number,
+  matchedKnownPlate: boolean,
+) {
+  const patternScore = isValidPlate(plate) ? 60 : 0;
+  const psmScore = psm === "line" ? 12 : psm === "block" ? 6 : 0;
+  const confidenceScore = Math.min(30, confidence * 0.3);
+  const knownScore = matchedKnownPlate ? 120 : 0;
+  const fuzzyScore = source === "known-fuzzy" ? Math.max(0, 72 - distance * 18) : 0;
+
+  return patternScore + attempt.weight + psmScore + confidenceScore + knownScore + fuzzyScore;
+}
+
+function upsertRankedCandidate(candidates: Map<string, RankedPlateCandidate>, candidate: RankedPlateCandidate) {
+  const current = candidates.get(candidate.plate);
+  if (!current || candidate.score > current.score) candidates.set(candidate.plate, candidate);
+}
+
+function createRankedCandidate(
+  plate: string,
+  attempt: OcrAttempt,
+  psm: RankedPlateCandidate["psm"],
+  confidence: number,
+  source: RankedPlateCandidate["source"],
+  distance: number,
+  matchedKnownPlate: boolean,
+): RankedPlateCandidate | null {
+  const normalizedPlate = normalizePlateValue(plate);
+  if (!isValidPlate(normalizedPlate)) return null;
+
+  return {
+    plate: normalizedPlate,
+    score: scoreCandidate(normalizedPlate, attempt, psm, confidence, source, distance, matchedKnownPlate),
+    source,
+    distance,
+    cropName: attempt.cropName,
+    processName: attempt.processName,
+    psm,
+    confidence,
+  };
+}
+
+function chooseBestRankedCandidate(candidates: Map<string, RankedPlateCandidate>, foundAmbiguousMatch: boolean) {
+  const ranked = [...candidates.values()].sort((first, second) => second.score - first.score);
+  const best = ranked[0];
+  if (!best) return null;
+
+  const second = ranked.find((candidate) => candidate.plate !== best.plate);
+  const isConfidentExact = best.source === "ocr" && best.distance === 0 && best.score >= MIN_DIRECT_CANDIDATE_SCORE;
+  if (foundAmbiguousMatch && !isConfidentExact) return null;
+  if (second && best.score - second.score < AMBIGUOUS_SCORE_GAP) return null;
+
+  const minimumScore = best.source === "known-fuzzy" ? MIN_FUZZY_CANDIDATE_SCORE : MIN_DIRECT_CANDIDATE_SCORE;
+  return best.score >= minimumScore ? best : null;
+}
+
 export async function recognizePlateFromPhoto(photoData: string, knownPlates: string[] = []): Promise<PlateOcrResult> {
   const deadline = Date.now() + OCR_TIMEOUT_MS;
   const attempts = await runWithTimeout(buildOcrAttempts(photoData), deadline);
@@ -407,11 +559,9 @@ export async function recognizePlateFromPhoto(photoData: string, knownPlates: st
   const worker = await createWorker("eng");
   const texts: string[] = [];
   const allCandidates = new Set<string>();
-  let bestKnownMatch: KnownPlateMatch | null = null;
-  let ambiguous = false;
-  let directCandidate: string | null = null;
-  let selectedCrop = "";
-  let bestKnownCrop = "";
+  const rankedCandidates = new Map<string, RankedPlateCandidate>();
+  const knownPlateSet = new Set(uniqueValues(knownPlates.map(normalizePlateValue).filter((plate) => plate.length === 7)));
+  let foundAmbiguousMatch = false;
 
   const psmValues = {
     line: PSM.SINGLE_LINE,
@@ -431,61 +581,73 @@ export async function recognizePlateFromPhoto(photoData: string, knownPlates: st
 
         const result = await runWithTimeout(worker.recognize(attempt.dataUrl), deadline);
         const text = result.data.text || "";
+        const confidence = getTesseractConfidence(result.data.confidence);
         const candidates = extractPlateCandidatesFromText(text);
         texts.push(text);
         candidates.forEach((candidate) => allCandidates.add(candidate));
 
         const knownMatch = matchAgainstKnownPlates(candidates, knownPlates);
-        const validCandidate = candidates.find((candidate) => isValidPlate(candidate));
-        if (!directCandidate && validCandidate) directCandidate = validCandidate;
+        const validCandidates = candidates.filter((candidate) => isValidPlate(candidate));
 
         debugOcr({
           crop: attempt.cropName,
-          inverted: attempt.inverted,
+          process: attempt.processName,
           psm,
           text,
           candidates,
+          confidence,
           knownMatch,
         });
 
         if (knownMatch?.ambiguous) {
-          ambiguous = true;
+          foundAmbiguousMatch = true;
           continue;
         }
 
         if (knownMatch) {
-          selectedCrop = attempt.cropName;
-          if (knownMatch.distance === 0) {
-            return {
-              plate: formatPlateCandidate(knownMatch.plate),
-              text: texts.join("\n"),
-              source: "ocr",
-              matchDistance: 0,
-              cropName: selectedCrop,
-              candidates: uniqueValues([...allCandidates]),
-            };
-          }
-          if (!bestKnownMatch || knownMatch.distance < bestKnownMatch.distance) {
-            bestKnownMatch = knownMatch;
-            bestKnownCrop = attempt.cropName;
-          }
+          const rankedKnownMatch = createRankedCandidate(
+            knownMatch.plate,
+            attempt,
+            psm,
+            confidence,
+            knownMatch.source,
+            knownMatch.distance,
+            true,
+          );
+          if (rankedKnownMatch) upsertRankedCandidate(rankedCandidates, rankedKnownMatch);
+        }
+
+        for (const candidate of validCandidates) {
+          const normalizedCandidate = normalizePlateValue(candidate);
+          const rankedCandidate = createRankedCandidate(
+            normalizedCandidate,
+            attempt,
+            psm,
+            confidence,
+            "ocr",
+            0,
+            knownPlateSet.has(normalizedCandidate),
+          );
+          if (rankedCandidate) upsertRankedCandidate(rankedCandidates, rankedCandidate);
         }
       }
     }
 
-    if (bestKnownMatch && !bestKnownMatch.ambiguous) {
-      debugOcr({ selected: bestKnownMatch.plate, distance: bestKnownMatch.distance, crop: bestKnownCrop });
+    const bestCandidate = chooseBestRankedCandidate(rankedCandidates, foundAmbiguousMatch);
+    debugOcr({ selected: bestCandidate, rankedCandidates: [...rankedCandidates.values()] });
+
+    if (bestCandidate) {
       return {
-        plate: formatPlateCandidate(bestKnownMatch.plate),
+        plate: formatPlateCandidate(bestCandidate.plate),
         text: texts.join("\n"),
-        source: "known-fuzzy",
-        matchDistance: bestKnownMatch.distance,
-        cropName: bestKnownCrop,
+        source: bestCandidate.source,
+        matchDistance: bestCandidate.distance,
+        cropName: bestCandidate.cropName,
         candidates: uniqueValues([...allCandidates]),
       };
     }
 
-    if (ambiguous) {
+    if (foundAmbiguousMatch) {
       return {
         plate: null,
         text: texts.join("\n"),
@@ -495,19 +657,20 @@ export async function recognizePlateFromPhoto(photoData: string, knownPlates: st
     }
 
     return {
-      plate: directCandidate ? formatPlateCandidate(directCandidate) : null,
+      plate: null,
       text: texts.join("\n"),
-      source: directCandidate ? "ocr" : null,
+      source: null,
       candidates: uniqueValues([...allCandidates]),
     };
   } catch (error) {
     debugOcr({ error: error instanceof Error ? error.message : String(error), candidates: [...allCandidates] });
+    const bestCandidate = chooseBestRankedCandidate(rankedCandidates, foundAmbiguousMatch);
     return {
-      plate: bestKnownMatch && !bestKnownMatch.ambiguous ? formatPlateCandidate(bestKnownMatch.plate) : null,
+      plate: bestCandidate ? formatPlateCandidate(bestCandidate.plate) : null,
       text: texts.join("\n"),
-      source: bestKnownMatch && !bestKnownMatch.ambiguous ? "known-fuzzy" : null,
-      matchDistance: bestKnownMatch?.distance,
-      cropName: bestKnownCrop || selectedCrop,
+      source: bestCandidate?.source ?? (foundAmbiguousMatch ? "ambiguous" : null),
+      matchDistance: bestCandidate?.distance,
+      cropName: bestCandidate?.cropName,
       candidates: uniqueValues([...allCandidates]),
     };
   } finally {
