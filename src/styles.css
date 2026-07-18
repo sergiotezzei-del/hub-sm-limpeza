@@ -675,6 +675,187 @@ button:focus-visible,
   margin-top: 22px;
 }
 
+.system-status-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 12px;
+  margin: 14px 0 18px;
+}
+
+.system-status-card,
+.system-status-section,
+.system-profile-card,
+.system-pending-list {
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow-card);
+}
+
+.system-status-card {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border-left: 6px solid var(--line);
+}
+
+.system-status-operational {
+  border-left-color: var(--green);
+}
+
+.system-status-attention {
+  border-left-color: var(--orange);
+}
+
+.system-status-restricted {
+  border-left-color: var(--blue);
+}
+
+.system-status-not-configured {
+  border-left-color: #cbd5e1;
+}
+
+.system-status-card-head,
+.section-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.system-status-card-head {
+  justify-content: space-between;
+}
+
+.system-status-card h2 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 1.05rem;
+}
+
+.system-status-card p,
+.system-profile-card p {
+  margin: 0;
+  color: #475569;
+  font-weight: 750;
+  line-height: 1.38;
+}
+
+.system-status-pill {
+  width: fit-content;
+  border-radius: 8px;
+  padding: 6px 8px;
+  font-size: 0.72rem;
+  font-weight: 950;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.system-status-pill-operational {
+  color: #166534;
+  background: var(--green-soft);
+}
+
+.system-status-pill-attention {
+  color: #9a3412;
+  background: #ffedd5;
+}
+
+.system-status-pill-restricted {
+  color: #17355f;
+  background: var(--blue-soft);
+}
+
+.system-status-pill-not-configured {
+  color: #475569;
+  background: #f1f5f9;
+}
+
+.system-status-section {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+  padding: 14px;
+}
+
+.section-title-row h2 {
+  margin: 0;
+}
+
+.system-profile-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.system-profile-card {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  box-shadow: none;
+}
+
+.system-profile-card div {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.system-profile-card strong,
+.system-profile-card span {
+  display: block;
+}
+
+.system-profile-card strong {
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.system-profile-card span {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 900;
+  text-align: right;
+}
+
+.system-profile-active,
+.system-profile-inactive {
+  width: fit-content;
+  border-radius: 8px;
+  padding: 5px 8px;
+  font-size: 0.72rem;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.system-profile-active {
+  color: #166534;
+  background: var(--green-soft);
+}
+
+.system-profile-inactive {
+  color: #991b1b;
+  background: var(--red-soft);
+}
+
+.system-pending-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 12px;
+  box-shadow: none;
+  list-style: none;
+}
+
+.system-pending-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: #475569;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
 .activity-list,
 .orders-list {
   display: grid;
@@ -3394,6 +3575,8 @@ button:focus-visible,
   .profile-grid,
   .user-form,
   .permissions-grid,
+  .system-status-grid,
+  .system-profile-list,
   .monitoring-filters,
   .shift-summary-times,
   .user-actions {
@@ -3742,6 +3925,8 @@ button:focus-visible,
 
   .monitoring-overview-card,
   .monitoring-card,
+  .system-status-card,
+  .system-status-section,
   .payment-report-card,
   .payment-profile-card,
   .payment-guard-card,

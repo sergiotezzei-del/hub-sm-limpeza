@@ -76,6 +76,7 @@ type View =
   | "order-history"
   | "neia-history"
   | "users-permissions"
+  | "system-status"
   | "copa-cafe-menu"
   | "maintenance-menu"
   | "general-stock-menu"
@@ -1432,6 +1433,17 @@ function App() {
     void refreshManagedUsersFromCloud({ showNotice: false });
   }
 
+  function openSystemStatus() {
+    if (currentUser !== "tezzei" || !hasCurrentPermission("painel-admin")) {
+      setNotice("Você não tem acesso a este módulo.");
+      return;
+    }
+
+    setNotice("");
+    setSelectedGuardName(null);
+    setView("system-status");
+  }
+
   function openCleaningPreparation() {
     if (currentUser !== "tezzei" || !hasCurrentPermission("painel-admin")) {
       setNotice("Somente o Admin Tezzei pode preparar a Limpeza para uso real.");
@@ -1733,6 +1745,7 @@ function App() {
           onOpenPatrimony={openPatrimonyMenu}
           onOpenReports={openReportsMenu}
           onOpenUsersPermissions={openUsersPermissions}
+          onOpenSystemStatus={openSystemStatus}
         />
       )}
 
@@ -1758,6 +1771,19 @@ function App() {
           onDeleteUser={deleteManagedUser}
           onSyncLocalUsers={syncManagedUsersToCloud}
         />
+        ) : (
+          <AccessDeniedScreen onBack={() => setView(getCurrentHomeView())} onLogout={goToLogin} />
+        )
+      )}
+
+      {view === "system-status" && (
+        currentUser === "tezzei" && hasCurrentPermission("painel-admin") ? (
+          <SystemStatusScreen
+            permissions={getManagedUserPermissions(currentUser, managedUsers)}
+            users={managedUsers}
+            onBack={() => setView("admin")}
+            onLogout={goToLogin}
+          />
         ) : (
           <AccessDeniedScreen onBack={() => setView(getCurrentHomeView())} onLogout={goToLogin} />
         )
@@ -2347,7 +2373,7 @@ function UserSectorHomeScreen({ user, permissions, notice, onLogout, onOpenClean
   );
 }
 
-function AdminSectorHomeScreen({ newOrdersCount, onlineEnabled, permissions, onLogout, onOpenCleaningDashboard, onOpenCopaCafe, onOpenSecurity, onOpenMaintenance, onOpenGeneralStock, onOpenPatrimony, onOpenReports, onOpenUsersPermissions }: { newOrdersCount: number; onlineEnabled: boolean; permissions: UserPermission[]; onLogout: () => void; onOpenCleaningDashboard: () => void; onOpenCopaCafe: () => void; onOpenSecurity: () => void; onOpenMaintenance: () => void; onOpenGeneralStock: () => void; onOpenPatrimony: () => void; onOpenReports: () => void; onOpenUsersPermissions: () => void }) {
+function AdminSectorHomeScreen({ newOrdersCount, onlineEnabled, permissions, onLogout, onOpenCleaningDashboard, onOpenCopaCafe, onOpenSecurity, onOpenMaintenance, onOpenGeneralStock, onOpenPatrimony, onOpenReports, onOpenUsersPermissions, onOpenSystemStatus }: { newOrdersCount: number; onlineEnabled: boolean; permissions: UserPermission[]; onLogout: () => void; onOpenCleaningDashboard: () => void; onOpenCopaCafe: () => void; onOpenSecurity: () => void; onOpenMaintenance: () => void; onOpenGeneralStock: () => void; onOpenPatrimony: () => void; onOpenReports: () => void; onOpenUsersPermissions: () => void; onOpenSystemStatus: () => void }) {
   const cards: SectorModuleCard[] = [
     { key: "limpeza", title: "Limpeza", detail: "Rotinas, produtos, pedidos e histórico da equipe de limpeza.", enabled: permissions.includes("limpeza"), onClick: onOpenCleaningDashboard, className: "cleaning-card", attention: newOrdersCount > 0 ? `${newOrdersCount} pedido(s) pendente(s)` : undefined, icon: "cleaning" },
     { key: "copa-cafe", title: "Copa & Café", detail: "Máquina de café, água, copos, bebidas e insumos da copa.", enabled: permissions.includes("cafe") || permissions.includes("agua"), onClick: onOpenCopaCafe, icon: "coffee" },
@@ -2357,6 +2383,7 @@ function AdminSectorHomeScreen({ newOrdersCount, onlineEnabled, permissions, onL
     { key: "patrimonio", title: "Patrimônio", detail: "Equipamentos, móveis, rede, câmeras, chaves e inventário.", enabled: permissions.includes("patrimonio") || permissions.includes("chaves"), onClick: onOpenPatrimony, icon: "stock" },
     { key: "relatorios", title: "Relatórios", detail: "Consultas e relatórios por área operacional.", enabled: permissions.includes("relatorios"), onClick: onOpenReports, icon: "reports" },
     { key: "usuarios-permissoes", title: "Usuários & Permissões", detail: "Cadastro de usuários, acessos e permissões do sistema.", enabled: permissions.includes("painel-admin"), onClick: onOpenUsersPermissions, className: "users-card", icon: "users" },
+    { key: "status-sistema", title: "Status do Sistema", detail: "Visão rápida dos módulos principais do HUB SM.", enabled: permissions.includes("painel-admin"), onClick: onOpenSystemStatus, className: "users-card", icon: "reports" },
   ];
 
   return (
@@ -2364,6 +2391,123 @@ function AdminSectorHomeScreen({ newOrdersCount, onlineEnabled, permissions, onL
       <TopBar title="Painel Tezzei" subtitle={onlineEnabled ? "Central Operacional HUB SM — online" : "Central Operacional HUB SM — local"} onLogout={onLogout} />
       <section className="admin-grid module-grid">
         {cards.map((card) => <ModuleCard key={card.key} title={card.title} detail={card.detail} enabled={card.enabled} onClick={card.onClick} className={card.className} attention={card.attention} icon={card.icon} />)}
+      </section>
+    </section>
+  );
+}
+
+type SystemStatusLevel = "Operacional" | "Atenção" | "Restrito" | "Não configurado";
+type SystemStatusTone = "operational" | "attention" | "restricted" | "not-configured";
+
+type SystemStatusCard = {
+  key: string;
+  title: string;
+  icon: AppIconName;
+  status: SystemStatusLevel;
+  tone: SystemStatusTone;
+  note: string;
+};
+
+function createSystemStatusCard({ key, title, icon, available, note, restricted = false }: { key: string; title: string; icon: AppIconName; available: boolean; note: string; restricted?: boolean }): SystemStatusCard {
+  if (restricted && available) {
+    return { key, title, icon, status: "Restrito", tone: "restricted", note };
+  }
+
+  return {
+    key,
+    title,
+    icon,
+    status: available ? "Operacional" : "Não configurado",
+    tone: available ? "operational" : "not-configured",
+    note: available ? note : "Módulo não disponível para o perfil atual.",
+  };
+}
+
+function SystemStatusScreen({ permissions, users, onBack, onLogout }: { permissions: UserPermission[]; users: ManagedUser[]; onBack: () => void; onLogout: () => void }) {
+  const hasAdmin = permissions.includes("painel-admin");
+  const hasSecurity = permissions.includes("seguranca");
+  const hasGuards = permissions.includes("guardas");
+  const hasParking = hasAdmin || permissions.includes("estacionamento-consulta") || permissions.includes("estacionamento-cadastro");
+  const hasParkingRegister = hasAdmin || permissions.includes("estacionamento-cadastro");
+  const systemCards: SystemStatusCard[] = [
+    createSystemStatusCard({ key: "cleaning", title: "Limpeza", icon: "cleaning", available: permissions.includes("limpeza"), note: "Pedidos, conferência, estoque e histórico da limpeza disponíveis." }),
+    createSystemStatusCard({ key: "copa-cafe", title: "Copa & Café", icon: "coffee", available: permissions.includes("cafe") || permissions.includes("agua"), note: "Café, água e insumos da copa organizados no menu operacional." }),
+    createSystemStatusCard({ key: "security", title: "Segurança", icon: "security", available: hasSecurity, note: "Menu de segurança disponível com guardas, monitoramento e estacionamento." }),
+    createSystemStatusCard({ key: "parking", title: "Estacionamento", icon: "parking", available: hasParking, note: hasParkingRegister ? "Consulta e cadastro de veículos disponíveis para Admin." : "Consulta rápida de veículos disponível." }),
+    createSystemStatusCard({ key: "guards", title: "Guardas", icon: "guards", available: hasGuards, note: "Área dos guardas disponível para plantão, ronda e QR Code." }),
+    createSystemStatusCard({ key: "rounds", title: "Rondas", icon: "guards", available: hasSecurity && hasGuards, note: "Relatório e registro de rondas disponíveis na área de segurança." }),
+    createSystemStatusCard({ key: "qrcode", title: "QR Code", icon: "qr", available: hasGuards, note: "Leitura de QR Code disponível no fluxo operacional do guarda." }),
+    createSystemStatusCard({ key: "payments", title: "Pagamentos", icon: "payment", available: hasAdmin, restricted: true, note: "Fechamento / Pagamento restrito ao Admin/Tezzei em Segurança > Guardas." }),
+    createSystemStatusCard({ key: "users", title: "Usuários & Permissões", icon: "users", available: hasAdmin, note: "Cadastro e sincronização de usuários disponíveis somente para Admin." }),
+    { key: "plate-ocr", title: "OCR de Placas", icon: "camera", status: "Atenção", tone: "attention", note: "OCR auxiliar. Requer validação com placa real." },
+  ];
+  const mainProfiles = [
+    { id: "tezzei", name: "Admin / Tezzei", profile: "Admin", modules: "Acesso total ao HUB SM." },
+    { id: "carlos-clemente", name: "Carlos Clemente", profile: "Guarda", modules: "Segurança, Guardas, Rondas, QR Code e Estacionamento." },
+    { id: "salomao", name: "Salomão", profile: "Guarda", modules: "Segurança, Guardas, Rondas, QR Code e Estacionamento." },
+    { id: "neia", name: "Neia", profile: "Limpeza", modules: "Limpeza, pedidos, conferência e estoque conforme permissões." },
+    { id: "selma", name: "Selma", profile: "Limpeza", modules: "Limpeza conforme permissões atuais." },
+    { id: "helena", name: "Helena", profile: "Limpeza", modules: "Limpeza conforme permissões atuais." },
+  ];
+  const pendingItems = [
+    "Validar OCR de placas no celular com placa real.",
+    "Validar fluxo dos guardas em uso real.",
+    "Validar Limpeza em uso real.",
+    "Validar permissões após novos usuários.",
+  ];
+
+  return (
+    <section className="screen">
+      <TopBar title="Status do Sistema" subtitle="Visão rápida dos módulos principais do HUB SM." onLogout={onLogout} />
+      <button className="ghost-button" type="button" onClick={onBack}><AppIcon name="back" size="sm" className="action-icon" />Voltar</button>
+      <section className="system-status-grid" aria-label="Status dos módulos">
+        {systemCards.map((card) => (
+          <article className={`system-status-card system-status-${card.tone}`} key={card.key}>
+            <div className="system-status-card-head">
+              <span className="module-icon-circle" aria-hidden="true">
+                <AppIcon name={card.icon} size="lg" className="module-icon" />
+              </span>
+              <span className={`system-status-pill system-status-pill-${card.tone}`}>{card.status}</span>
+            </div>
+            <h2>{card.title}</h2>
+            <p>{card.note}</p>
+          </article>
+        ))}
+      </section>
+
+      <section className="system-status-section">
+        <div className="section-title-row">
+          <AppIcon name="users" size="md" className="status-icon icon-info" />
+          <h2>Perfis principais</h2>
+        </div>
+        <div className="system-profile-list">
+          {mainProfiles.map((profile) => {
+            const user = users.find((current) => current.id === profile.id);
+            const active = user?.active !== false;
+            return (
+              <article className="system-profile-card" key={profile.id}>
+                <div>
+                  <strong>{profile.name}</strong>
+                  <span>{profile.profile}</span>
+                </div>
+                <p>{profile.modules}</p>
+                <small className={active ? "system-profile-active" : "system-profile-inactive"}>{active ? "Ativo" : "Inativo"}</small>
+              </article>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="system-status-section">
+        <div className="section-title-row">
+          <AppIcon name="warning" size="md" className="status-icon icon-warning" />
+          <h2>Pendências conhecidas</h2>
+        </div>
+        <ul className="system-pending-list">
+          {pendingItems.map((item) => (
+            <li key={item}><AppIcon name="warning" size="sm" className="status-icon icon-warning" />{item}</li>
+          ))}
+        </ul>
       </section>
     </section>
   );
