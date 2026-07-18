@@ -380,7 +380,7 @@ const defaultManagedUsers: ManagedUser[] = [
     jobTitle: "Guarda Santa Maria",
     department: "Segurança",
     active: true,
-    permissions: ["seguranca", "guardas"],
+    permissions: ["seguranca", "guardas", "estacionamento-consulta"],
     linkedGuardId: "carlos-clemente",
     system: true,
     createdAt: defaultCreatedAt,
@@ -394,7 +394,7 @@ const defaultManagedUsers: ManagedUser[] = [
     jobTitle: "Guarda Santa Maria",
     department: "Segurança",
     active: true,
-    permissions: ["seguranca", "guardas"],
+    permissions: ["seguranca", "guardas", "estacionamento-consulta"],
     linkedGuardId: "salomao",
     system: true,
     createdAt: defaultCreatedAt,
@@ -1267,6 +1267,11 @@ function App() {
   }
 
   function openProfiles() {
+    if (!hasCurrentPermission("painel-admin")) {
+      setNotice("Você não tem acesso a este módulo.");
+      return;
+    }
+
     setNotice("");
     setPreviewEmployeeId(null);
     void refreshProfiles();
@@ -1362,6 +1367,11 @@ function App() {
 
     setNotice("");
     setSelectedGuardName(null);
+    if (isGuardId(currentUser)) {
+      setView("guard");
+      return;
+    }
+
     setView("security-guards");
   }
 
@@ -1471,7 +1481,7 @@ function App() {
       name: cleanName,
       accessCode: cleanAccessCode,
       active: user.protected ? true : user.active,
-      permissions: user.id === "tezzei" ? allUserPermissions : uniquePermissions(user.permissions),
+      permissions: getNormalizedManagedUserPermissions(user, user.permissions),
       createdAt: previousUser?.createdAt ?? user.createdAt ?? now,
       updatedAt: now,
     };
@@ -1564,7 +1574,7 @@ function App() {
       {view === "login" && <LoginScreen password={password} loginError={loginError} onPasswordChange={setPassword} onSubmit={handleLogin} />}
 
       {view === "guard" && currentUser && isGuardId(currentUser) && (
-        <GuardUserScreen guardLocalId={currentUser} guardName={guardUserMap[currentUser]} onLogout={goToLogin} />
+        <GuardUserScreen guardLocalId={currentUser} guardName={guardUserMap[currentUser]} permissions={getManagedUserPermissions(currentUser, managedUsers)} onOpenParking={openSecurityParking} onLogout={goToLogin} />
       )}
 
       {view === "user-home" && currentManagedUser && (
@@ -1737,6 +1747,7 @@ function App() {
       {view === "reports-menu" && <ReportsMenuScreen permissions={getManagedUserPermissions(currentUser, managedUsers)} onBack={() => setView(getCurrentHomeView())} onLogout={goToLogin} />}
 
       {view === "users-permissions" && (
+        hasCurrentPermission("painel-admin") ? (
         <UsersPermissionsScreen
           users={managedUsers}
           syncState={managedUsersSync}
@@ -1747,20 +1758,51 @@ function App() {
           onDeleteUser={deleteManagedUser}
           onSyncLocalUsers={syncManagedUsersToCloud}
         />
+        ) : (
+          <AccessDeniedScreen onBack={() => setView(getCurrentHomeView())} onLogout={goToLogin} />
+        )
       )}
 
       {view === "security-menu" && <SecurityMenuScreen permissions={getManagedUserPermissions(currentUser, managedUsers)} isAdmin={currentUser === "tezzei"} onBack={() => setView(getCurrentHomeView())} onLogout={goToLogin} onOpenGuards={openSecurityGuards} onOpenMonitoring={openSecurityMonitoring} onOpenParking={openSecurityParking} />}
 
-      {view === "security-guards" && <SecurityGuardsScreen onBack={openSecurityMenu} onLogout={goToLogin} onOpenGuard={openGuardDetail} onOpenPayment={openGuardPaymentReport} showPayment={currentUser === "tezzei"} />}
+      {view === "security-guards" && (
+        hasCurrentPermission("guardas") ? (
+          <SecurityGuardsScreen isAdmin={currentUser === "tezzei"} onBack={openSecurityMenu} onLogout={goToLogin} onOpenGuard={openGuardDetail} onOpenPayment={openGuardPaymentReport} showPayment={currentUser === "tezzei"} />
+        ) : (
+          <AccessDeniedScreen onBack={() => setView(getCurrentHomeView())} onLogout={goToLogin} />
+        )
+      )}
 
-      {view === "security-guards-payment" && currentUser === "tezzei" && <SecurityGuardsPaymentScreen onBack={openSecurityGuards} onLogout={goToLogin} />}
+      {view === "security-guards-payment" && (
+        currentUser === "tezzei" && hasCurrentPermission("painel-admin") ? (
+          <SecurityGuardsPaymentScreen onBack={openSecurityGuards} onLogout={goToLogin} />
+        ) : (
+          <AccessDeniedScreen onBack={() => setView(getCurrentHomeView())} onLogout={goToLogin} />
+        )
+      )}
 
-      {view === "security-monitoring" && currentUser === "tezzei" && <SecurityMonitoringScreen onBack={openSecurityMenu} onLogout={goToLogin} />}
+      {view === "security-monitoring" && (
+        currentUser === "tezzei" && hasCurrentPermission("painel-admin") ? (
+          <SecurityMonitoringScreen onBack={openSecurityMenu} onLogout={goToLogin} />
+        ) : (
+          <AccessDeniedScreen onBack={() => setView(getCurrentHomeView())} onLogout={goToLogin} />
+        )
+      )}
 
-      {view === "security-parking" && <SecurityParkingScreen permissions={getManagedUserPermissions(currentUser, managedUsers)} isAdmin={currentUser === "tezzei"} onBack={openSecurityMenu} onLogout={goToLogin} />}
+      {view === "security-parking" && (
+        hasAnyCurrentPermission(["painel-admin", "estacionamento-consulta", "estacionamento-cadastro"]) ? (
+          <SecurityParkingScreen permissions={getManagedUserPermissions(currentUser, managedUsers)} isAdmin={currentUser === "tezzei"} onBack={() => setView(isGuardId(currentUser) ? "guard" : "security-menu")} onLogout={goToLogin} />
+        ) : (
+          <AccessDeniedScreen onBack={() => setView(getCurrentHomeView())} onLogout={goToLogin} />
+        )
+      )}
 
-      {view === "security-guard-detail" && selectedGuardName && (
-        <SecurityGuardDetailScreen guardLocalId={getGuardIdFromName(selectedGuardName)} guardName={selectedGuardName} onBack={openSecurityGuards} onLogout={goToLogin} />
+      {view === "security-guard-detail" && (
+        selectedGuardName && hasCurrentPermission("guardas") ? (
+          <SecurityGuardDetailScreen guardLocalId={getGuardIdFromName(selectedGuardName)} guardName={selectedGuardName} onBack={openSecurityGuards} onLogout={goToLogin} />
+        ) : (
+          <AccessDeniedScreen onBack={() => setView(getCurrentHomeView())} onLogout={goToLogin} />
+        )
       )}
 
       {view === "cleaning-dashboard" && (
@@ -1797,7 +1839,11 @@ function App() {
       )}
 
       {view === "profiles" && (
+        hasCurrentPermission("painel-admin") ? (
         <ProfilesScreen profiles={profiles} notice={notice} onBack={() => setView("cleaning-dashboard")} onLogout={goToLogin} onPreviewEmployee={previewEmployee} onProfilePhotoChange={handlePhotoChange} />
+        ) : (
+          <AccessDeniedScreen onBack={() => setView(getCurrentHomeView())} onLogout={goToLogin} />
+        )
       )}
 
       {view === "orders" && (
@@ -2262,6 +2308,19 @@ function ModuleCard({ title, detail, enabled = true, onClick, className = "", at
   return <article className={cardClass} aria-disabled={!enabled}>{content}</article>;
 }
 
+function AccessDeniedScreen({ onBack, onLogout }: { onBack: () => void; onLogout: () => void }) {
+  return (
+    <section className="screen">
+      <TopBar title="Acesso restrito" subtitle="Você não tem acesso a este módulo." onLogout={onLogout} />
+      <button className="ghost-button" type="button" onClick={onBack}><AppIcon name="back" size="sm" className="action-icon" />Voltar</button>
+      <section className="empty-state">
+        <h2>Você não tem acesso a este módulo.</h2>
+        <p>Solicite permissão ao admin.</p>
+      </section>
+    </section>
+  );
+}
+
 function UserSectorHomeScreen({ user, permissions, notice, onLogout, onOpenCleaningDashboard, onOpenStockExit, onOpenCopaCafe, onOpenMaintenance, onOpenGeneralStock, onOpenPatrimony, onOpenReports, onOpenSecurity }: { user: ManagedUser; permissions: UserPermission[]; notice: string; onLogout: () => void; onOpenCleaningDashboard: () => void; onOpenStockExit: () => void; onOpenCopaCafe: () => void; onOpenMaintenance: () => void; onOpenGeneralStock: () => void; onOpenPatrimony: () => void; onOpenReports: () => void; onOpenSecurity: () => void }) {
   const canCleaning = permissions.includes("limpeza") || permissions.includes("saida-estoque");
   const cards: SectorModuleCard[] = [
@@ -2273,14 +2332,15 @@ function UserSectorHomeScreen({ user, permissions, notice, onLogout, onOpenClean
     { key: "patrimonio", title: "Patrimônio", detail: "Equipamentos, móveis, rede, câmeras, chaves e inventário.", enabled: permissions.includes("patrimonio") || permissions.includes("chaves"), onClick: onOpenPatrimony, icon: "stock" },
     { key: "relatorios", title: "Relatórios", detail: "Consultas e relatórios por área operacional.", enabled: permissions.includes("relatorios"), onClick: onOpenReports, icon: "reports" },
   ];
-  const hasAnyModule = permissions.length > 0;
+  const visibleCards = cards.filter((card) => card.enabled);
+  const hasAnyModule = visibleCards.length > 0;
 
   return (
     <section className="screen">
       <ProfileHero name={user.name} role={user.jobTitle} department={user.department} photoData={user.photoData} subtitle={user.userType} actions={<button className="logout-button" type="button" onClick={onLogout}>Sair</button>} />
       {notice && <p className="notice-message">{notice}</p>}
       <section className="admin-grid module-grid">
-        {cards.map((card) => <ModuleCard key={card.key} title={card.title} detail={card.detail} enabled={card.enabled} onClick={card.onClick} className={card.className} attention={card.attention} icon={card.icon} />)}
+        {visibleCards.map((card) => <ModuleCard key={card.key} title={card.title} detail={card.detail} enabled={card.enabled} onClick={card.onClick} className={card.className} attention={card.attention} icon={card.icon} />)}
       </section>
       {!hasAnyModule && <section className="empty-state"><h2>Nenhum módulo liberado</h2><p>Solicite permissão ao admin.</p></section>}
     </section>
@@ -2310,13 +2370,16 @@ function AdminSectorHomeScreen({ newOrdersCount, onlineEnabled, permissions, onL
 }
 
 function OperationalSectorScreen({ title, subtitle, cards, onBack, onLogout }: { title: string; subtitle: string; cards: SectorModuleCard[]; onBack: () => void; onLogout: () => void }) {
+  const visibleCards = cards.filter((card) => card.enabled);
+
   return (
     <section className="screen">
       <TopBar title={title} subtitle={subtitle} onLogout={onLogout} />
       <button className="ghost-button" type="button" onClick={onBack}>Voltar</button>
       <section className="admin-grid module-grid">
-        {cards.map((card) => <ModuleCard key={card.key} title={card.title} detail={card.detail} enabled={card.enabled} onClick={card.onClick} className={card.className} attention={card.attention} icon={card.icon} />)}
+        {visibleCards.map((card) => <ModuleCard key={card.key} title={card.title} detail={card.detail} enabled={card.enabled} onClick={card.onClick} className={card.className} attention={card.attention} icon={card.icon} />)}
       </section>
+      {visibleCards.length === 0 && <section className="empty-state"><h2>Você não tem acesso a este módulo.</h2><p>Solicite permissão ao admin.</p></section>}
     </section>
   );
 }
@@ -2421,7 +2484,15 @@ function SecurityMenuScreen({ permissions, isAdmin, onBack, onLogout, onOpenGuar
   const canGuards = permissions.includes("guardas");
   const canMonitoring = isAdmin && permissions.includes("painel-admin");
   const canParking = permissions.includes("estacionamento-consulta") || permissions.includes("estacionamento-cadastro") || permissions.includes("painel-admin");
-  return <section className="screen"><TopBar title="Segurança" subtitle="Controle de segurança" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}><AppIcon name="back" size="sm" className="action-icon" />Voltar</button><section className="admin-grid security-grid"><ModuleCard title="Guardas" detail="Controle dos guardas" enabled={canGuards} onClick={onOpenGuards} className="security-card" icon="guards" />{isAdmin && <ModuleCard title="Monitoramento" detail="Entradas, saídas e rondas" enabled={canMonitoring} onClick={onOpenMonitoring} className="security-card" icon="reports" />}<ModuleCard title="Estacionamento" detail="Consulta e cadastro de veículos" enabled={canParking} onClick={onOpenParking} className="security-card" icon="parking" /></section></section>;
+  const canRegisterParking = isAdmin || permissions.includes("painel-admin") || permissions.includes("estacionamento-cadastro");
+  const cards: SectorModuleCard[] = [
+    { key: "guards", title: "Guardas", detail: isAdmin ? "Controle dos guardas" : "Serviço, rondas e QR Code", enabled: canGuards, onClick: onOpenGuards, className: "security-card", icon: "guards" },
+    { key: "monitoring", title: "Monitoramento", detail: "Entradas, saídas e rondas", enabled: canMonitoring, onClick: onOpenMonitoring, className: "security-card", icon: "reports" },
+    { key: "parking", title: "Estacionamento", detail: canRegisterParking ? "Consulta e cadastro de veículos" : "Consulta rápida de veículos", enabled: canParking, onClick: onOpenParking, className: "security-card", icon: "parking" },
+  ];
+  const visibleCards = cards.filter((card) => isAdmin || card.enabled);
+
+  return <section className="screen"><TopBar title="Segurança" subtitle="Controle de segurança" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}><AppIcon name="back" size="sm" className="action-icon" />Voltar</button><section className="admin-grid security-grid">{visibleCards.map((card) => <ModuleCard key={card.key} title={card.title} detail={card.detail} enabled={card.enabled} onClick={card.onClick} className={card.className} icon={card.icon} />)}</section>{visibleCards.length === 0 && <section className="empty-state"><h2>Você não tem acesso a este módulo.</h2><p>Solicite permissão ao admin.</p></section>}</section>;
 }
 
 type ParkingTab = "search" | "register";
@@ -5036,8 +5107,8 @@ function parseDateOnly(value: string) {
   return Number.isFinite(date.getTime()) ? date : null;
 }
 
-function SecurityGuardsScreen({ onBack, onLogout, onOpenGuard, onOpenPayment, showPayment }: { onBack: () => void; onLogout: () => void; onOpenGuard: (guardName: GuardName) => void; onOpenPayment: () => void; showPayment: boolean }) {
-  return <section className="screen"><TopBar title="Guardas" subtitle="Selecione o guarda" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}><AppIcon name="back" size="sm" className="action-icon" />Voltar para Segurança</button><GuardSyncDiagnosticPanel /><section className="admin-grid security-grid"><TodayDutyCard />{guardNames.map((guardName) => <ModuleCard key={guardName} title={guardName} detail="Guarda Santa Maria" enabled onClick={() => onOpenGuard(guardName)} className="security-card" icon="guards" />)}{showPayment && <ModuleCard title="Fechamento / Pagamento" detail="Conferência dos plantões" enabled onClick={onOpenPayment} className="security-card" icon="payment" />}</section></section>;
+function SecurityGuardsScreen({ isAdmin, onBack, onLogout, onOpenGuard, onOpenPayment, showPayment }: { isAdmin: boolean; onBack: () => void; onLogout: () => void; onOpenGuard: (guardName: GuardName) => void; onOpenPayment: () => void; showPayment: boolean }) {
+  return <section className="screen"><TopBar title="Guardas" subtitle="Selecione o guarda" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}><AppIcon name="back" size="sm" className="action-icon" />Voltar para Segurança</button>{isAdmin && <GuardSyncDiagnosticPanel />}<section className="admin-grid security-grid"><TodayDutyCard />{guardNames.map((guardName) => <ModuleCard key={guardName} title={guardName} detail="Guarda Santa Maria" enabled onClick={() => onOpenGuard(guardName)} className="security-card" icon="guards" />)}{showPayment && <ModuleCard title="Fechamento / Pagamento" detail="Conferência dos plantões" enabled onClick={onOpenPayment} className="security-card" icon="payment" />}</section></section>;
 }
 
 function SecurityGuardDetailScreen({ guardLocalId, guardName, onBack, onLogout }: { guardLocalId: GuardId; guardName: GuardName; onBack: () => void; onLogout: () => void }) {
@@ -5049,13 +5120,14 @@ function SecurityGuardDetailScreen({ guardLocalId, guardName, onBack, onLogout }
   return <section className="screen"><ProfileHero name={guardName} role="Guarda Santa Maria" department="Segurança" subtitle="Escala de horário" actions={<><button className="ghost-button" type="button" onClick={onBack}>Voltar para Guardas</button><button className="logout-button" type="button" onClick={onLogout}>Sair</button></>} /><GuardShiftPanel guardLocalId={guardLocalId} guardName={guardName} todayShift={todayShift} nextShift={nextShift} canManage={false} showTechnicalSync /><section className="shift-section">{summary ? <ShiftCard shift={summary.shift} label={summary.label} featured /> : <article className="shift-card featured"><span>ESCALA</span><strong>Sem próximo plantão lançado</strong><p>Atualize a escala do mês.</p></article>}<h2>Próximos plantões</h2><div className="shift-list">{upcomingShifts.length > 0 ? upcomingShifts.map((shift) => <ShiftCard key={`${shift.startDate}-${shift.startTime}-${shift.endDate}-${shift.endTime}`} shift={shift} />) : <article className="shift-card"><strong>Sem próximos plantões</strong><p>Atualize a escala do mês.</p></article>}</div></section></section>;
 }
 
-function GuardUserScreen({ guardLocalId, guardName, onLogout }: { guardLocalId: GuardId; guardName: GuardName; onLogout: () => void }) {
+function GuardUserScreen({ guardLocalId, guardName, permissions, onOpenParking, onLogout }: { guardLocalId: GuardId; guardName: GuardName; permissions: UserPermission[]; onOpenParking: () => void; onLogout: () => void }) {
   const summary = getGuardSummaryShift(guardName);
   const upcomingShifts = getUpcomingGuardShifts(guardName);
   const todayShift = getGuardTodayShift(guardName);
   const nextShift = getNextGuardFutureShift(guardName);
+  const canParkingSearch = permissions.includes("estacionamento-consulta") || permissions.includes("estacionamento-cadastro") || permissions.includes("painel-admin");
 
-  return <section className="screen"><ProfileHero name={guardName} role="Guarda Santa Maria" department="Segurança" subtitle="Escala de horário" actions={<button className="logout-button" type="button" onClick={onLogout}>Sair</button>} /><GuardShiftPanel guardLocalId={guardLocalId} guardName={guardName} todayShift={todayShift} nextShift={nextShift} canManage /><section className="shift-section">{summary ? <ShiftCard shift={summary.shift} label={summary.label} featured /> : <article className="shift-card featured"><span>ESCALA</span><strong>Sem próximo plantão lançado</strong><p>Atualize a escala do mês.</p></article>}<h2>Próximos plantões</h2><div className="shift-list">{upcomingShifts.length > 0 ? upcomingShifts.map((shift) => <ShiftCard key={`${shift.startDate}-${shift.startTime}-${shift.endDate}-${shift.endTime}`} shift={shift} />) : <article className="shift-card"><strong>Sem próximos plantões</strong><p>Atualize a escala do mês.</p></article>}</div></section></section>;
+  return <section className="screen"><ProfileHero name={guardName} role="Guarda Santa Maria" department="Segurança" subtitle="Escala de horário" actions={<button className="logout-button" type="button" onClick={onLogout}>Sair</button>} /><GuardShiftPanel guardLocalId={guardLocalId} guardName={guardName} todayShift={todayShift} nextShift={nextShift} canManage /><section className="admin-grid security-grid guard-access-grid" aria-label="Acessos do guarda"><ModuleCard title="Rondas / QR Code" detail="Registrar pontos durante o serviço ativo" enabled className="security-card" icon="qr" />{canParkingSearch && <ModuleCard title="Estacionamento" detail="Pesquisar veículo no pátio" enabled onClick={onOpenParking} className="security-card" icon="parking" />}</section><section className="shift-section">{summary ? <ShiftCard shift={summary.shift} label={summary.label} featured /> : <article className="shift-card featured"><span>ESCALA</span><strong>Sem próximo plantão lançado</strong><p>Atualize a escala do mês.</p></article>}<h2>Próximos plantões</h2><div className="shift-list">{upcomingShifts.length > 0 ? upcomingShifts.map((shift) => <ShiftCard key={`${shift.startDate}-${shift.startTime}-${shift.endDate}-${shift.endTime}`} shift={shift} />) : <article className="shift-card"><strong>Sem próximos plantões</strong><p>Atualize a escala do mês.</p></article>}</div></section></section>;
 }
 
 function TodayDutyCard() {
@@ -5076,6 +5148,7 @@ function CleaningDashboardScreen({ newOrdersCount, permissions, offlinePendingCo
   const canStock = permissions.includes("estoque");
   const canStockExit = permissions.includes("saida-estoque");
   const canReports = permissions.includes("relatorios");
+  const canAdmin = permissions.includes("painel-admin");
   const cards: SectorModuleCard[] = [
     { key: "orders", title: "Pedidos Sinval", detail: newOrdersCount > 0 ? `${newOrdersCount} pedido(s) pendente(s)` : "Nenhum pedido pendente", enabled: canCleaning, onClick: onOpenOrders, attention: newOrdersCount > 0 ? "Verificar agora" : undefined, icon: "cleaning" },
     { key: "stock-exit", title: "Saída de Produto", detail: "Bipar retirada do estoque", enabled: canStockExit, onClick: onOpenStockExit, icon: "stock" },
@@ -5084,11 +5157,12 @@ function CleaningDashboardScreen({ newOrdersCount, permissions, offlinePendingCo
     { key: "stock-history", title: "Histórico de Saídas", detail: "Quem usou, quando e quanto", enabled: canStock, onClick: onOpenStockHistory, icon: "reports" },
     { key: "neia-history", title: "Histórico Neia", detail: "Todos os pedidos feitos pela Neia", enabled: canCleaning, onClick: onOpenNeiaHistory, icon: "reports" },
     { key: "order-history", title: "Histórico / Auditoria", detail: "Concluídos e excluídos", enabled: canReports, onClick: onOpenOrderHistory, icon: "reports" },
-    { key: "profiles", title: "Perfis da equipe", detail: "Acessar telas da Neia, Selma e Helena", enabled: canCleaning, onClick: onOpenProfiles, icon: "users" },
-    { key: "prepare-real-use", title: "Preparar Limpeza para uso real", detail: "Zerar historicos de teste sem apagar produtos", enabled: permissions.includes("painel-admin"), onClick: onPrepareCleaning, icon: "settings" },
+    { key: "profiles", title: "Perfis da equipe", detail: "Acessar telas da Neia, Selma e Helena", enabled: canAdmin, onClick: onOpenProfiles, icon: "users" },
+    { key: "prepare-real-use", title: "Preparar Limpeza para uso real", detail: "Zerar historicos de teste sem apagar produtos", enabled: canAdmin, onClick: onPrepareCleaning, icon: "settings" },
   ];
+  const visibleCards = cards.filter((card) => card.enabled);
 
-  return <section className="screen"><TopBar title="Gestão de Limpeza" subtitle="Neia, Selma, Helena, pedidos, estoque e auditoria" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}><AppIcon name="back" size="sm" className="action-icon" />Voltar</button><OfflinePendingNotice count={offlinePendingCount} syncing={offlineSyncing} onSync={onSyncOffline} />{canCleaning && newOrdersCount > 0 && <button className="alert-banner cleaning-alert-banner" type="button" onClick={onOpenOrders}><AppIcon name="warning" size="sm" className="action-icon" />Pedido novo da Neia — precisa de atenção</button>}<section className="admin-grid cleaning-dashboard-grid">{cards.map((card) => <ModuleCard key={card.key} title={card.title} detail={card.detail} enabled={card.enabled} onClick={card.onClick} className="cleaning-control-card" attention={card.attention} icon={card.icon} />)}</section></section>;
+  return <section className="screen"><TopBar title="Gestão de Limpeza" subtitle="Neia, Selma, Helena, pedidos, estoque e auditoria" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}><AppIcon name="back" size="sm" className="action-icon" />Voltar</button><OfflinePendingNotice count={offlinePendingCount} syncing={offlineSyncing} onSync={onSyncOffline} />{canCleaning && newOrdersCount > 0 && <button className="alert-banner cleaning-alert-banner" type="button" onClick={onOpenOrders}><AppIcon name="warning" size="sm" className="action-icon" />Pedido novo da Neia — precisa de atenção</button>}<section className="admin-grid cleaning-dashboard-grid">{visibleCards.map((card) => <ModuleCard key={card.key} title={card.title} detail={card.detail} enabled={card.enabled} onClick={card.onClick} className="cleaning-control-card" attention={card.attention} icon={card.icon} />)}</section>{visibleCards.length === 0 && <section className="empty-state"><h2>Você não tem acesso a este módulo.</h2><p>Solicite permissão ao admin.</p></section>}</section>;
 }
 
 function ProfilesScreen({ profiles, notice, onBack, onLogout, onPreviewEmployee, onProfilePhotoChange }: { profiles: Record<EmployeeId, EmployeeProfile>; notice: string; onBack: () => void; onLogout: () => void; onPreviewEmployee: (employeeId: EmployeeId) => void; onProfilePhotoChange: (employeeId: EmployeeId, file: File | null) => void }) {
@@ -5259,10 +5333,26 @@ function getManagedUser(users: ManagedUser[], userId: UserRole | null) {
   return users.find((user) => user.id === userId) ?? null;
 }
 
+function getRequiredProfilePermissions(user: ManagedUser): UserPermission[] {
+  if (user.id === "tezzei") return allUserPermissions;
+  if (user.linkedGuardId || normalizeOperationalText(user.jobTitle).includes("GUARDA")) {
+    return ["seguranca", "guardas", "estacionamento-consulta"];
+  }
+  if (user.linkedEmployeeId) {
+    return ["limpeza"];
+  }
+  return [];
+}
+
+function getNormalizedManagedUserPermissions(user: ManagedUser, permissions: UserPermission[]) {
+  if (user.id === "tezzei") return allUserPermissions;
+  return uniquePermissions([...getRequiredProfilePermissions(user), ...permissions]);
+}
+
 function getManagedUserPermissions(userId: UserRole | null, users: ManagedUser[]) {
   if (userId === "tezzei") return allUserPermissions;
   const user = getManagedUser(users, userId);
-  return user?.active ? uniquePermissions(user.permissions) : [];
+  return user?.active ? getNormalizedManagedUserPermissions(user, user.permissions) : [];
 }
 
 function hasManagedUserPermission(userId: UserRole | null, permission: UserPermission, users: ManagedUser[]) {
@@ -5419,7 +5509,7 @@ function mergeManagedUsers(storedUsers: unknown[]) {
       protected: defaultUser.protected,
       system: true,
       active: defaultUser.protected ? true : storedUser?.active ?? defaultUser.active,
-      permissions: defaultUser.id === "tezzei" ? allUserPermissions : storedUser?.permissions ?? defaultUser.permissions,
+      permissions: getNormalizedManagedUserPermissions(defaultUser, storedUser?.permissions ?? defaultUser.permissions),
     });
   });
   const customUsers = validStoredUsers
@@ -5456,7 +5546,7 @@ function normalizeManagedUser(user: ManagedUser): ManagedUser {
     jobTitle: user.jobTitle || userType,
     department: userDepartments.includes(user.department) ? user.department : "Administração",
     active: Boolean(user.active),
-    permissions: user.id === "tezzei" ? allUserPermissions : uniquePermissions(Array.isArray(user.permissions) ? user.permissions : []),
+    permissions: getNormalizedManagedUserPermissions(user, Array.isArray(user.permissions) ? user.permissions : []),
     createdAt: user.createdAt || defaultCreatedAt,
     updatedAt: user.updatedAt || user.createdAt || defaultCreatedAt,
   };
