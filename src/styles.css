@@ -207,6 +207,47 @@ select:disabled {
   padding: 12px 16px;
   font-weight: 900;
   line-height: 1.15;
+  text-align: center;
+  touch-action: manipulation;
+}
+
+.scan-button,
+.photo-button {
+  position: relative;
+  min-height: 52px;
+  border: 1px solid #fed7aa;
+  border-radius: 8px;
+  padding: 12px 16px;
+  color: var(--orange-dark);
+  text-align: center;
+  background: #fff7ed;
+  cursor: pointer;
+  font-weight: 900;
+  line-height: 1.15;
+  touch-action: manipulation;
+}
+
+.scan-button:focus-within,
+.photo-button:focus-within {
+  border-color: var(--orange);
+  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.18);
+}
+
+.scan-button input,
+.photo-button input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+button:focus-visible,
+.scan-button:focus-within,
+.photo-button:focus-within {
+  outline: 3px solid rgba(249, 115, 22, 0.28);
+  outline-offset: 3px;
 }
 
 .primary-button {
@@ -1546,6 +1587,11 @@ select:disabled {
   font-weight: 950;
   letter-spacing: 0;
   text-transform: uppercase;
+}
+
+.parking-search-form input::placeholder {
+  font-size: 0.94rem;
+  font-weight: 850;
 }
 
 .parking-search-form .wide-button {
@@ -3226,17 +3272,66 @@ select:disabled {
 
 @media (max-width: 720px) {
   .screen {
-    padding-inline: 12px;
+    padding: 14px 12px 82px;
+  }
+
+  h1 {
+    font-size: 1.55rem;
+  }
+
+  h2 {
+    font-size: 1.12rem;
+  }
+
+  input,
+  textarea,
+  select {
+    min-height: 52px;
+    padding: 12px;
+  }
+
+  .primary-button,
+  .secondary-button,
+  .ghost-button,
+  .danger-button,
+  .success-button,
+  .logout-button,
+  .alert-banner,
+  .scan-button,
+  .photo-button {
+    min-height: 52px;
+    padding: 12px 14px;
   }
 
   .top-bar {
     align-items: stretch;
     flex-direction: column;
+    gap: 12px;
+    margin-bottom: 14px;
+    padding: 14px;
+  }
+
+  .top-bar h1 {
+    font-size: 1.42rem;
+    line-height: 1.12;
+    overflow-wrap: anywhere;
+  }
+
+  .top-bar p {
+    font-size: 0.88rem;
+    line-height: 1.32;
   }
 
   .profile-hero {
     grid-template-columns: 1fr;
     align-items: stretch;
+    gap: 12px;
+    margin-bottom: 14px;
+    padding: 14px;
+  }
+
+  .profile-hero-copy h1 {
+    font-size: 1.45rem;
   }
 
   .profile-actions,
@@ -3259,6 +3354,40 @@ select:disabled {
   .admin-grid,
   .button-grid {
     grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .info-card,
+  .admin-card {
+    min-height: auto;
+    padding: 14px;
+  }
+
+  .module-card.with-icon {
+    grid-template-columns: 40px minmax(0, 1fr);
+    align-items: center;
+    column-gap: 12px;
+  }
+
+  .module-icon-circle {
+    width: 40px;
+    height: 40px;
+  }
+
+  .module-card-title {
+    font-size: 0.86rem;
+  }
+
+  .module-card-copy strong {
+    font-size: 0.98rem;
+    line-height: 1.28;
+    overflow-wrap: anywhere;
+  }
+
+  .access-pill,
+  .attention-pill {
+    padding: 5px 8px;
+    font-size: 0.74rem;
   }
 
   .users-layout,
@@ -3281,6 +3410,139 @@ select:disabled {
   .parking-photo-grid,
   .vehicle-result-grid {
     grid-template-columns: 1fr;
+  }
+
+  .monitoring-tabs {
+    gap: 7px;
+  }
+
+  .monitoring-tabs button {
+    min-height: 52px;
+    padding: 10px;
+    font-size: 0.88rem;
+    line-height: 1.16;
+  }
+
+  .dialog-backdrop {
+    align-items: start;
+    place-items: start center;
+    overflow-y: auto;
+    padding: 8px;
+  }
+
+  .dialog {
+    width: 100%;
+    max-height: calc(100dvh - 16px);
+    overflow-y: auto;
+    padding: 14px;
+  }
+
+  .plate-capture-guide-dialog,
+  .plate-photo-dialog,
+  .vehicle-result-dialog,
+  .vehicle-search-results-dialog,
+  .qr-reader-dialog {
+    gap: 12px;
+    width: 100%;
+    max-height: calc(100dvh - 16px);
+  }
+
+  .plate-capture-frame {
+    min-height: 78px;
+    max-height: 118px;
+  }
+
+  .plate-capture-tips {
+    gap: 6px;
+    padding: 10px 12px 10px 28px;
+    font-size: 0.86rem;
+  }
+
+  .plate-photo-dialog .vehicle-photo-preview {
+    min-height: 150px;
+    max-height: 28dvh;
+  }
+
+  .plate-photo-search-form {
+    gap: 9px;
+    margin: 0;
+    padding: 12px;
+  }
+
+  .plate-photo-search-form input {
+    min-height: 60px;
+    font-size: 1.12rem;
+  }
+
+  .plate-photo-actions {
+    gap: 8px;
+  }
+
+  .parking-search-panel,
+  .parking-register-panel,
+  .parking-register-form {
+    gap: 10px;
+  }
+
+  .parking-photo-button {
+    min-height: 68px;
+    font-size: 1rem;
+  }
+
+  .parking-search-form {
+    margin: 10px 0;
+    padding: 12px;
+  }
+
+  .parking-search-form input {
+    min-height: 60px;
+    font-size: 1.08rem;
+  }
+
+  .parking-search-form input::placeholder {
+    font-size: clamp(0.78rem, 3.6vw, 0.9rem);
+  }
+
+  .parking-search-form .wide-button {
+    min-height: 60px;
+  }
+
+  .parking-recent-item {
+    align-items: flex-start;
+    flex-direction: column;
+    justify-content: center;
+    min-height: 58px;
+  }
+
+  .parking-recent-item span {
+    text-align: left;
+  }
+
+  .vehicle-status-hero {
+    padding: 14px;
+  }
+
+  .vehicle-status-hero strong {
+    font-size: 1.42rem;
+    overflow-wrap: anywhere;
+  }
+
+  .vehicle-status-pill {
+    max-width: 100%;
+    white-space: normal;
+  }
+
+  .vehicle-search-result-item {
+    min-height: auto;
+    padding: 11px;
+  }
+
+  .vehicle-result-field {
+    padding: 9px;
+  }
+
+  .vehicle-photo-preview {
+    min-height: 136px;
   }
 
   .users-sync-panel {
@@ -3332,6 +3594,10 @@ select:disabled {
 
   .payment-mini-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .payment-message-card textarea {
+    min-height: 240px;
   }
 
   .payment-history-card label {
@@ -3421,5 +3687,161 @@ select:disabled {
   .inventory-edit-button {
     grid-column: 1 / -1;
     width: 100%;
+  }
+}
+
+@media (max-width: 430px) {
+  .screen {
+    padding-inline: 10px;
+  }
+
+  .login-screen {
+    gap: 18px;
+    min-height: calc(100vh - 44px);
+  }
+
+  .brand-mark {
+    width: 68px;
+    height: 68px;
+    font-size: 1.25rem;
+  }
+
+  .login-form,
+  .manual-form,
+  .dialog,
+  .empty-state {
+    gap: 12px;
+    padding: 14px;
+  }
+
+  .module-card.with-icon {
+    grid-template-columns: 38px minmax(0, 1fr);
+    column-gap: 10px;
+  }
+
+  .module-icon-circle {
+    width: 38px;
+    height: 38px;
+  }
+
+  .module-card-copy {
+    gap: 5px;
+  }
+
+  .module-card-copy strong {
+    font-size: 0.95rem;
+  }
+
+  .monitoring-overview-grid,
+  .monitoring-compact-grid,
+  .shift-summary-grid,
+  .payment-report-grid,
+  .payment-mini-grid {
+    gap: 7px;
+  }
+
+  .monitoring-overview-card,
+  .monitoring-card,
+  .payment-report-card,
+  .payment-profile-card,
+  .payment-guard-card,
+  .payment-history-card {
+    padding: 10px;
+  }
+
+  .plate-capture-frame {
+    min-height: 72px;
+  }
+
+  .plate-capture-frame span {
+    padding: 7px 10px;
+    font-size: 0.84rem;
+  }
+
+  .plate-photo-dialog .vehicle-photo-preview {
+    min-height: 132px;
+  }
+
+  .vehicle-status-hero {
+    gap: 4px;
+    text-align: left;
+  }
+
+  .vehicle-result-head {
+    gap: 8px;
+  }
+
+  .vehicle-result-head h2 {
+    font-size: 1.35rem;
+  }
+
+  .payment-extra-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .payment-extra-head .secondary-button {
+    width: 100%;
+  }
+}
+
+@media (max-width: 380px) {
+  .screen {
+    padding-inline: 8px;
+  }
+
+  .top-bar,
+  .profile-hero,
+  .info-card,
+  .admin-card,
+  .order-card {
+    padding: 12px;
+  }
+
+  .monitoring-overview-grid,
+  .monitoring-compact-grid,
+  .shift-summary-grid,
+  .payment-report-grid,
+  .payment-mini-grid,
+  .payment-profile-status-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .module-card.with-icon {
+    grid-template-columns: 36px minmax(0, 1fr);
+  }
+
+  .module-icon-circle {
+    width: 36px;
+    height: 36px;
+  }
+
+  .primary-button,
+  .secondary-button,
+  .ghost-button,
+  .danger-button,
+  .success-button,
+  .logout-button,
+  .alert-banner,
+  .scan-button,
+  .photo-button {
+    min-height: 54px;
+    padding-inline: 12px;
+  }
+
+  .parking-photo-button {
+    min-height: 70px;
+  }
+
+  .vehicle-result-field span {
+    font-size: 0.72rem;
+  }
+
+  .vehicle-result-field strong {
+    font-size: 0.92rem;
+  }
+
+  .plate-capture-tips {
+    padding-left: 24px;
   }
 }
