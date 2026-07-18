@@ -2520,7 +2520,9 @@ function SecurityParkingScreen({ permissions, isAdmin, onBack, onLogout }: { per
   const [loading, setLoading] = useState(true);
   const [searchPlate, setSearchPlate] = useState("");
   const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const platePhotoFileInputRef = useRef<HTMLInputElement | null>(null);
   const [capturedPlatePhoto, setCapturedPlatePhoto] = useState("");
+  const [plateCaptureGuideOpen, setPlateCaptureGuideOpen] = useState(false);
   const [platePhotoDialogOpen, setPlatePhotoDialogOpen] = useState(false);
   const [searchMessage, setSearchMessage] = useState("");
   const [searchedPlate, setSearchedPlate] = useState("");
@@ -2580,11 +2582,27 @@ function SecurityParkingScreen({ permissions, isAdmin, onBack, onLogout }: { per
     try {
       const photoData = await imageFileToDataUrl(file);
       setCapturedPlatePhoto(photoData);
+      setPlateCaptureGuideOpen(false);
       setPlatePhotoDialogOpen(true);
       setSearchMessage("Foto capturada. Confira a placa para pesquisar.");
     } catch {
       setSearchMessage("Não foi possível salvar a foto da placa. Digite a placa manualmente.");
     }
+  }
+
+  function openPlateCaptureGuide() {
+    setPlateCaptureGuideOpen(true);
+  }
+
+  function requestPlatePhotoCapture() {
+    setPlateCaptureGuideOpen(false);
+    platePhotoFileInputRef.current?.click();
+  }
+
+  function retakePlatePhoto() {
+    setCapturedPlatePhoto("");
+    setPlatePhotoDialogOpen(false);
+    requestPlatePhotoCapture();
   }
 
   async function handleDraftPhoto(file: File | null, field: "carPhotoData" | "platePhotoData") {
@@ -2690,6 +2708,7 @@ function SecurityParkingScreen({ permissions, isAdmin, onBack, onLogout }: { per
     setSearchPlate("");
     setSearchMessage("");
     setCapturedPlatePhoto("");
+    setPlateCaptureGuideOpen(false);
     setPlatePhotoDialogOpen(false);
     setActiveTab("search");
     focusParkingSearchInput();
@@ -2764,10 +2783,8 @@ function SecurityParkingScreen({ permissions, isAdmin, onBack, onLogout }: { per
 
       {activeTab === "search" && (
         <section className="parking-search-panel">
-          <label className="scan-button parking-photo-button">
-            Tirar foto da placa
-            <input type="file" accept="image/*" capture="environment" onChange={(event) => { void handlePlatePhoto(event.target.files?.[0] ?? null); event.target.value = ""; }} />
-          </label>
+          <button className="scan-button parking-photo-button" type="button" onClick={openPlateCaptureGuide}>Tirar foto da placa</button>
+          <input ref={platePhotoFileInputRef} className="parking-photo-input" type="file" accept="image/*" capture="environment" onChange={(event) => { void handlePlatePhoto(event.target.files?.[0] ?? null); event.target.value = ""; }} />
           {capturedPlatePhoto && <VehiclePhotoPreview label="Foto da placa capturada" photoData={capturedPlatePhoto} />}
           <section className="manual-form parking-search-form">
             <label>
@@ -2864,12 +2881,20 @@ function SecurityParkingScreen({ permissions, isAdmin, onBack, onLogout }: { per
         />
       )}
 
+      {plateCaptureGuideOpen && (
+        <PlateCaptureGuideDialog
+          onClose={() => setPlateCaptureGuideOpen(false)}
+          onCapture={requestPlatePhotoCapture}
+        />
+      )}
+
       {platePhotoDialogOpen && capturedPlatePhoto && (
         <PlatePhotoSearchDialog
           photoData={capturedPlatePhoto}
           initialPlate={searchPlate}
           knownPlates={knownParkingPlates}
           onClose={() => setPlatePhotoDialogOpen(false)}
+          onRetake={retakePlatePhoto}
           onSearch={(plate) => searchCapturedPlatePhoto(plate)}
         />
       )}
@@ -2877,7 +2902,34 @@ function SecurityParkingScreen({ permissions, isAdmin, onBack, onLogout }: { per
   );
 }
 
-function PlatePhotoSearchDialog({ photoData, initialPlate, knownPlates, onClose, onSearch }: { photoData: string; initialPlate: string; knownPlates: string[]; onClose: () => void; onSearch: (plate: string) => Promise<void> }) {
+function PlateCaptureGuideDialog({ onClose, onCapture }: { onClose: () => void; onCapture: () => void }) {
+  return (
+    <div className="dialog-backdrop" role="presentation">
+      <section className="dialog plate-capture-guide-dialog" role="dialog" aria-modal="true" aria-label="Orientação para fotografar placa">
+        <div className="plate-photo-dialog-head">
+          <p className="card-kicker">Estacionamento</p>
+          <h2>Foto da placa</h2>
+          <p>Encaixe a placa dentro da moldura.</p>
+        </div>
+        <div className="plate-capture-frame" aria-label="Moldura para enquadrar a placa">
+          <span>Encaixe a placa aqui</span>
+        </div>
+        <ul className="plate-capture-tips">
+          <li>Aproxime o celular.</li>
+          <li>Evite reflexo.</li>
+          <li>Mantenha a placa reta.</li>
+          <li>Prefira foto horizontal se possível.</li>
+        </ul>
+        <div className="button-grid">
+          <button className="primary-button" type="button" onClick={onCapture}>Abrir câmera</button>
+          <button className="ghost-button" type="button" onClick={onClose}>Cancelar</button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function PlatePhotoSearchDialog({ photoData, initialPlate, knownPlates, onClose, onRetake, onSearch }: { photoData: string; initialPlate: string; knownPlates: string[]; onClose: () => void; onRetake: () => void; onSearch: (plate: string) => Promise<void> }) {
   const plateInputRef = useRef<HTMLInputElement | null>(null);
   const plateEditedRef = useRef(false);
   const [platePhotoDraftPlate, setPlatePhotoDraftPlate] = useState(initialPlate.trim().toUpperCase());
@@ -2912,10 +2964,10 @@ function PlatePhotoSearchDialog({ photoData, initialPlate, knownPlates, onClose,
           }, 40);
           return;
         }
-        setPlateOcrMessage(result.source === "ambiguous" ? "Encontrei mais de uma possibilidade. Digite a placa vista na foto." : "Não consegui identificar com segurança. Digite a placa vista na foto.");
+        setPlateOcrMessage(result.source === "ambiguous" ? "Encontrei mais de uma possibilidade. Digite a placa vista na foto." : "Não consegui identificar com segurança. Digite a placa vista na foto ou refaça a foto mais próxima.");
       })
       .catch(() => {
-        if (active) setPlateOcrMessage("Não consegui identificar com segurança. Digite a placa vista na foto.");
+        if (active) setPlateOcrMessage("Não consegui identificar com segurança. Digite a placa vista na foto ou refaça a foto mais próxima.");
       })
       .finally(() => {
         if (active) setPlateOcrRunning(false);
@@ -2949,6 +3001,7 @@ function PlatePhotoSearchDialog({ photoData, initialPlate, knownPlates, onClose,
           <h2>Confira a placa</h2>
         </div>
         <VehiclePhotoPreview label="Foto da placa capturada" photoData={photoData} />
+        <p className="plate-photo-caption">Quanto mais próxima e reta estiver a placa, melhor a leitura.</p>
         <section className="manual-form plate-photo-search-form">
           <label>
             Confira ou digite a placa
@@ -2975,7 +3028,10 @@ function PlatePhotoSearchDialog({ photoData, initialPlate, knownPlates, onClose,
           </label>
           <button className="primary-button plate-photo-search-button" type="button" disabled={searching} onClick={() => { void submitPlateSearch(); }}>{searching ? "Pesquisando..." : "Pesquisar veículo"}</button>
           {plateOcrMessage && <p className="notice-message">{plateOcrMessage}</p>}
-          <button className="ghost-button plate-photo-cancel-button" type="button" disabled={searching} onClick={onClose}>Cancelar</button>
+          <div className="button-grid plate-photo-actions">
+            <button className="secondary-button" type="button" disabled={searching} onClick={onRetake}>Refazer foto</button>
+            <button className="ghost-button plate-photo-cancel-button" type="button" disabled={searching} onClick={onClose}>Cancelar</button>
+          </div>
         </section>
       </section>
     </div>
