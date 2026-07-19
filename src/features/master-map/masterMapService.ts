@@ -1,6 +1,6 @@
 import { getSupabaseAccessToken, SUPABASE_KEY_HEADER, SUPABASE_PUBLIC_KEY, SUPABASE_URL, supabaseConfigured } from "../../modules/security/services/supabaseClient";
 import { defaultMasterMapEdges, defaultMasterMapNodes, defaultMasterMaps } from "./masterMapDefaults";
-import type { MasterMap, MasterMapData, MasterMapEdge, MasterMapNode, MasterMapRelationType, MasterMapStatus } from "./masterMapTypes";
+import type { MasterMap, MasterMapData, MasterMapDestinationType, MasterMapEdge, MasterMapNode, MasterMapRelationType, MasterMapStatus } from "./masterMapTypes";
 
 const MASTER_MAP_CACHE_KEY = "hub-sm-master-map-cache";
 const MASTER_MAP_REQUEST_TIMEOUT_MS = 8000;
@@ -27,6 +27,10 @@ type MasterMapNodeRow = {
   responsible: string | null;
   next_action: string | null;
   target_screen: MasterMapNode["targetScreen"] | null;
+  destination_type: MasterMapDestinationType | null;
+  dynamic_page_id: string | null;
+  external_url: string | null;
+  planned_module_key: string | null;
   position_x: number | string | null;
   position_y: number | string | null;
   is_collapsed: boolean | null;
@@ -49,7 +53,7 @@ type MasterMapEdgeRow = {
   updated_at: string;
 };
 
-class MasterMapRemoteError extends Error {
+export class MasterMapRemoteError extends Error {
   constructor(
     public readonly status: number,
     public readonly details: string,
@@ -163,6 +167,10 @@ export function createEmptyMasterMapNode(mapId: string, positionX: number, posit
     responsible: "",
     nextAction: "",
     targetScreen: undefined,
+    destinationType: "NONE",
+    dynamicPageId: undefined,
+    externalUrl: undefined,
+    plannedModuleKey: undefined,
     positionX,
     positionY,
     isCollapsed: false,
@@ -188,7 +196,7 @@ export function createMasterMapEdgeDraft(mapId: string, sourceNodeId: string, ta
   };
 }
 
-function masterMapRequest(path: string, init: RequestInit = {}) {
+export function masterMapRequest(path: string, init: RequestInit = {}) {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), MASTER_MAP_REQUEST_TIMEOUT_MS);
   const accessToken = getSupabaseAccessToken();
@@ -213,7 +221,7 @@ function masterMapRequest(path: string, init: RequestInit = {}) {
   });
 }
 
-function ensureRemoteWriteReady() {
+export function ensureRemoteWriteReady() {
   if (!supabaseConfigured) throw new Error("Supabase não configurado para salvar o Mapa Mestre.");
   if (!getSupabaseAccessToken()) throw new Error("Sessão Supabase Auth de Admin não encontrada para salvar o Mapa Mestre.");
 }
@@ -237,7 +245,11 @@ function getLocalMasterMapCache(): Pick<MasterMapData, "maps" | "nodes" | "edges
   try {
     const parsed = JSON.parse(raw) as Pick<MasterMapData, "maps" | "nodes" | "edges">;
     if (!Array.isArray(parsed.maps) || !Array.isArray(parsed.nodes) || !Array.isArray(parsed.edges)) return null;
-    return parsed;
+    return {
+      maps: parsed.maps,
+      nodes: parsed.nodes.map(normalizeMasterMapNode),
+      edges: parsed.edges,
+    };
   } catch {
     return null;
   }
@@ -268,6 +280,10 @@ function mapMasterMapNodeRow(row: MasterMapNodeRow): MasterMapNode {
     responsible: row.responsible ?? undefined,
     nextAction: row.next_action ?? undefined,
     targetScreen: row.target_screen ?? undefined,
+    destinationType: getNodeDestinationType(row),
+    dynamicPageId: row.dynamic_page_id ?? undefined,
+    externalUrl: row.external_url ?? undefined,
+    plannedModuleKey: row.planned_module_key ?? undefined,
     positionX: toNumber(row.position_x),
     positionY: toNumber(row.position_y),
     isCollapsed: row.is_collapsed ?? false,
@@ -306,6 +322,10 @@ function masterMapNodeToRow(node: MasterMapNode) {
     responsible: nullableText(node.responsible),
     next_action: nullableText(node.nextAction),
     target_screen: nullableText(node.targetScreen),
+    destination_type: node.destinationType ?? (node.targetScreen ? "EXISTING_SCREEN" : "NONE"),
+    dynamic_page_id: nullableText(node.dynamicPageId),
+    external_url: nullableText(node.externalUrl),
+    planned_module_key: nullableText(node.plannedModuleKey),
     position_x: node.positionX,
     position_y: node.positionY,
     is_collapsed: node.isCollapsed,
@@ -335,6 +355,22 @@ function isMasterMapRemoteProtectedError(error: unknown) {
     || details.includes("permission denied")
     || details.includes("row-level security")
     || details.includes("rls");
+}
+
+function normalizeMasterMapNode(node: MasterMapNode): MasterMapNode {
+  return {
+    ...node,
+    destinationType: node.destinationType ?? (node.targetScreen ? "EXISTING_SCREEN" : "NONE"),
+  };
+}
+
+function getNodeDestinationType(row: MasterMapNodeRow): MasterMapDestinationType {
+  if (row.destination_type) return row.destination_type;
+  if (row.dynamic_page_id) return "DYNAMIC_PAGE";
+  if (row.target_screen) return "EXISTING_SCREEN";
+  if (row.external_url) return "EXTERNAL_URL";
+  if (row.planned_module_key) return "PLANNED_MODULE";
+  return "NONE";
 }
 
 function nullableText(value?: string) {

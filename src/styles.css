@@ -1500,6 +1500,158 @@ button:focus-visible,
   place-items: center;
 }
 
+.master-map-page-indicator {
+  width: fit-content;
+  border-radius: 999px;
+  padding: 4px 8px;
+  color: #1d4ed8;
+  background: var(--blue-soft);
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.master-map-create-dialog {
+  width: min(100%, 560px);
+  max-height: min(92vh, 820px);
+  overflow: auto;
+}
+
+.dynamic-page-screen {
+  width: min(100%, 1180px);
+}
+
+.dynamic-page-actions,
+.dynamic-page-section-head,
+.dynamic-page-add-block,
+.dynamic-page-block-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.dynamic-page-actions,
+.dynamic-page-section-head {
+  justify-content: space-between;
+  margin: 14px 0;
+}
+
+.dynamic-page-header-card,
+.dynamic-page-executive-summary,
+.dynamic-page-content,
+.dynamic-page-block-card {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+  padding: 14px;
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow-card);
+}
+
+.dynamic-page-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.dynamic-page-block-head {
+  display: flex;
+  gap: 10px;
+  align-items: start;
+  justify-content: space-between;
+}
+
+.dynamic-page-block-head > div:first-child {
+  flex: 1 1 280px;
+}
+
+.dynamic-page-block-head input {
+  font-size: 1rem;
+  font-weight: 900;
+}
+
+.dynamic-page-block-actions button,
+.dynamic-page-add-block button {
+  min-height: 40px;
+}
+
+.dynamic-page-rich-text {
+  display: grid;
+  gap: 8px;
+}
+
+.dynamic-page-editor-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.dynamic-page-editor-toolbar button {
+  min-height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 7px 9px;
+  color: var(--ink);
+  background: #ffffff;
+  font-weight: 900;
+}
+
+.dynamic-page-editor-toolbar button.active {
+  color: #ffffff;
+  border-color: var(--orange);
+  background: var(--orange);
+}
+
+.dynamic-page-rich-text-surface {
+  min-height: 130px;
+  padding: 12px;
+  background: #f8fafc;
+  border: 1px solid #e5eaf1;
+  border-radius: 8px;
+  color: var(--ink);
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.dynamic-page-rich-text-surface:focus {
+  outline: 3px solid rgba(249, 115, 22, 0.18);
+}
+
+.dynamic-page-rich-text-surface p,
+.dynamic-page-rich-text-surface ul,
+.dynamic-page-rich-text-surface ol,
+.dynamic-page-rich-text-surface h3 {
+  margin: 0 0 8px;
+}
+
+.dynamic-page-checklist {
+  display: grid;
+  gap: 8px;
+}
+
+.dynamic-page-checklist-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.dynamic-page-checklist-item input[type="checkbox"],
+.checkbox-label input {
+  width: 20px;
+  height: 20px;
+}
+
+.checkbox-label {
+  display: inline-flex;
+  flex-direction: row;
+  gap: 8px;
+  align-items: center;
+  font-weight: 900;
+}
+
 .empty-state {
   text-align: center;
 }
@@ -4393,7 +4545,13 @@ button:focus-visible,
 
   .master-map-details-head,
   .master-map-details-actions,
-  .master-map-form-grid {
+  .master-map-form-grid,
+  .dynamic-page-actions,
+  .dynamic-page-section-head,
+  .dynamic-page-add-block,
+  .dynamic-page-block-head,
+  .dynamic-page-block-actions,
+  .dynamic-page-form-grid {
     display: grid;
     grid-template-columns: 1fr;
   }
@@ -4401,7 +4559,33 @@ button:focus-visible,
   .master-map-details-actions .primary-button,
   .master-map-details-actions .secondary-button,
   .master-map-details-actions .danger-button,
-  .master-map-details-actions .ghost-button {
+  .master-map-details-actions .ghost-button,
+  .dynamic-page-actions .primary-button,
+  .dynamic-page-actions .secondary-button,
+  .dynamic-page-actions .ghost-button,
+  .dynamic-page-add-block select,
+  .dynamic-page-add-block button,
+  .dynamic-page-block-actions button {
+    width: 100%;
+  }
+
+  .dynamic-page-screen {
+    padding-inline: 10px;
+  }
+
+  .dynamic-page-header-card,
+  .dynamic-page-executive-summary,
+  .dynamic-page-content,
+  .dynamic-page-block-card {
+    padding: 12px;
+  }
+
+  .dynamic-page-checklist-item {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .dynamic-page-checklist-item .ghost-button {
+    grid-column: 1 / -1;
     width: 100%;
   }
 }

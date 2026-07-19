@@ -1,4 +1,5 @@
 import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
+import type { MouseEvent } from "react";
 import { AppIcon } from "../../components/AppIcon";
 import type { MasterMapNode as MasterMapNodeRecord, MasterMapStatus, MasterMapTargetScreen } from "./masterMapTypes";
 
@@ -8,23 +9,43 @@ export type MasterMapNodeData = {
   editMode: boolean;
   onOpenDetails: (nodeId: string) => void;
   onOpenModule: (targetScreen: MasterMapTargetScreen) => void;
+  onOpenDynamicPage: (pageId: string) => void;
+  onOpenExternalUrl: (url: string) => void;
   onToggleCollapse: (nodeId: string) => void;
 };
 
 export type MasterMapFlowNode = Node<MasterMapNodeData, "masterMapNode">;
 
 const statusLabels: Record<MasterMapStatus, string> = {
-  NOT_STARTED: "Não iniciado",
+  NOT_STARTED: "Nao iniciado",
   IN_PROGRESS: "Em desenvolvimento",
-  COMPLETED: "Concluído",
+  COMPLETED: "Concluido",
 };
 
 export function MasterMapNodeCard({ data, selected }: NodeProps<MasterMapFlowNode>) {
-  const { node, childrenCount, editMode, onOpenDetails, onOpenModule, onToggleCollapse } = data;
+  const { node, childrenCount, editMode, onOpenDetails, onOpenModule, onOpenDynamicPage, onOpenExternalUrl, onToggleCollapse } = data;
   const hasChildren = childrenCount > 0;
+  const hasDynamicPage = node.destinationType === "DYNAMIC_PAGE" && Boolean(node.dynamicPageId);
+
+  function handlePrimaryClick() {
+    if (hasDynamicPage && node.dynamicPageId) {
+      onOpenDynamicPage(node.dynamicPageId);
+      return;
+    }
+    onOpenDetails(node.id);
+  }
+
+  function stopNodeAction(event: MouseEvent<HTMLButtonElement>, action: () => void) {
+    event.preventDefault();
+    event.stopPropagation();
+    action();
+  }
 
   return (
-    <article className={`master-map-node master-map-node-${node.status.toLowerCase().replace(/_/g, "-")} ${selected ? "selected" : ""}`}>
+    <article
+      className={`master-map-node master-map-node-${node.status.toLowerCase().replace(/_/g, "-")} ${selected ? "selected" : ""}`}
+      onDoubleClick={handlePrimaryClick}
+    >
       <Handle className="master-map-handle" type="target" position={Position.Left} />
       <div className="master-map-node-head">
         <span className="module-icon-circle" aria-hidden="true">
@@ -36,16 +57,20 @@ export function MasterMapNodeCard({ data, selected }: NodeProps<MasterMapFlowNod
         </span>
       </div>
       <h3>{node.title}</h3>
+      {hasDynamicPage && <span className="master-map-page-indicator">Pagina dinamica</span>}
       {node.description && <p>{node.description}</p>}
       <div className="master-map-node-meta">
         {node.responsible && <span>Resp.: {node.responsible}</span>}
         {hasChildren && <span>{childrenCount} item(ns)</span>}
+        {node.destinationType === "PLANNED_MODULE" && <span>Modulo planejado</span>}
       </div>
-      {node.nextAction && <small className="master-map-next-action">Próxima ação: {node.nextAction}</small>}
-      <div className="master-map-node-actions nodrag">
-        <button className="ghost-button" type="button" onClick={() => onOpenDetails(node.id)}>Detalhes</button>
-        {node.targetScreen && <button className="secondary-button" type="button" onClick={() => onOpenModule(node.targetScreen as MasterMapTargetScreen)}>Abrir módulo</button>}
-        {hasChildren && <button className="ghost-button" type="button" onClick={() => onToggleCollapse(node.id)}>{node.isCollapsed ? "Abrir ramo" : "Fechar ramo"}</button>}
+      {node.nextAction && <small className="master-map-next-action">Proxima acao: {node.nextAction}</small>}
+      <div className="master-map-node-actions nodrag nopan">
+        {hasDynamicPage && node.dynamicPageId && <button className="secondary-button nodrag nopan" type="button" onClick={(event) => stopNodeAction(event, () => onOpenDynamicPage(node.dynamicPageId as string))}>Abrir pagina</button>}
+        <button className="ghost-button nodrag nopan" type="button" onClick={(event) => stopNodeAction(event, () => onOpenDetails(node.id))}>Detalhes</button>
+        {node.destinationType === "EXISTING_SCREEN" && node.targetScreen && <button className="secondary-button nodrag nopan" type="button" onClick={(event) => stopNodeAction(event, () => onOpenModule(node.targetScreen as MasterMapTargetScreen))}>Abrir modulo</button>}
+        {node.destinationType === "EXTERNAL_URL" && node.externalUrl && <button className="secondary-button nodrag nopan" type="button" onClick={(event) => stopNodeAction(event, () => onOpenExternalUrl(node.externalUrl as string))}>Abrir link</button>}
+        {hasChildren && <button className="ghost-button nodrag nopan" type="button" onClick={(event) => stopNodeAction(event, () => onToggleCollapse(node.id))}>{node.isCollapsed ? "Abrir ramo" : "Fechar ramo"}</button>}
         {editMode && <span className="master-map-edit-hint">Arraste para mover</span>}
       </div>
       <Handle className="master-map-handle" type="source" position={Position.Right} />

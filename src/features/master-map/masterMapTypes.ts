@@ -34,6 +34,13 @@ export type MasterMapTargetScreen =
   | "system-status"
   | "master-map";
 
+export type MasterMapDestinationType =
+  | "NONE"
+  | "DYNAMIC_PAGE"
+  | "EXISTING_SCREEN"
+  | "EXTERNAL_URL"
+  | "PLANNED_MODULE";
+
 export type MasterMap = {
   id: string;
   name: string;
@@ -69,6 +76,10 @@ export type MasterMapNode = {
   responsible?: string;
   nextAction?: string;
   targetScreen?: MasterMapTargetScreen;
+  destinationType: MasterMapDestinationType;
+  dynamicPageId?: string;
+  externalUrl?: string;
+  plannedModuleKey?: string;
   positionX: number;
   positionY: number;
   isCollapsed: boolean;
