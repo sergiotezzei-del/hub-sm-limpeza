@@ -21,7 +21,8 @@ export type AppIconName =
   | "reports"
   | "qr"
   | "payment"
-  | "settings";
+  | "settings"
+  | "map";
 
 type AppIconSize = "sm" | "md" | "lg" | "xl" | number;
 
@@ -198,6 +199,16 @@ const iconPaths: Record<AppIconName, ReactNode> = {
       <path d="m16.3 16.3 2.1 2.1" />
       <path d="m18.4 5.6-2.1 2.1" />
       <path d="m7.7 16.3-2.1 2.1" />
+    </>
+  ),
+  map: (
+    <>
+      <path d="M4 6.5 9 4l6 2.5 5-2.5v13.5L15 20l-6-2.5L4 20V6.5Z" />
+      <path d="M9 4v13.5" />
+      <path d="M15 6.5V20" />
+      <path d="M6.8 8.8h.01" />
+      <path d="M12 10.5h.01" />
+      <path d="M17.2 9h.01" />
     </>
   ),
 };

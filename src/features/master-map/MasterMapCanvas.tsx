@@ -1,0 +1,158 @@
+import "@xyflow/react/dist/style.css";
+
+import { useEffect, useMemo, useState } from "react";
+import {
+  Background,
+  ConnectionLineType,
+  MarkerType,
+  ReactFlow,
+  type Connection,
+  type Edge,
+  type Node,
+  type ReactFlowInstance,
+  useEdgesState,
+  useNodesState,
+} from "@xyflow/react";
+import { MasterMapNodeCard, type MasterMapFlowNode } from "./MasterMapNode";
+import { getMasterMapChildrenCount, getVisibleMasterMapGraph } from "./masterMapLayout";
+import type { MasterMapEdge, MasterMapNode, MasterMapRelationType, MasterMapTargetScreen } from "./masterMapTypes";
+
+const nodeTypes = {
+  masterMapNode: MasterMapNodeCard,
+};
+
+const relationLabels: Record<MasterMapRelationType, string> = {
+  BELONGS_TO: "Pertence a",
+  DEPENDS_ON: "Depende de",
+  CONNECTS_WITH: "Conecta com",
+  TRIGGERS: "Aciona",
+  INTEGRATES_WITH: "Integra com",
+};
+
+export function MasterMapCanvas({
+  nodes,
+  edges,
+  editMode,
+  selectedNodeId,
+  selectedEdgeId,
+  onInit,
+  onSelectNode,
+  onSelectEdge,
+  onMoveNode,
+  onCreateConnection,
+  onOpenNodeDetails,
+  onOpenModule,
+  onToggleCollapse,
+}: {
+  nodes: MasterMapNode[];
+  edges: MasterMapEdge[];
+  editMode: boolean;
+  selectedNodeId?: string;
+  selectedEdgeId?: string;
+  onInit: (instance: ReactFlowInstance) => void;
+  onSelectNode: (nodeId: string) => void;
+  onSelectEdge: (edgeId: string) => void;
+  onMoveNode: (nodeId: string, positionX: number, positionY: number) => void;
+  onCreateConnection: (sourceNodeId: string, targetNodeId: string) => void;
+  onOpenNodeDetails: (nodeId: string) => void;
+  onOpenModule: (targetScreen: MasterMapTargetScreen) => void;
+  onToggleCollapse: (nodeId: string) => void;
+}) {
+  const visibleGraph = useMemo(() => getVisibleMasterMapGraph(nodes, edges), [nodes, edges]);
+  const [isCompactViewport, setIsCompactViewport] = useState(() => (
+    typeof window !== "undefined" ? window.matchMedia("(max-width: 720px)").matches : false
+  ));
+  const [flowInstance, setFlowInstance] = useState<ReactFlowInstance | null>(null);
+  const fitViewOptions = useMemo(() => ({
+    padding: isCompactViewport ? 0.08 : 0.24,
+    minZoom: isCompactViewport ? 0.5 : 0.25,
+    maxZoom: isCompactViewport ? 0.9 : 1,
+    duration: 220,
+  }), [isCompactViewport]);
+  const flowNodes = useMemo<Node[]>(() => visibleGraph.nodes.map((node) => ({
+    id: node.id,
+    type: "masterMapNode",
+    position: { x: node.positionX, y: node.positionY },
+    selected: node.id === selectedNodeId,
+    data: {
+      node,
+      childrenCount: getMasterMapChildrenCount(node.id, edges),
+      editMode,
+      onOpenDetails: onOpenNodeDetails,
+      onOpenModule,
+      onToggleCollapse,
+    },
+  } satisfies MasterMapFlowNode)), [edges, editMode, onOpenModule, onOpenNodeDetails, onToggleCollapse, selectedNodeId, visibleGraph.nodes]);
+  const flowEdges = useMemo<Edge[]>(() => visibleGraph.edges.map((edge) => ({
+    id: edge.id,
+    source: edge.sourceNodeId,
+    target: edge.targetNodeId,
+    label: edge.label || relationLabels[edge.relationType],
+    type: "smoothstep",
+    selected: edge.id === selectedEdgeId,
+    animated: edge.relationType === "TRIGGERS" || edge.relationType === "INTEGRATES_WITH",
+    markerEnd: { type: MarkerType.ArrowClosed },
+    className: `master-map-edge master-map-edge-${edge.relationType.toLowerCase().replace(/_/g, "-")}`,
+    labelBgPadding: [6, 4],
+    labelBgBorderRadius: 6,
+  })), [selectedEdgeId, visibleGraph.edges]);
+  const [reactFlowNodes, setReactFlowNodes, onNodesChange] = useNodesState(flowNodes);
+  const [reactFlowEdges, setReactFlowEdges, onEdgesChange] = useEdgesState(flowEdges);
+
+  useEffect(() => setReactFlowNodes(flowNodes), [flowNodes, setReactFlowNodes]);
+  useEffect(() => setReactFlowEdges(flowEdges), [flowEdges, setReactFlowEdges]);
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const mediaQuery = window.matchMedia("(max-width: 720px)");
+    const updateViewportMode = () => setIsCompactViewport(mediaQuery.matches);
+    updateViewportMode();
+    mediaQuery.addEventListener("change", updateViewportMode);
+    return () => mediaQuery.removeEventListener("change", updateViewportMode);
+  }, []);
+  useEffect(() => {
+    if (!flowInstance || !visibleGraph.nodes.length) return;
+    window.setTimeout(() => {
+      void flowInstance.fitView(fitViewOptions);
+    }, 80);
+  }, [fitViewOptions, flowInstance, visibleGraph.nodes.length]);
+
+  function handleConnect(connection: Connection) {
+    if (!editMode || !connection.source || !connection.target || connection.source === connection.target) return;
+    onCreateConnection(connection.source, connection.target);
+  }
+
+  function handleInit(instance: ReactFlowInstance) {
+    setFlowInstance(instance);
+    onInit(instance);
+  }
+
+  return (
+    <section className="master-map-canvas" aria-label="Diagrama do Mapa Mestre">
+      <ReactFlow
+        nodes={reactFlowNodes}
+        edges={reactFlowEdges}
+        nodeTypes={nodeTypes}
+        onInit={handleInit}
+        onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
+        onNodeClick={(_, node) => onSelectNode(node.id)}
+        onEdgeClick={(_, edge) => onSelectEdge(edge.id)}
+        onNodeDragStop={(_, node) => onMoveNode(node.id, node.position.x, node.position.y)}
+        onConnect={handleConnect}
+        nodesDraggable={editMode}
+        nodesConnectable={editMode}
+        elementsSelectable
+        panOnDrag
+        zoomOnPinch
+        zoomOnScroll
+        minZoom={isCompactViewport ? 0.5 : 0.25}
+        maxZoom={1.7}
+        connectionLineType={ConnectionLineType.SmoothStep}
+        fitView
+        fitViewOptions={fitViewOptions}
+      >
+        <Background color="#d8dee8" gap={24} size={1} />
+      </ReactFlow>
+    </section>
+  );
+}
