@@ -47,9 +47,10 @@ type DynamicPageScreenProps = {
   onBackToMap: (nodeId?: string) => void;
   onLogout: () => void;
   onNodeSynced: (node: MasterMapNode) => void;
+  onPageSynced?: (page: DynamicPage) => void;
 };
 
-export function DynamicPageScreen({ pageId, canEdit, onBackToMap, onLogout, onNodeSynced }: DynamicPageScreenProps) {
+export function DynamicPageScreen({ pageId, canEdit, onBackToMap, onLogout, onNodeSynced, onPageSynced }: DynamicPageScreenProps) {
   const [page, setPage] = useState<DynamicPage | null>(null);
   const [blocks, setBlocks] = useState<DynamicPageBlock[]>([]);
   const [loading, setLoading] = useState(true);
@@ -146,6 +147,7 @@ export function DynamicPageScreen({ pageId, canEdit, onBackToMap, onLogout, onNo
       setPage(payload.page);
       setBlocks(normalizeBlockPositions(payload.blocks));
       if (payload.node) onNodeSynced(payload.node);
+      onPageSynced?.(payload.page);
       setDirty(false);
       setSaveStatus("saved");
       setMessage("Pagina dinamica salva no Supabase.");

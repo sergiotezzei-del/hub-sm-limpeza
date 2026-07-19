@@ -1,6 +1,6 @@
 import type { MasterMapEdge, MasterMapNode } from "./masterMapTypes";
 
-export function getVisibleMasterMapGraph(nodes: MasterMapNode[], edges: MasterMapEdge[]) {
+export function getVisibleMasterMapGraph(nodes: MasterMapNode[], edges: MasterMapEdge[], forceVisibleNodeIds = new Set<string>()) {
   const activeNodes = nodes.filter((node) => node.isActive);
   const activeEdges = edges.filter((edge) => edge.isActive);
   const childrenByParent = new Map<string, string[]>();
@@ -15,7 +15,7 @@ export function getVisibleMasterMapGraph(nodes: MasterMapNode[], edges: MasterMa
 
   activeNodes.forEach((node) => {
     if (!node.isCollapsed) return;
-    collectDescendants(node.id, childrenByParent, hiddenNodeIds);
+    collectDescendants(node.id, childrenByParent, hiddenNodeIds, forceVisibleNodeIds);
   });
 
   const visibleNodes = activeNodes.filter((node) => !hiddenNodeIds.has(node.id));
@@ -46,10 +46,10 @@ export function getMasterMapNodeDependencies(node: MasterMapNode, nodes: MasterM
     .filter((current): current is MasterMapNode => Boolean(current));
 }
 
-function collectDescendants(nodeId: string, childrenByParent: Map<string, string[]>, hiddenNodeIds: Set<string>) {
+function collectDescendants(nodeId: string, childrenByParent: Map<string, string[]>, hiddenNodeIds: Set<string>, forceVisibleNodeIds: Set<string>) {
   const children = childrenByParent.get(nodeId) ?? [];
   children.forEach((childId) => {
-    hiddenNodeIds.add(childId);
-    collectDescendants(childId, childrenByParent, hiddenNodeIds);
+    if (!forceVisibleNodeIds.has(childId)) hiddenNodeIds.add(childId);
+    collectDescendants(childId, childrenByParent, hiddenNodeIds, forceVisibleNodeIds);
   });
 }

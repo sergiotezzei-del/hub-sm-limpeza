@@ -7,6 +7,8 @@ export type MasterMapNodeData = {
   node: MasterMapNodeRecord;
   childrenCount: number;
   editMode: boolean;
+  dimmed?: boolean;
+  highlighted?: boolean;
   onOpenDetails: (nodeId: string) => void;
   onOpenModule: (targetScreen: MasterMapTargetScreen) => void;
   onOpenDynamicPage: (pageId: string) => void;
@@ -23,7 +25,7 @@ const statusLabels: Record<MasterMapStatus, string> = {
 };
 
 export function MasterMapNodeCard({ data, selected }: NodeProps<MasterMapFlowNode>) {
-  const { node, childrenCount, editMode, onOpenDetails, onOpenModule, onOpenDynamicPage, onOpenExternalUrl, onToggleCollapse } = data;
+  const { node, childrenCount, editMode, dimmed, highlighted, onOpenDetails, onOpenModule, onOpenDynamicPage, onOpenExternalUrl, onToggleCollapse } = data;
   const hasChildren = childrenCount > 0;
   const hasDynamicPage = node.destinationType === "DYNAMIC_PAGE" && Boolean(node.dynamicPageId);
 
@@ -43,7 +45,7 @@ export function MasterMapNodeCard({ data, selected }: NodeProps<MasterMapFlowNod
 
   return (
     <article
-      className={`master-map-node master-map-node-${node.status.toLowerCase().replace(/_/g, "-")} ${selected ? "selected" : ""}`}
+      className={`master-map-node master-map-node-${node.status.toLowerCase().replace(/_/g, "-")} ${selected ? "selected" : ""} ${dimmed ? "dimmed" : ""} ${highlighted ? "highlighted" : ""}`}
       onDoubleClick={handlePrimaryClick}
     >
       <Handle className="master-map-handle" type="target" position={Position.Left} />

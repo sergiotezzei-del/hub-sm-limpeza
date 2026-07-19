@@ -49,6 +49,18 @@ export type DynamicPage = {
   updatedAt: string;
 };
 
+export type DynamicPageSummary = {
+  id: string;
+  mapId: string;
+  nodeId: string;
+  priority: DynamicPagePriority;
+  dueDate?: string;
+  status: MasterMapStatus;
+  responsible: string;
+  nextAction: string;
+  updatedAt: string;
+};
+
 export type DynamicPageBlockContent = Record<string, unknown>;
 
 export type DynamicPageBlock = {
