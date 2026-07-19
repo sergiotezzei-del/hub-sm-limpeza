@@ -1,7 +1,8 @@
-import { ChangeEvent, FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { ChangeEvent, FormEvent, lazy, ReactNode, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { AppIcon, type AppIconName } from "./components/AppIcon";
 import { activities, employees } from "./data";
+import type { MasterMapTargetScreen } from "./features/master-map/masterMapTypes";
 import { GuardShiftPanel, GuardSyncDiagnosticPanel } from "./modules/security/components/GuardShift";
 import { signInAdminSupabaseAuth, signInGuardSupabaseAuth } from "./modules/security/services/guardAuthBridge";
 import { loadGuardPaymentData, saveGuardPaymentProfile, saveGuardPaymentRecords, updateGuardPaymentRecordStatus } from "./modules/security/services/paymentService";
@@ -57,6 +58,8 @@ import type {
   UserRole,
 } from "./types";
 
+const MasterMapScreen = lazy(() => import("./features/master-map/MasterMapScreen").then((module) => ({ default: module.MasterMapScreen })));
+
 type View =
   | "login"
   | "employee"
@@ -77,6 +80,7 @@ type View =
   | "neia-history"
   | "users-permissions"
   | "system-status"
+  | "master-map"
   | "copa-cafe-menu"
   | "maintenance-menu"
   | "general-stock-menu"
@@ -1444,6 +1448,88 @@ function App() {
     setView("system-status");
   }
 
+  function openMasterMap() {
+    if (currentUser !== "tezzei" || !hasCurrentPermission("painel-admin")) {
+      setNotice("Você não tem acesso a este módulo.");
+      return;
+    }
+
+    setNotice("");
+    setSelectedGuardName(null);
+    setView("master-map");
+  }
+
+  function openMasterMapTarget(targetScreen: MasterMapTargetScreen) {
+    setNotice("");
+    setSelectedGuardName(null);
+
+    if (targetScreen === "master-map") {
+      openMasterMap();
+      return;
+    }
+
+    if (targetScreen === "cleaning-dashboard") {
+      openCleaningDashboard();
+      return;
+    }
+
+    if (targetScreen === "current-stock") {
+      void refreshInventory();
+      setView("current-stock");
+      return;
+    }
+
+    if (targetScreen === "stock-exit-history") {
+      void refreshStockMovements();
+      setView("stock-exit-history");
+      return;
+    }
+
+    if (targetScreen === "product-register") {
+      void openProductRegister();
+      return;
+    }
+
+    if (targetScreen === "copa-cafe-menu") {
+      openCopaCafeMenu();
+      return;
+    }
+
+    if (targetScreen === "security-menu") {
+      openSecurityMenu();
+      return;
+    }
+
+    if (targetScreen === "security-guards") {
+      openSecurityGuards();
+      return;
+    }
+
+    if (targetScreen === "security-monitoring") {
+      openSecurityMonitoring();
+      return;
+    }
+
+    if (targetScreen === "security-parking") {
+      openSecurityParking();
+      return;
+    }
+
+    if (targetScreen === "security-guards-payment") {
+      openGuardPaymentReport();
+      return;
+    }
+
+    if (targetScreen === "users-permissions") {
+      openUsersPermissions();
+      return;
+    }
+
+    if (targetScreen === "system-status") {
+      openSystemStatus();
+    }
+  }
+
   function openCleaningPreparation() {
     if (currentUser !== "tezzei" || !hasCurrentPermission("painel-admin")) {
       setNotice("Somente o Admin Tezzei pode preparar a Limpeza para uso real.");
@@ -1746,6 +1832,7 @@ function App() {
           onOpenReports={openReportsMenu}
           onOpenUsersPermissions={openUsersPermissions}
           onOpenSystemStatus={openSystemStatus}
+          onOpenMasterMap={openMasterMap}
         />
       )}
 
@@ -1784,6 +1871,21 @@ function App() {
             onBack={() => setView("admin")}
             onLogout={goToLogin}
           />
+        ) : (
+          <AccessDeniedScreen onBack={() => setView(getCurrentHomeView())} onLogout={goToLogin} />
+        )
+      )}
+
+      {view === "master-map" && (
+        currentUser === "tezzei" && hasCurrentPermission("painel-admin") ? (
+          <Suspense fallback={<section className="screen"><TopBar title="Mapa Mestre" subtitle="Carregando visão geral do HUB SM." onLogout={goToLogin} /><section className="empty-state"><h2>Carregando Mapa Mestre...</h2></section></section>}>
+            <MasterMapScreen
+              canEdit={currentUser === "tezzei" && hasCurrentPermission("painel-admin")}
+              onBack={() => setView("admin")}
+              onLogout={goToLogin}
+              onOpenModule={openMasterMapTarget}
+            />
+          </Suspense>
         ) : (
           <AccessDeniedScreen onBack={() => setView(getCurrentHomeView())} onLogout={goToLogin} />
         )
@@ -2373,7 +2475,7 @@ function UserSectorHomeScreen({ user, permissions, notice, onLogout, onOpenClean
   );
 }
 
-function AdminSectorHomeScreen({ newOrdersCount, onlineEnabled, permissions, onLogout, onOpenCleaningDashboard, onOpenCopaCafe, onOpenSecurity, onOpenMaintenance, onOpenGeneralStock, onOpenPatrimony, onOpenReports, onOpenUsersPermissions, onOpenSystemStatus }: { newOrdersCount: number; onlineEnabled: boolean; permissions: UserPermission[]; onLogout: () => void; onOpenCleaningDashboard: () => void; onOpenCopaCafe: () => void; onOpenSecurity: () => void; onOpenMaintenance: () => void; onOpenGeneralStock: () => void; onOpenPatrimony: () => void; onOpenReports: () => void; onOpenUsersPermissions: () => void; onOpenSystemStatus: () => void }) {
+function AdminSectorHomeScreen({ newOrdersCount, onlineEnabled, permissions, onLogout, onOpenCleaningDashboard, onOpenCopaCafe, onOpenSecurity, onOpenMaintenance, onOpenGeneralStock, onOpenPatrimony, onOpenReports, onOpenUsersPermissions, onOpenSystemStatus, onOpenMasterMap }: { newOrdersCount: number; onlineEnabled: boolean; permissions: UserPermission[]; onLogout: () => void; onOpenCleaningDashboard: () => void; onOpenCopaCafe: () => void; onOpenSecurity: () => void; onOpenMaintenance: () => void; onOpenGeneralStock: () => void; onOpenPatrimony: () => void; onOpenReports: () => void; onOpenUsersPermissions: () => void; onOpenSystemStatus: () => void; onOpenMasterMap: () => void }) {
   const cards: SectorModuleCard[] = [
     { key: "limpeza", title: "Limpeza", detail: "Rotinas, produtos, pedidos e histórico da equipe de limpeza.", enabled: permissions.includes("limpeza"), onClick: onOpenCleaningDashboard, className: "cleaning-card", attention: newOrdersCount > 0 ? `${newOrdersCount} pedido(s) pendente(s)` : undefined, icon: "cleaning" },
     { key: "copa-cafe", title: "Copa & Café", detail: "Máquina de café, água, copos, bebidas e insumos da copa.", enabled: permissions.includes("cafe") || permissions.includes("agua"), onClick: onOpenCopaCafe, icon: "coffee" },
@@ -2385,6 +2487,16 @@ function AdminSectorHomeScreen({ newOrdersCount, onlineEnabled, permissions, onL
     { key: "usuarios-permissoes", title: "Usuários & Permissões", detail: "Cadastro de usuários, acessos e permissões do sistema.", enabled: permissions.includes("painel-admin"), onClick: onOpenUsersPermissions, className: "users-card", icon: "users" },
     { key: "status-sistema", title: "Status do Sistema", detail: "Visão rápida dos módulos principais do HUB SM.", enabled: permissions.includes("painel-admin"), onClick: onOpenSystemStatus, className: "users-card", icon: "reports" },
   ];
+
+  cards.push({
+    key: "mapa-mestre",
+    title: "Mapa Mestre",
+    detail: "Visão geral dos módulos, projetos, dependências e andamento do HUB SM.",
+    enabled: permissions.includes("painel-admin"),
+    onClick: onOpenMasterMap,
+    className: "users-card",
+    icon: "map",
+  });
 
   return (
     <section className="screen">
