@@ -2454,6 +2454,7 @@ function SystemStatusScreen({ permissions, users, onBack, onLogout }: { permissi
     "Validar fluxo dos guardas em uso real.",
     "Validar Limpeza em uso real.",
     "Validar permissões após novos usuários.",
+    "Implantar módulo Controle de Chaves da Imobiliária.",
   ];
 
   return (
