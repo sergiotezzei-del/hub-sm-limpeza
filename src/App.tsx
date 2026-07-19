@@ -807,7 +807,7 @@ function App() {
     void refreshInventory();
     void refreshStockMovements();
     void syncOfflinePendencies();
-    setView(getInitialViewForManagedUser(user));
+    setView(user.id === "tezzei" && hasMasterMapPageUrl() ? "master-map" : getInitialViewForManagedUser(user));
   }
 
   function setProductQuantity(productId: string, value: string) {
@@ -5723,6 +5723,9 @@ function getInitialSession(): SavedSession {
     if (!storedSession) return fallback;
     const parsed = JSON.parse(storedSession) as SavedSession;
     if (!parsed.currentUser) return fallback;
+    if (hasMasterMapPageUrl() && parsed.currentUser === "tezzei") {
+      return { ...parsed, view: "master-map", previewEmployeeId: null, selectedGuardName: null };
+    }
     if (isGuardId(parsed.currentUser)) {
       return { ...parsed, view: "guard", previewEmployeeId: null, selectedGuardName: guardUserMap[parsed.currentUser] };
     }
@@ -5731,6 +5734,11 @@ function getInitialSession(): SavedSession {
     }
     return parsed;
   } catch { return fallback; }
+}
+
+function hasMasterMapPageUrl() {
+  if (typeof window === "undefined") return false;
+  return new URL(window.location.href).searchParams.has("mapPage");
 }
 
 function getLocalManagedUsers(): ManagedUser[] {

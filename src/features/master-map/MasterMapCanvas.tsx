@@ -42,6 +42,8 @@ export function MasterMapCanvas({
   onCreateConnection,
   onOpenNodeDetails,
   onOpenModule,
+  onOpenDynamicPage,
+  onOpenExternalUrl,
   onToggleCollapse,
 }: {
   nodes: MasterMapNode[];
@@ -56,6 +58,8 @@ export function MasterMapCanvas({
   onCreateConnection: (sourceNodeId: string, targetNodeId: string) => void;
   onOpenNodeDetails: (nodeId: string) => void;
   onOpenModule: (targetScreen: MasterMapTargetScreen) => void;
+  onOpenDynamicPage: (pageId: string) => void;
+  onOpenExternalUrl: (url: string) => void;
   onToggleCollapse: (nodeId: string) => void;
 }) {
   const visibleGraph = useMemo(() => getVisibleMasterMapGraph(nodes, edges), [nodes, edges]);
@@ -80,9 +84,11 @@ export function MasterMapCanvas({
       editMode,
       onOpenDetails: onOpenNodeDetails,
       onOpenModule,
+      onOpenDynamicPage,
+      onOpenExternalUrl,
       onToggleCollapse,
     },
-  } satisfies MasterMapFlowNode)), [edges, editMode, onOpenModule, onOpenNodeDetails, onToggleCollapse, selectedNodeId, visibleGraph.nodes]);
+  } satisfies MasterMapFlowNode)), [edges, editMode, onOpenDynamicPage, onOpenExternalUrl, onOpenModule, onOpenNodeDetails, onToggleCollapse, selectedNodeId, visibleGraph.nodes]);
   const flowEdges = useMemo<Edge[]>(() => visibleGraph.edges.map((edge) => ({
     id: edge.id,
     source: edge.sourceNodeId,
@@ -121,6 +127,24 @@ export function MasterMapCanvas({
     onCreateConnection(connection.source, connection.target);
   }
 
+  function handleNodeClick(flowNode: Node) {
+    const mapNode = (flowNode as MasterMapFlowNode).data.node;
+    if (!editMode && mapNode.destinationType === "DYNAMIC_PAGE" && mapNode.dynamicPageId) {
+      onOpenDynamicPage(mapNode.dynamicPageId);
+      return;
+    }
+    onSelectNode(mapNode.id);
+  }
+
+  function handleNodeDoubleClick(flowNode: Node) {
+    const mapNode = (flowNode as MasterMapFlowNode).data.node;
+    if (mapNode.destinationType === "DYNAMIC_PAGE" && mapNode.dynamicPageId) {
+      onOpenDynamicPage(mapNode.dynamicPageId);
+      return;
+    }
+    onOpenNodeDetails(mapNode.id);
+  }
+
   function handleInit(instance: ReactFlowInstance) {
     setFlowInstance(instance);
     onInit(instance);
@@ -135,7 +159,8 @@ export function MasterMapCanvas({
         onInit={handleInit}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
-        onNodeClick={(_, node) => onSelectNode(node.id)}
+        onNodeClick={(_, node) => handleNodeClick(node)}
+        onNodeDoubleClick={(_, node) => handleNodeDoubleClick(node)}
         onEdgeClick={(_, edge) => onSelectEdge(edge.id)}
         onNodeDragStop={(_, node) => onMoveNode(node.id, node.position.x, node.position.y)}
         onConnect={handleConnect}

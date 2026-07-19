@@ -1,10 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { type ReactFlowInstance } from "@xyflow/react";
 import { AppIcon } from "../../components/AppIcon";
+import { DynamicPageScreen } from "./DynamicPageScreen";
+import { MasterMapCreateNodeDialog, type MasterMapCreateNodeDraft } from "./MasterMapCreateNodeDialog";
 import { MasterMapCanvas } from "./MasterMapCanvas";
 import { MasterMapDetails } from "./MasterMapDetails";
 import { MasterMapLegend } from "./MasterMapLegend";
 import { MasterMapToolbar } from "./MasterMapToolbar";
+import { createDynamicPageForNode, loadDynamicPageTemplates, syncDynamicPageProjectionFromNode } from "./dynamicPageService";
+import type { DynamicPageTemplate } from "./dynamicPageTypes";
 import {
   createEmptyMasterMapNode,
   createMasterMapEdgeDraft,
@@ -41,6 +45,9 @@ export function MasterMapScreen({
   const [selectedEdgeId, setSelectedEdgeId] = useState<string>();
   const [saveStatus, setSaveStatus] = useState<MasterMapSaveStatus>("idle");
   const [flowInstance, setFlowInstance] = useState<ReactFlowInstance | null>(null);
+  const [templates, setTemplates] = useState<DynamicPageTemplate[]>([]);
+  const [createDialogMode, setCreateDialogMode] = useState<"node" | "child" | null>(null);
+  const [activeDynamicPageId, setActiveDynamicPageId] = useState<string | null>(() => getDynamicPageIdFromUrl());
 
   useEffect(() => {
     let active = true;
@@ -57,6 +64,25 @@ export function MasterMapScreen({
     return () => {
       active = false;
     };
+  }, []);
+
+  useEffect(() => {
+    if (!canEdit) return;
+    let active = true;
+    loadDynamicPageTemplates().then((nextTemplates) => {
+      if (active) setTemplates(nextTemplates);
+    }).catch(() => {
+      if (active) setMessage("Templates de pagina dinamica indisponiveis agora.");
+    });
+    return () => {
+      active = false;
+    };
+  }, [canEdit]);
+
+  useEffect(() => {
+    const handlePopState = () => setActiveDynamicPageId(getDynamicPageIdFromUrl());
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
   }, []);
 
   const activeMap = maps.find((map) => map.id === activeMapId) ?? maps[0];
@@ -147,6 +173,32 @@ export function MasterMapScreen({
     handleSelectNode(nodeId);
   }
 
+  function openDynamicPage(pageId: string) {
+    setActiveDynamicPageId(pageId);
+    setMapPageUrl(pageId);
+  }
+
+  function closeDynamicPage(nodeId?: string) {
+    setActiveDynamicPageId(null);
+    clearMapPageUrl();
+    if (nodeId) {
+      const node = nodes.find((current) => current.id === nodeId);
+      if (node) setActiveMapId(node.mapId);
+      setSelectedNodeId(nodeId);
+      setSelectedEdgeId(undefined);
+      window.setTimeout(() => flowInstance?.fitView(getFitViewOptions()), 80);
+    }
+  }
+
+  function openExternalUrl(url: string) {
+    if (!/^https?:\/\/\S+$/i.test(url)) {
+      setMessage("Link externo invalido.");
+      return;
+    }
+    if (!window.confirm("Abrir este link externo em uma nova aba?")) return;
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
+
   function handleNodeMove(nodeId: string, positionX: number, positionY: number) {
     if (!editMode) return;
     const node = nodes.find((current) => current.id === nodeId);
@@ -162,16 +214,68 @@ export function MasterMapScreen({
 
   function addNode() {
     if (!activeMap || !editMode || !guardEditAction()) return;
-    const newNode = createEmptyMasterMapNode(activeMap.id, 120, 120);
-    void persistNewNode(newNode);
+    setCreateDialogMode("node");
   }
 
   function addChildNode() {
     if (!activeMap || !editMode || !guardEditAction()) return;
-    const parent = selectedNode ?? activeNodes.find((node) => node.nodeType === "root") ?? activeNodes[0];
+    setCreateDialogMode("child");
+  }
+
+  async function submitCreateNode(draft: MasterMapCreateNodeDraft) {
+    if (!activeMap || !createDialogMode || !guardEditAction()) return;
+    const parent = createDialogMode === "child" ? selectedNode ?? activeNodes.find((node) => node.nodeType === "root") ?? activeNodes[0] : null;
     const newNode = createEmptyMasterMapNode(activeMap.id, (parent?.positionX ?? 0) + 330, (parent?.positionY ?? 0) + 90, parent?.id);
-    const newEdge = parent ? createMasterMapEdgeDraft(activeMap.id, parent.id, newNode.id, "BELONGS_TO") : null;
-    void persistNewNode(newNode, newEdge);
+    const nextNode: MasterMapNode = {
+      ...newNode,
+      title: draft.title,
+      description: draft.description,
+      nodeType: draft.nodeType,
+      iconKey: draft.iconKey,
+      destinationType: draft.destinationType,
+      targetScreen: draft.destinationType === "EXISTING_SCREEN" ? draft.targetScreen : undefined,
+      externalUrl: draft.destinationType === "EXTERNAL_URL" ? draft.externalUrl : undefined,
+      plannedModuleKey: draft.destinationType === "PLANNED_MODULE" ? draft.plannedModuleKey : undefined,
+    };
+    setCreateDialogMode(null);
+
+    if (draft.destinationType === "DYNAMIC_PAGE" && draft.pageType && draft.templateId) {
+      setSaveStatus("saving");
+      try {
+        const payload = await createDynamicPageForNode({
+          nodeId: nextNode.id,
+          mapId: nextNode.mapId,
+          title: nextNode.title,
+          description: nextNode.description,
+          nodeType: nextNode.nodeType,
+          iconKey: nextNode.iconKey,
+          pageType: draft.pageType,
+          templateId: draft.templateId,
+          positionX: nextNode.positionX,
+          positionY: nextNode.positionY,
+          parentNodeId: parent?.id,
+        });
+        const mergedNodes = [...nodes, payload.node ?? nextNode].map((node) => (
+          node.id === payload.node?.id ? payload.node : node
+        ));
+        const mergedEdges = payload.edge ? [...edges, payload.edge] : edges;
+        setNodes(mergedNodes);
+        setEdges(mergedEdges);
+        saveLocalMasterMapCache({ maps, nodes: mergedNodes, edges: mergedEdges });
+        setSelectedNodeId(payload.node?.id ?? nextNode.id);
+        setSelectedEdgeId(undefined);
+        setSaveStatus("saved");
+        setMessage("Quadro e pagina dinamica criados no Supabase.");
+        openDynamicPage(payload.page.id);
+      } catch {
+        setSaveStatus("error");
+        setMessage("Erro ao criar pagina dinamica. Nenhum quadro foi mantido na tela.");
+      }
+      return;
+    }
+
+    const newEdge = parent ? createMasterMapEdgeDraft(activeMap.id, parent.id, nextNode.id, "BELONGS_TO") : null;
+    void persistNewNode(nextNode, newEdge);
   }
 
   function createConnection(sourceNodeId: string, targetNodeId: string) {
@@ -189,7 +293,10 @@ export function MasterMapScreen({
     if (!guardEditAction()) return;
     setSaveStatus("saving");
     updateNodeLocal(nextNode);
-    saveMasterMapNodeRemote(nextNode).then((savedNode) => {
+    saveMasterMapNodeRemote(nextNode).then(async (savedNode) => {
+      if (savedNode.destinationType === "DYNAMIC_PAGE" && savedNode.dynamicPageId) {
+        await syncDynamicPageProjectionFromNode(savedNode);
+      }
       updateNodeLocal(savedNode);
       setSaveStatus("saved");
       setMessage("Mapa Mestre salvo.");
@@ -281,6 +388,18 @@ export function MasterMapScreen({
     void element.requestFullscreen();
   }
 
+  if (activeDynamicPageId) {
+    return (
+      <DynamicPageScreen
+        pageId={activeDynamicPageId}
+        canEdit={canEdit}
+        onBackToMap={closeDynamicPage}
+        onLogout={onLogout}
+        onNodeSynced={updateNodeLocal}
+      />
+    );
+  }
+
   return (
     <section className="screen master-map-screen">
       <header className="top-bar">
@@ -333,6 +452,8 @@ export function MasterMapScreen({
                 onCreateConnection={createConnection}
                 onOpenNodeDetails={openNodeDetails}
                 onOpenModule={onOpenModule}
+                onOpenDynamicPage={openDynamicPage}
+                onOpenExternalUrl={openExternalUrl}
                 onToggleCollapse={toggleCollapse}
               />
             )}
@@ -351,10 +472,39 @@ export function MasterMapScreen({
               onSaveEdge={(edge) => persistEdge(edge)}
               onInactivateEdge={inactivateEdge}
               onOpenModule={onOpenModule}
+              onOpenDynamicPage={openDynamicPage}
+              onOpenExternalUrl={openExternalUrl}
+            />
+            <MasterMapCreateNodeDialog
+              open={Boolean(createDialogMode)}
+              mode={createDialogMode ?? "node"}
+              templates={templates}
+              onClose={() => setCreateDialogMode(null)}
+              onSubmit={submitCreateNode}
             />
           </section>
         </>
       )}
     </section>
   );
+}
+
+function getDynamicPageIdFromUrl() {
+  if (typeof window === "undefined") return null;
+  const pageId = new URL(window.location.href).searchParams.get("mapPage");
+  return pageId || null;
+}
+
+function setMapPageUrl(pageId: string) {
+  if (typeof window === "undefined") return;
+  const url = new URL(window.location.href);
+  url.searchParams.set("mapPage", pageId);
+  window.history.pushState({ mapPage: pageId }, "", url);
+}
+
+function clearMapPageUrl() {
+  if (typeof window === "undefined") return;
+  const url = new URL(window.location.href);
+  url.searchParams.delete("mapPage");
+  window.history.pushState({}, "", url);
 }

@@ -77,6 +77,7 @@ function node(input: DefaultNodeInput): MasterMapNode {
     responsible: input.responsible,
     nextAction: input.nextAction,
     targetScreen: input.targetScreen,
+    destinationType: input.targetScreen ? "EXISTING_SCREEN" : "NONE",
     positionX: input.x,
     positionY: input.y,
     isCollapsed: false,
