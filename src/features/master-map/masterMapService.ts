@@ -1,5 +1,6 @@
 import { getSupabaseAccessToken, SUPABASE_KEY_HEADER, SUPABASE_PUBLIC_KEY, SUPABASE_URL, supabaseConfigured } from "../../modules/security/services/supabaseClient";
 import { defaultMasterMapEdges, defaultMasterMapNodes, defaultMasterMaps } from "./masterMapDefaults";
+import type { MasterMapPositionPatch } from "./layout/masterMapLayoutTypes";
 import type { MasterMap, MasterMapData, MasterMapDestinationType, MasterMapEdge, MasterMapNode, MasterMapRelationType, MasterMapStatus } from "./masterMapTypes";
 
 const MASTER_MAP_CACHE_KEY = "hub-sm-master-map-cache";
@@ -118,6 +119,26 @@ export async function createMasterMapNodeRemote(node: MasterMapNode) {
   const rows = (await response.json()) as MasterMapNodeRow[];
   if (!rows[0]?.id) throw new Error("Não foi possível confirmar o nó criado.");
   return mapMasterMapNodeRow(rows[0]);
+}
+
+export async function saveMasterMapNodePositionsRemote(mapId: string, positions: MasterMapPositionPatch[]) {
+  ensureRemoteWriteReady();
+  if (!positions.length) return [];
+
+  const response = await masterMapRequest("rpc/apply_hub_map_node_positions", {
+    method: "POST",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify({
+      p_map_id: mapId,
+      p_positions: positions.map((position) => ({
+        id: position.id,
+        position_x: position.positionX,
+        position_y: position.positionY,
+      })),
+    }),
+  });
+  const rows = (await response.json()) as MasterMapNodeRow[];
+  return rows.map(mapMasterMapNodeRow);
 }
 
 export async function saveMasterMapEdgeRemote(edge: MasterMapEdge) {

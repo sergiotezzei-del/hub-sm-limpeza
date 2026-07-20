@@ -14,6 +14,7 @@ import {
   useNodesState,
 } from "@xyflow/react";
 import { MasterMapNodeCard, type MasterMapFlowNode } from "./MasterMapNode";
+import type { MasterMapConnectionMode, MasterMapHandleVariant, MasterMapLayoutMode, MasterMapNodeDensity } from "./layout/masterMapLayoutTypes";
 import { getMasterMapChildrenCount, getVisibleMasterMapGraph } from "./masterMapLayout";
 import type { MasterMapEdge, MasterMapNode, MasterMapRelationType, MasterMapTargetScreen } from "./masterMapTypes";
 
@@ -35,10 +36,14 @@ export function MasterMapCanvas({
   nodes,
   edges,
   editMode,
+  nodeDensity,
+  connectionMode,
+  layoutMode,
   selectedNodeId,
   selectedEdgeId,
   highlightedNodeIds = emptyNodeIdSet,
   dimmedNodeIds = emptyNodeIdSet,
+  layoutPreviewNodeIds = emptyNodeIdSet,
   forceVisibleNodeIds = emptyNodeIdSet,
   onInit,
   onSelectNode,
@@ -54,10 +59,14 @@ export function MasterMapCanvas({
   nodes: MasterMapNode[];
   edges: MasterMapEdge[];
   editMode: boolean;
+  nodeDensity: MasterMapNodeDensity;
+  connectionMode: MasterMapConnectionMode;
+  layoutMode: MasterMapLayoutMode;
   selectedNodeId?: string;
   selectedEdgeId?: string;
   highlightedNodeIds?: Set<string>;
   dimmedNodeIds?: Set<string>;
+  layoutPreviewNodeIds?: Set<string>;
   forceVisibleNodeIds?: Set<string>;
   onInit: (instance: ReactFlowInstance) => void;
   onSelectNode: (nodeId: string) => void;
@@ -71,6 +80,7 @@ export function MasterMapCanvas({
   onToggleCollapse: (nodeId: string) => void;
 }) {
   const visibleGraph = useMemo(() => getVisibleMasterMapGraph(nodes, edges, forceVisibleNodeIds), [edges, forceVisibleNodeIds, nodes]);
+  const visibleEdges = useMemo(() => filterEdgesByConnectionMode(visibleGraph.edges, connectionMode), [connectionMode, visibleGraph.edges]);
   const [isCompactViewport, setIsCompactViewport] = useState(() => (
     typeof window !== "undefined" ? window.matchMedia("(max-width: 720px)").matches : false
   ));
@@ -90,20 +100,22 @@ export function MasterMapCanvas({
       node,
       childrenCount: getMasterMapChildrenCount(node.id, edges),
       editMode,
+      density: nodeDensity,
+      handleVariant: getHandleVariantForNode(node, visibleGraph.nodes, layoutMode),
       dimmed: dimmedNodeIds.has(node.id),
-      highlighted: highlightedNodeIds.has(node.id),
+      highlighted: highlightedNodeIds.has(node.id) || layoutPreviewNodeIds.has(node.id),
       onOpenDetails: onOpenNodeDetails,
       onOpenModule,
       onOpenDynamicPage,
       onOpenExternalUrl,
       onToggleCollapse,
     },
-  } satisfies MasterMapFlowNode)), [dimmedNodeIds, edges, editMode, highlightedNodeIds, onOpenDynamicPage, onOpenExternalUrl, onOpenModule, onOpenNodeDetails, onToggleCollapse, selectedNodeId, visibleGraph.nodes]);
-  const flowEdges = useMemo<Edge[]>(() => visibleGraph.edges.map((edge) => ({
+  } satisfies MasterMapFlowNode)), [dimmedNodeIds, edges, editMode, highlightedNodeIds, layoutMode, layoutPreviewNodeIds, nodeDensity, onOpenDynamicPage, onOpenExternalUrl, onOpenModule, onOpenNodeDetails, onToggleCollapse, selectedNodeId, visibleGraph.nodes]);
+  const flowEdges = useMemo<Edge[]>(() => visibleEdges.map((edge) => ({
     id: edge.id,
     source: edge.sourceNodeId,
     target: edge.targetNodeId,
-    label: edge.label || relationLabels[edge.relationType],
+    label: getEdgeLabel(edge, selectedEdgeId, connectionMode),
     type: "smoothstep",
     selected: edge.id === selectedEdgeId,
     animated: edge.relationType === "TRIGGERS" || edge.relationType === "INTEGRATES_WITH",
@@ -111,7 +123,7 @@ export function MasterMapCanvas({
     className: `master-map-edge master-map-edge-${edge.relationType.toLowerCase().replace(/_/g, "-")}`,
     labelBgPadding: [6, 4],
     labelBgBorderRadius: 6,
-  })), [selectedEdgeId, visibleGraph.edges]);
+  })), [connectionMode, selectedEdgeId, visibleEdges]);
   const [reactFlowNodes, setReactFlowNodes, onNodesChange] = useNodesState(flowNodes);
   const [reactFlowEdges, setReactFlowEdges, onEdgesChange] = useEdgesState(flowEdges);
 
@@ -139,7 +151,7 @@ export function MasterMapCanvas({
 
   function handleNodeClick(flowNode: Node) {
     const mapNode = (flowNode as MasterMapFlowNode).data.node;
-    if (!editMode && mapNode.destinationType === "DYNAMIC_PAGE" && mapNode.dynamicPageId) {
+    if (nodeDensity !== "compact" && !editMode && mapNode.destinationType === "DYNAMIC_PAGE" && mapNode.dynamicPageId) {
       onOpenDynamicPage(mapNode.dynamicPageId);
       return;
     }
@@ -190,4 +202,29 @@ export function MasterMapCanvas({
       </ReactFlow>
     </section>
   );
+}
+
+function filterEdgesByConnectionMode(edges: MasterMapEdge[], connectionMode: MasterMapConnectionMode) {
+  if (connectionMode === "hierarchy") return edges.filter((edge) => edge.relationType === "BELONGS_TO");
+  if (connectionMode === "operational") return edges.filter((edge) => edge.relationType !== "BELONGS_TO");
+  return edges;
+}
+
+function getEdgeLabel(edge: MasterMapEdge, selectedEdgeId: string | undefined, connectionMode: MasterMapConnectionMode) {
+  if (edge.label?.trim()) return edge.label;
+  if (edge.relationType === "BELONGS_TO" && edge.id !== selectedEdgeId) return undefined;
+  if (connectionMode === "hierarchy" && edge.id !== selectedEdgeId) return undefined;
+  return relationLabels[edge.relationType];
+}
+
+function getHandleVariantForNode(
+  node: MasterMapNode,
+  nodes: MasterMapNode[],
+  layoutMode: MasterMapLayoutMode,
+): MasterMapHandleVariant {
+  if (layoutMode === "vertical") return "vertical";
+  if (layoutMode !== "mind") return "horizontal";
+  const root = nodes.find((current) => current.nodeType === "root") ?? nodes[0];
+  if (!root) return "horizontal";
+  return node.positionX < root.positionX ? "mind-left" : "mind-right";
 }

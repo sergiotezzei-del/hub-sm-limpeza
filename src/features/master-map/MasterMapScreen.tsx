@@ -8,7 +8,17 @@ import { MasterMapDetails } from "./MasterMapDetails";
 import { MasterMapLegend } from "./MasterMapLegend";
 import { MasterMapAttentionPanel } from "./attention/MasterMapAttentionPanel";
 import { getMasterMapAttentionItems } from "./attention/masterMapAttention";
-import { getFilteredMasterMapNodes, masterMapStatusLabels } from "./graph/masterMapGraphUtils";
+import { getFilteredMasterMapNodes, getMasterMapDescendants, masterMapStatusLabels } from "./graph/masterMapGraphUtils";
+import { MasterMapLayoutPanel } from "./layout/MasterMapLayoutPanel";
+import { calculateMasterMapLayout } from "./layout/masterMapLayoutWorker";
+import { createMasterMapPositionSnapshot, detectMasterMapLayoutCollisions } from "./layout/masterMapLayoutValidation";
+import {
+  defaultMasterMapLayoutPreferences,
+  defaultMobileMasterMapLayoutPreferences,
+  type MasterMapLayoutPreferences,
+  type MasterMapNodeDimension,
+  type MasterMapPositionPatch,
+} from "./layout/masterMapLayoutTypes";
 import { MasterMapFilters } from "./navigation/MasterMapFilters";
 import { MasterMapNavigationBar } from "./navigation/MasterMapNavigationBar";
 import { MasterMapDirectorView } from "./views/MasterMapDirectorView";
@@ -26,12 +36,15 @@ import {
   saveLocalMasterMapCache,
   saveMasterMapEdgeRemote,
   saveMasterMapNodeRemote,
+  saveMasterMapNodePositionsRemote,
 } from "./masterMapService";
+import { getVisibleMasterMapGraph } from "./masterMapLayout";
 import type { MasterMap, MasterMapData, MasterMapEdge, MasterMapNode, MasterMapSaveStatus, MasterMapTargetScreen } from "./masterMapTypes";
 import { defaultMasterMapFilters, getMasterMapActiveFilterCount, type MasterMapFilterState, type MasterMapViewMode } from "./types/masterMapNavigationTypes";
 
 const MASTER_MAP_VIEW_MODE_KEY = "hub-sm-master-map-view-mode";
 const MASTER_MAP_FILTERS_KEY = "hub-sm-master-map-filters";
+const MASTER_MAP_LAYOUT_KEY = "hub-sm-master-map-layout";
 
 export function MasterMapScreen({
   canEdit,
@@ -68,6 +81,20 @@ export function MasterMapScreen({
   const [attentionOpen, setAttentionOpen] = useState(false);
   const [pageSummaries, setPageSummaries] = useState<DynamicPageSummary[]>([]);
   const [highlightedNodeId, setHighlightedNodeId] = useState<string | null>(null);
+  const [layoutPanelOpen, setLayoutPanelOpen] = useState(false);
+  const [layoutPreferences, setLayoutPreferences] = useState<MasterMapLayoutPreferences>(() => getInitialMasterMapLayoutPreferences(""));
+  const [layoutCalculating, setLayoutCalculating] = useState(false);
+  const [layoutPreview, setLayoutPreview] = useState<{
+    mapId: string;
+    originalPositions: MasterMapPositionPatch[];
+    previewPositions: MasterMapPositionPatch[];
+    affectedNodeIds: Set<string>;
+    collisionCount: number;
+  } | null>(null);
+  const [layoutUndoSnapshot, setLayoutUndoSnapshot] = useState<{
+    mapId: string;
+    positions: MasterMapPositionPatch[];
+  } | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -129,6 +156,11 @@ export function MasterMapScreen({
   }, [filters]);
 
   useEffect(() => {
+    setLayoutPreferences(getInitialMasterMapLayoutPreferences(activeMapId));
+    setLayoutPreview(null);
+  }, [activeMapId]);
+
+  useEffect(() => {
     const handlePopState = () => setActiveDynamicPageId(getDynamicPageIdFromUrl());
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
@@ -174,6 +206,7 @@ export function MasterMapScreen({
     highlightedNodeIds.forEach((nodeId) => nextIds.add(nodeId));
     return nextIds;
   }, [highlightedNodeIds, selectedNodeId]);
+  const activeLayoutPreviewNodeIds = layoutPreview?.mapId === activeMap?.id ? layoutPreview.affectedNodeIds : undefined;
   const attentionItems = useMemo(() => getMasterMapAttentionItems(filteredActiveNodes, activePageSummaries), [activePageSummaries, filteredActiveNodes]);
   const searchResults = useMemo(() => {
     if (!debouncedSearchQuery.trim()) return [];
@@ -261,6 +294,7 @@ export function MasterMapScreen({
   }
 
   function handleMapChange(mapId: string) {
+    if (layoutPreview) cancelLayoutPreview();
     setActiveMapId(mapId);
     setSelectedNodeId(undefined);
     setSelectedEdgeId(undefined);
@@ -365,12 +399,20 @@ export function MasterMapScreen({
 
   function handleNodeMove(nodeId: string, positionX: number, positionY: number) {
     if (!editMode) return;
+    if (layoutPreview) {
+      setMessage("Aplique ou cancele a pre-visualizacao antes de mover um quadro.");
+      return;
+    }
     const node = nodes.find((current) => current.id === nodeId);
     if (!node) return;
     persistNode({ ...node, positionX, positionY, updatedAt: new Date().toISOString() });
   }
 
   function toggleCollapse(nodeId: string) {
+    if (layoutPreview) {
+      setMessage("Aplique ou cancele a pre-visualizacao antes de recolher ramificacoes.");
+      return;
+    }
     const node = nodes.find((current) => current.id === nodeId);
     if (!node) return;
     persistNode({ ...node, isCollapsed: !node.isCollapsed, updatedAt: new Date().toISOString() });
@@ -560,6 +602,164 @@ export function MasterMapScreen({
     void element.requestFullscreen();
   }
 
+  function handleLayoutPreferencesChange(nextPreferences: MasterMapLayoutPreferences) {
+    setLayoutPreferences(nextPreferences);
+    saveMasterMapLayoutPreference(activeMap?.id ?? "", nextPreferences);
+  }
+
+  function openLayoutPanel() {
+    if (!guardEditAction()) return;
+    if (viewMode !== "map") setViewMode("map");
+    setLayoutPanelOpen(true);
+  }
+
+  async function previewMasterMapLayout() {
+    if (!activeMap) return;
+    if (layoutPreview) cancelLayoutPreview();
+    if (layoutPreferences.scope === "branch" && !selectedNode) {
+      setMessage("Selecione um quadro para organizar apenas uma ramificação.");
+      return;
+    }
+
+    setViewMode("map");
+    setLayoutCalculating(true);
+    setMessage("Calculando organização...");
+
+    await waitForMapMeasurements();
+
+    try {
+      const visibleGraph = getVisibleMasterMapGraph(activeNodes, activeEdges, forceVisibleNodeIds);
+      const affectedNodeIds = getAffectedLayoutNodeIds(visibleGraph.nodes, visibleGraph.edges, layoutPreferences, selectedNode);
+      const affectedNodes = activeNodes.filter((node) => affectedNodeIds.has(node.id));
+      const originalPositions = createMasterMapPositionSnapshot(affectedNodes.map((node) => ({
+        id: node.id,
+        positionX: node.positionX,
+        positionY: node.positionY,
+      })));
+      const dimensions = getMeasuredMasterMapNodeDimensions(layoutPreferences.nodeDensity);
+      const result = await calculateMasterMapLayout({
+        nodes: visibleGraph.nodes,
+        edges: visibleGraph.edges,
+        affectedNodeIds,
+        dimensions,
+        preferences: layoutPreferences,
+        anchorNodeId: layoutPreferences.scope === "branch" ? selectedNode?.id : undefined,
+      });
+      const collisions = detectMasterMapLayoutCollisions(result.positions, dimensions);
+
+      setNodes((current) => mergePositionsIntoNodes(current, result.positions));
+      setLayoutPreview({
+        mapId: activeMap.id,
+        originalPositions,
+        previewPositions: result.positions,
+        affectedNodeIds: result.affectedNodeIds,
+        collisionCount: collisions.length,
+      });
+      setHighlightedNodeId(null);
+      setMessage(collisions.length
+        ? `Prévia criada, mas existem ${collisions.length} sobreposições. Aumente o espaçamento antes de salvar.`
+        : "Pré-visualização aplicada somente na tela. Salve ou cancele para continuar.");
+      window.setTimeout(() => flowInstance?.fitView(getFitViewOptions()), 160);
+    } catch {
+      setSaveStatus("error");
+      setMessage("Não foi possível calcular a organização agora.");
+    } finally {
+      setLayoutCalculating(false);
+    }
+  }
+
+  async function applyLayoutPreview() {
+    if (!layoutPreview || !activeMap || !guardEditAction()) return;
+    if (layoutPreview.collisionCount > 0) {
+      setMessage("Corrija as sobreposições antes de salvar a organização.");
+      return;
+    }
+
+    setSaveStatus("saving");
+    try {
+      const savedNodes = await saveMasterMapNodePositionsRemote(layoutPreview.mapId, layoutPreview.previewPositions);
+      setNodes((current) => {
+        const nextNodes = savedNodes.length
+          ? current.map((node) => savedNodes.find((savedNode) => savedNode.id === node.id) ?? node)
+          : mergePositionsIntoNodes(current, layoutPreview.previewPositions);
+        saveLocalMasterMapCache({ maps, nodes: nextNodes, edges });
+        return nextNodes;
+      });
+      setLayoutUndoSnapshot({ mapId: layoutPreview.mapId, positions: layoutPreview.originalPositions });
+      setLayoutPreview(null);
+      setSaveStatus("saved");
+      setMessage("Organização salva no Mapa Mestre.");
+      window.setTimeout(() => flowInstance?.fitView(getFitViewOptions()), 120);
+    } catch {
+      setSaveStatus("error");
+      setMessage("Erro ao salvar a organização. A pré-visualização foi mantida para você tentar novamente.");
+    }
+  }
+
+  function cancelLayoutPreview() {
+    if (!layoutPreview) return;
+    setNodes((current) => mergePositionsIntoNodes(current, layoutPreview.originalPositions));
+    setLayoutPreview(null);
+    setMessage("Pré-visualização cancelada. Posições anteriores restauradas.");
+    window.setTimeout(() => flowInstance?.fitView(getFitViewOptions()), 100);
+  }
+
+  async function undoLastLayout() {
+    if (!layoutUndoSnapshot || !guardEditAction()) return;
+    if (layoutPreview) cancelLayoutPreview();
+    const snapshot = layoutUndoSnapshot;
+    setActiveMapId(snapshot.mapId);
+    setSaveStatus("saving");
+    setNodes((current) => mergePositionsIntoNodes(current, snapshot.positions));
+
+    try {
+      const savedNodes = await saveMasterMapNodePositionsRemote(snapshot.mapId, snapshot.positions);
+      setNodes((current) => {
+        const nextNodes = savedNodes.length
+          ? current.map((node) => savedNodes.find((savedNode) => savedNode.id === node.id) ?? node)
+          : mergePositionsIntoNodes(current, snapshot.positions);
+        saveLocalMasterMapCache({ maps, nodes: nextNodes, edges });
+        return nextNodes;
+      });
+      setLayoutUndoSnapshot(null);
+      setSaveStatus("saved");
+      setMessage("Última organização desfeita e salva.");
+      window.setTimeout(() => flowInstance?.fitView(getFitViewOptions()), 160);
+    } catch {
+      setSaveStatus("error");
+      setMessage("Não foi possível desfazer no Supabase. As posições continuam visíveis para nova tentativa.");
+    }
+  }
+
+  function getMeasuredMasterMapNodeDimensions(density = layoutPreferences.nodeDensity) {
+    const dimensions = new Map<string, MasterMapNodeDimension>();
+    flowInstance?.getNodes().forEach((flowNode) => {
+      const measured = flowNode.measured;
+      const width = measured?.width ?? flowNode.width;
+      const height = measured?.height ?? flowNode.height;
+      if (typeof width === "number" && typeof height === "number" && width > 0 && height > 0) {
+        dimensions.set(flowNode.id, { id: flowNode.id, width, height });
+      }
+    });
+
+    activeNodes.forEach((node) => {
+      if (dimensions.has(node.id)) return;
+      dimensions.set(node.id, density === "compact"
+        ? { id: node.id, width: 226, height: 104 }
+        : { id: node.id, width: 270, height: 178 });
+    });
+
+    return dimensions;
+  }
+
+  function waitForMapMeasurements() {
+    return new Promise<void>((resolve) => {
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => resolve());
+      });
+    });
+  }
+
   function renderWorkspaceContent() {
     if (loading || !activeMap) {
       return <section className="empty-state master-map-loading"><h2>Carregando Mapa Mestre...</h2></section>;
@@ -629,10 +829,14 @@ export function MasterMapScreen({
         nodes={activeNodes}
         edges={activeEdges}
         editMode={editMode}
+        nodeDensity={layoutPreferences.nodeDensity}
+        connectionMode={layoutPreferences.connectionMode}
+        layoutMode={layoutPreferences.layoutMode}
         selectedNodeId={selectedNodeId}
         selectedEdgeId={selectedEdgeId}
         highlightedNodeIds={highlightedNodeIds}
         dimmedNodeIds={dimmedNodeIds}
+        layoutPreviewNodeIds={activeLayoutPreviewNodeIds}
         forceVisibleNodeIds={forceVisibleNodeIds}
         onInit={setFlowInstance}
         onSelectNode={handleSelectNode}
@@ -702,6 +906,9 @@ export function MasterMapScreen({
             onToggleEditMode={toggleEditMode}
             onAddNode={addNode}
             onAddChildNode={addChildNode}
+            onOpenLayoutPanel={openLayoutPanel}
+            onUndoLayout={undoLastLayout}
+            undoLayoutAvailable={Boolean(layoutUndoSnapshot)}
             onZoomIn={() => flowInstance?.zoomIn({ duration: 180 })}
             onZoomOut={() => flowInstance?.zoomOut({ duration: 180 })}
             onCenter={() => flowInstance?.fitView(getFitViewOptions())}
@@ -759,6 +966,23 @@ export function MasterMapScreen({
 
           <section className="master-map-workspace" ref={canvasShellRef}>
             {renderWorkspaceContent()}
+            <MasterMapLayoutPanel
+              open={layoutPanelOpen}
+              preferences={layoutPreferences}
+              selectedNode={selectedNode}
+              editable={editable}
+              calculating={layoutCalculating}
+              previewActive={Boolean(layoutPreview)}
+              undoAvailable={Boolean(layoutUndoSnapshot)}
+              affectedCount={layoutPreview?.affectedNodeIds.size ?? 0}
+              collisionCount={layoutPreview?.collisionCount ?? 0}
+              onChange={handleLayoutPreferencesChange}
+              onClose={() => setLayoutPanelOpen(false)}
+              onPreview={previewMasterMapLayout}
+              onApply={applyLayoutPreview}
+              onCancelPreview={cancelLayoutPreview}
+              onUndo={undoLastLayout}
+            />
             {viewMode === "map" && (
               <MasterMapDetails
                 selectedNode={selectedNode}
@@ -856,6 +1080,77 @@ function saveMasterMapFiltersPreference(filters: MasterMapFilterState) {
 
 function isMasterMapViewMode(value: string | null): value is MasterMapViewMode {
   return value === "map" || value === "list" || value === "focus" || value === "impact" || value === "director";
+}
+
+function getAffectedLayoutNodeIds(
+  visibleNodes: MasterMapNode[],
+  visibleEdges: MasterMapEdge[],
+  preferences: MasterMapLayoutPreferences,
+  selectedNode: MasterMapNode | null,
+) {
+  if (preferences.scope === "branch" && selectedNode) {
+    const descendants = getMasterMapDescendants(selectedNode.id, visibleNodes, visibleEdges);
+    return new Set([selectedNode.id, ...descendants.map((node) => node.id)]);
+  }
+
+  return new Set(visibleNodes.map((node) => node.id));
+}
+
+function mergePositionsIntoNodes(nodes: MasterMapNode[], positions: MasterMapPositionPatch[]) {
+  const positionById = new Map(positions.map((position) => [position.id, position]));
+  return nodes.map((node) => {
+    const position = positionById.get(node.id);
+    if (!position) return node;
+    return {
+      ...node,
+      positionX: position.positionX,
+      positionY: position.positionY,
+      updatedAt: new Date().toISOString(),
+    };
+  });
+}
+
+function getInitialMasterMapLayoutPreferences(mapId: string): MasterMapLayoutPreferences {
+  const defaultPreferences = getDefaultMasterMapLayoutPreferences();
+  if (typeof window === "undefined") return defaultPreferences;
+  const saved = window.localStorage.getItem(getMasterMapLayoutStorageKey(mapId));
+  if (!saved) return defaultPreferences;
+  try {
+    const parsed = JSON.parse(saved) as Partial<MasterMapLayoutPreferences>;
+    return {
+      layoutMode: isMasterMapLayoutMode(parsed.layoutMode) ? parsed.layoutMode : defaultPreferences.layoutMode,
+      scope: parsed.scope === "branch" || parsed.scope === "map" ? parsed.scope : defaultPreferences.scope,
+      spacing: isMasterMapSpacingPreset(parsed.spacing) ? parsed.spacing : defaultPreferences.spacing,
+      nodeDensity: parsed.nodeDensity === "compact" || parsed.nodeDensity === "detailed" ? parsed.nodeDensity : defaultPreferences.nodeDensity,
+      connectionMode: parsed.connectionMode === "hierarchy" || parsed.connectionMode === "operational" || parsed.connectionMode === "all" ? parsed.connectionMode : defaultPreferences.connectionMode,
+    };
+  } catch {
+    return defaultPreferences;
+  }
+}
+
+function saveMasterMapLayoutPreference(mapId: string, preferences: MasterMapLayoutPreferences) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(getMasterMapLayoutStorageKey(mapId), JSON.stringify(preferences));
+}
+
+function getDefaultMasterMapLayoutPreferences() {
+  if (typeof window === "undefined") return defaultMasterMapLayoutPreferences;
+  return window.matchMedia("(max-width: 720px)").matches
+    ? defaultMobileMasterMapLayoutPreferences
+    : defaultMasterMapLayoutPreferences;
+}
+
+function getMasterMapLayoutStorageKey(mapId: string) {
+  return `${MASTER_MAP_LAYOUT_KEY}:${mapId || "default"}`;
+}
+
+function isMasterMapLayoutMode(value: unknown): value is MasterMapLayoutPreferences["layoutMode"] {
+  return value === "manual" || value === "horizontal" || value === "vertical" || value === "mind";
+}
+
+function isMasterMapSpacingPreset(value: unknown): value is MasterMapLayoutPreferences["spacing"] {
+  return value === "compact" || value === "comfortable" || value === "wide";
 }
 
 function renderHighlightedText(text: string, query: string) {

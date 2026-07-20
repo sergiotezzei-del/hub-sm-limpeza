@@ -1752,6 +1752,10 @@ button:focus-visible,
   font-weight: 800;
 }
 
+.master-map-canvas .react-flow__edge-text:empty {
+  display: none;
+}
+
 .master-map-edge-triggers .react-flow__edge-path,
 .master-map-edge-integrates-with .react-flow__edge-path {
   stroke: var(--blue);
@@ -1775,6 +1779,19 @@ button:focus-visible,
   box-shadow: 0 10px 22px rgba(31, 41, 51, 0.08);
 }
 
+.master-map-node-compact {
+  width: 226px;
+  gap: 6px;
+  padding: 10px;
+  border-left-width: 5px;
+  box-shadow: 0 8px 18px rgba(31, 41, 51, 0.07);
+}
+
+.master-map-node-compact .module-icon-circle {
+  width: 34px;
+  height: 34px;
+}
+
 .master-map-node.selected {
   border-color: var(--orange);
   box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.16), 0 12px 26px rgba(31, 41, 51, 0.12);
@@ -1788,6 +1805,10 @@ button:focus-visible,
 .master-map-node.highlighted {
   border-color: var(--blue);
   box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.18), 0 16px 32px rgba(31, 41, 51, 0.14);
+}
+
+.master-map-node-compact.highlighted {
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18), 0 10px 22px rgba(31, 41, 51, 0.12);
 }
 
 .master-map-node-head {
@@ -1817,6 +1838,10 @@ button:focus-visible,
   line-height: 1.2;
 }
 
+.master-map-node-compact h3 {
+  font-size: 0.9rem;
+}
+
 .master-map-node p {
   margin: 0;
   color: #475569;
@@ -1842,6 +1867,16 @@ button:focus-visible,
   font-weight: 900;
 }
 
+.master-map-node-compact .master-map-node-status,
+.master-map-node-compact .master-map-node-meta span,
+.master-map-node-compact .master-map-page-indicator,
+.master-map-node-compact .master-map-edit-hint {
+  min-height: 0;
+  padding: 4px 6px;
+  font-size: 0.68rem;
+  line-height: 1.15;
+}
+
 .master-map-next-action {
   color: #1d4ed8;
   background: var(--blue-soft);
@@ -1865,6 +1900,84 @@ button:focus-visible,
   height: 10px;
   border-color: #ffffff;
   background: var(--orange);
+}
+
+.master-map-layout-panel {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  z-index: 8;
+  width: min(460px, calc(100% - 28px));
+  max-height: calc(100% - 28px);
+  display: grid;
+  gap: 14px;
+  overflow: auto;
+  padding: 14px;
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.16);
+}
+
+.master-map-layout-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.master-map-layout-grid label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.master-map-layout-grid select {
+  min-height: 42px;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: var(--ink);
+  background: #ffffff;
+  font-size: 0.95rem;
+  font-weight: 800;
+  text-transform: none;
+}
+
+.master-map-layout-help {
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid #e5eaf1;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.master-map-layout-help p {
+  margin: 0;
+  color: #475569;
+  font-size: 0.84rem;
+  font-weight: 750;
+  line-height: 1.35;
+}
+
+.master-map-layout-help .error {
+  color: #b91c1c;
+}
+
+.master-map-layout-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.master-map-layout-actions .primary-button,
+.master-map-layout-actions .secondary-button,
+.master-map-layout-actions .ghost-button {
+  min-height: 42px;
 }
 
 .master-map-details-panel {
@@ -5009,7 +5122,8 @@ button:focus-visible,
   }
 
   .master-map-filter-panel,
-  .master-map-attention-panel {
+  .master-map-attention-panel,
+  .master-map-layout-panel {
     position: fixed;
     inset: auto 10px 10px;
     z-index: 35;
@@ -5023,6 +5137,7 @@ button:focus-visible,
   }
 
   .master-map-filter-grid,
+  .master-map-layout-grid,
   .master-map-focus-grid,
   .master-map-impact-grid,
   .master-map-summary-grid,
@@ -5068,6 +5183,17 @@ button:focus-visible,
     min-height: 42px;
   }
 
+  .master-map-layout-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .master-map-layout-actions .primary-button,
+  .master-map-layout-actions .secondary-button,
+  .master-map-layout-actions .ghost-button {
+    width: 100%;
+  }
+
   .master-map-workspace,
   .master-map-canvas {
     min-height: 620px;
@@ -5077,6 +5203,10 @@ button:focus-visible,
   .master-map-node {
     width: 244px;
     padding: 10px;
+  }
+
+  .master-map-node-compact {
+    width: 214px;
   }
 
   .master-map-node-actions {
