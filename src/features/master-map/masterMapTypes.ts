@@ -57,6 +57,8 @@ export type MasterMapNodeVisualStyle = {
   targetPosition?: MasterMapHandleSide;
 };
 
+export type MasterMapNodeVisualStyleField = keyof Required<MasterMapNodeVisualStyle>;
+
 export type MasterMap = {
   id: string;
   name: string;

@@ -1,6 +1,6 @@
 import { AppIcon } from "../../../components/AppIcon";
 import type { MasterMapNode } from "../masterMapTypes";
-import type { MasterMapHandleSide, MasterMapNodeBorderStyle, MasterMapNodeShape, MasterMapNodeVisualStyle, MasterMapNodeWidthPreset } from "../masterMapTypes";
+import type { MasterMapHandleSide, MasterMapNodeBorderStyle, MasterMapNodeShape, MasterMapNodeVisualStyle, MasterMapNodeVisualStyleField, MasterMapNodeWidthPreset } from "../masterMapTypes";
 import {
   masterMapAlignmentLabels,
   masterMapConnectionModeLabels,
@@ -31,6 +31,7 @@ export function MasterMapLayoutPanel({
   selectedNodes,
   referenceNodeId,
   visualStyle,
+  visualStyleDirtyFields,
   editable,
   calculating,
   previewActive,
@@ -40,6 +41,7 @@ export function MasterMapLayoutPanel({
   onChange,
   onReferenceChange,
   onVisualStyleChange,
+  onApplyReferenceStyle,
   onClose,
   onPreview,
   onAlignmentPreview,
@@ -53,6 +55,7 @@ export function MasterMapLayoutPanel({
   selectedNodes: MasterMapNode[];
   referenceNodeId: string;
   visualStyle: Required<MasterMapNodeVisualStyle>;
+  visualStyleDirtyFields: Set<MasterMapNodeVisualStyleField>;
   editable: boolean;
   calculating: boolean;
   previewActive: boolean;
@@ -61,7 +64,8 @@ export function MasterMapLayoutPanel({
   collisionCount: number;
   onChange: (preferences: MasterMapLayoutPreferences) => void;
   onReferenceChange: (nodeId: string) => void;
-  onVisualStyleChange: (style: Required<MasterMapNodeVisualStyle>) => void;
+  onVisualStyleChange: (field: MasterMapNodeVisualStyleField, value: Required<MasterMapNodeVisualStyle>[MasterMapNodeVisualStyleField]) => void;
+  onApplyReferenceStyle: () => void;
   onClose: () => void;
   onPreview: () => void;
   onAlignmentPreview: (action: MasterMapAlignmentAction) => void;
@@ -75,8 +79,8 @@ export function MasterMapLayoutPanel({
     onChange({ ...preferences, [key]: value });
   }
 
-  function updateStyle<K extends keyof Required<MasterMapNodeVisualStyle>>(key: K, value: Required<MasterMapNodeVisualStyle>[K]) {
-    onVisualStyleChange({ ...visualStyle, [key]: value });
+  function updateStyle<K extends MasterMapNodeVisualStyleField>(key: K, value: Required<MasterMapNodeVisualStyle>[K]) {
+    onVisualStyleChange(key, value);
   }
 
   const canAlign = selectedNodes.length >= 2;
@@ -199,6 +203,11 @@ export function MasterMapLayoutPanel({
         <div>
           <p className="eyebrow">Quadro</p>
           <h3>Estilo e conectores</h3>
+          <p className="master-map-muted">
+            {visualStyleDirtyFields.size
+              ? `${visualStyleDirtyFields.size} campo(s) alterado(s) nesta sessao. Em lote, somente esses campos serao aplicados.`
+              : "Em lote, apenas os campos alterados nesta sessao serao aplicados."}
+          </p>
         </div>
         <div className="master-map-color-palette" aria-label="Paleta oficial do HUB SM">
           {masterMapOfficialPalette.map((color) => (
@@ -271,6 +280,14 @@ export function MasterMapLayoutPanel({
             </select>
           </label>
         </div>
+        <button
+          className="secondary-button"
+          type="button"
+          disabled={!selectedNodes.length || previewActive || calculating}
+          onClick={onApplyReferenceStyle}
+        >
+          Aplicar estilo completo do quadro de referencia
+        </button>
         <p className="master-map-muted">Use Pre-visualizar para testar estilo e handles. Nada e salvo antes de Aplicar e salvar.</p>
       </section>
 

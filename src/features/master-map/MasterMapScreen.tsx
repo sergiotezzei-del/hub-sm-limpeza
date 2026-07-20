@@ -24,6 +24,7 @@ import {
 import {
   defaultMasterMapVisualStyle,
   getMasterMapNodeWidth,
+  mergeMasterMapVisualStylePatch,
   normalizeMasterMapVisualStyle,
 } from "./layout/masterMapVisualStyle";
 import { MasterMapFilters } from "./navigation/MasterMapFilters";
@@ -42,11 +43,12 @@ import {
   loadMasterMapData,
   saveLocalMasterMapCache,
   saveMasterMapEdgeRemote,
+  saveMasterMapNodeLayoutUpdatesRemote,
   saveMasterMapNodeRemote,
-  saveMasterMapNodePositionsRemote,
+  type MasterMapNodeLayoutUpdate,
 } from "./masterMapService";
 import { getVisibleMasterMapGraph } from "./masterMapLayout";
-import type { MasterMap, MasterMapData, MasterMapEdge, MasterMapNode, MasterMapNodeVisualStyle, MasterMapSaveStatus, MasterMapTargetScreen } from "./masterMapTypes";
+import type { MasterMap, MasterMapData, MasterMapEdge, MasterMapNode, MasterMapNodeVisualStyle, MasterMapNodeVisualStyleField, MasterMapSaveStatus, MasterMapTargetScreen } from "./masterMapTypes";
 import { defaultMasterMapFilters, getMasterMapActiveFilterCount, type MasterMapFilterState, type MasterMapViewMode } from "./types/masterMapNavigationTypes";
 
 const MASTER_MAP_VIEW_MODE_KEY = "hub-sm-master-map-view-mode";
@@ -123,6 +125,7 @@ export function MasterMapScreen({
   } | null>(null);
   const [layoutReferenceNodeId, setLayoutReferenceNodeId] = useState("");
   const [visualStyleDraft, setVisualStyleDraft] = useState<Required<MasterMapNodeVisualStyle>>(defaultMasterMapVisualStyle);
+  const [visualStyleDirtyFields, setVisualStyleDirtyFields] = useState<Set<MasterMapNodeVisualStyleField>>(new Set());
 
   useEffect(() => {
     let active = true;
@@ -206,6 +209,7 @@ export function MasterMapScreen({
     setSelectedNodeId(undefined);
     setSelectedEdgeId(undefined);
     setLayoutReferenceNodeId("");
+    setVisualStyleDirtyFields(new Set());
   }, [activeMapId]);
 
   useEffect(() => {
@@ -240,6 +244,7 @@ export function MasterMapScreen({
       return;
     }
     setVisualStyleDraft(normalizeMasterMapVisualStyle(selectedNode.metadata.visualStyle));
+    setVisualStyleDirtyFields(new Set());
     setLayoutReferenceNodeId((current) => selectedNodeIds.has(current) ? current : selectedNode.id);
   }, [selectedNode, selectedNodeIds]);
 
@@ -749,6 +754,11 @@ export function MasterMapScreen({
     setLayoutPreferences(nextPreferences);
   }
 
+  function handleVisualStyleDraftChange(field: MasterMapNodeVisualStyleField, value: Required<MasterMapNodeVisualStyle>[MasterMapNodeVisualStyleField]) {
+    setVisualStyleDraft((current) => ({ ...current, [field]: value }));
+    setVisualStyleDirtyFields((current) => new Set(current).add(field));
+  }
+
   function openLayoutPanel() {
     if (!guardEditAction()) return;
     if (viewMode !== "map") setViewMode("map");
@@ -756,6 +766,7 @@ export function MasterMapScreen({
       preferences: layoutPreferences,
       visualStyle: visualStyleDraft,
     });
+    setVisualStyleDirtyFields(new Set());
     setLayoutPanelOpen(true);
   }
 
@@ -766,6 +777,7 @@ export function MasterMapScreen({
       setLayoutPreferences(layoutSessionSnapshot.preferences);
       setVisualStyleDraft(layoutSessionSnapshot.visualStyle);
     }
+    setVisualStyleDirtyFields(new Set());
     setLayoutSessionSnapshot(null);
     setLayoutPanelOpen(false);
   }
@@ -777,12 +789,13 @@ export function MasterMapScreen({
       return;
     }
     const styleTargetIds = getVisualStyleTargetNodeIds();
-    const styleChanged = selectedLayoutNodes.some((node) => !areSameMasterMapVisualStyle(node.metadata.visualStyle, visualStyleDraft));
+    const visualStylePatch = getVisualStylePatch(visualStyleDirtyFields, visualStyleDraft);
+    const styleChanged = hasMasterMapVisualStylePatch(visualStylePatch);
     const preferencesChanged = layoutSessionSnapshot
       ? !areSameMasterMapLayoutPreferences(layoutSessionSnapshot.preferences, layoutPreferences)
       : false;
     if (styleTargetIds.size > 0 && styleChanged && !preferencesChanged) {
-      await previewVisualStyleOnly(styleTargetIds);
+      await previewVisualStyleOnly(styleTargetIds, visualStylePatch);
       return;
     }
     if (layoutPreferences.scope === "branch" && !selectedNode) {
@@ -802,7 +815,7 @@ export function MasterMapScreen({
       const originalNodeIds = new Set([...affectedNodeIds, ...styleTargetIds]);
       const originalNodes = createMasterMapNodeSnapshot(activeNodes.filter((node) => originalNodeIds.has(node.id)));
       const dimensions = getMeasuredMasterMapNodeDimensions(layoutPreferences.nodeDensity);
-      applyVisualStyleDimensions(dimensions, styleTargetIds, visualStyleDraft, layoutPreferences.nodeDensity);
+      applyVisualStyleDimensions(dimensions, styleTargetIds, visualStylePatch, layoutPreferences.nodeDensity);
       const result = await calculateMasterMapLayout({
         nodes: visibleGraph.nodes,
         edges: visibleGraph.edges,
@@ -811,8 +824,8 @@ export function MasterMapScreen({
         preferences: layoutPreferences,
         anchorNodeId: layoutPreferences.scope === "branch" ? selectedNode?.id : undefined,
       });
-      const previewNodes = createPreviewNodes(activeNodes, result.positions, styleTargetIds, visualStyleDraft);
-      const previewAffectedNodeIds = new Set([...result.affectedNodeIds, ...styleTargetIds]);
+      const previewNodes = createPreviewNodes(activeNodes, result.positions, styleTargetIds, visualStylePatch);
+      const previewAffectedNodeIds = new Set([...result.affectedNodeIds, ...(styleChanged ? styleTargetIds : new Set<string>())]);
       const collisions = detectPreviewCollisions(visibleGraph.nodes, result.positions, dimensions, previewAffectedNodeIds);
 
       setNodes((current) => mergePreviewNodesIntoNodes(current, previewNodes));
@@ -840,8 +853,16 @@ export function MasterMapScreen({
     }
   }
 
-  async function previewVisualStyleOnly(styleTargetIds: Set<string>) {
+  async function previewVisualStyleOnly(
+    styleTargetIds: Set<string>,
+    visualStylePatch: Partial<Required<MasterMapNodeVisualStyle>>,
+    successMessage = "Estilo pre-visualizado. Salve ou cancele para continuar.",
+  ) {
     if (!activeMap) return;
+    if (!hasMasterMapVisualStylePatch(visualStylePatch)) {
+      setMessage("Altere algum campo visual ou use a acao de estilo completo do quadro de referencia.");
+      return;
+    }
     setViewMode("map");
     setLayoutCalculating(true);
     setMessage("Criando previa do estilo dos quadros...");
@@ -851,8 +872,8 @@ export function MasterMapScreen({
     try {
       const originalNodes = createMasterMapNodeSnapshot(activeNodes.filter((node) => styleTargetIds.has(node.id)));
       const dimensions = getMeasuredMasterMapNodeDimensions(layoutPreferences.nodeDensity);
-      applyVisualStyleDimensions(dimensions, styleTargetIds, visualStyleDraft, layoutPreferences.nodeDensity);
-      const previewNodes = createPreviewNodes(activeNodes, [], styleTargetIds, visualStyleDraft);
+      applyVisualStyleDimensions(dimensions, styleTargetIds, visualStylePatch, layoutPreferences.nodeDensity);
+      const previewNodes = createPreviewNodes(activeNodes, [], styleTargetIds, visualStylePatch);
       const collisions = detectPreviewCollisions(activeNodes, [], dimensions, styleTargetIds);
 
       setNodes((current) => mergePreviewNodesIntoNodes(current, previewNodes));
@@ -869,13 +890,30 @@ export function MasterMapScreen({
       });
       setMessage(collisions.length
         ? `Previa criada, mas existem ${collisions.length} sobreposicoes. Ajuste a largura antes de salvar.`
-        : "Estilo pre-visualizado. Salve ou cancele para continuar.");
+        : successMessage);
     } catch {
       setSaveStatus("error");
       setMessage("Nao foi possivel criar a previa do estilo agora.");
     } finally {
       setLayoutCalculating(false);
     }
+  }
+
+  async function previewReferenceVisualStyle() {
+    if (layoutPreview) {
+      setMessage("Aplique ou cancele a pre-visualizacao atual antes de criar outra.");
+      return;
+    }
+    if (!selectedLayoutNodes.length) {
+      setMessage("Selecione os quadros que receberao o estilo completo.");
+      return;
+    }
+    const referenceNode = selectedLayoutNodes.find((node) => node.id === layoutReferenceNodeId) ?? selectedLayoutNodes[0];
+    await previewVisualStyleOnly(
+      new Set(selectedLayoutNodes.map((node) => node.id)),
+      normalizeMasterMapVisualStyle(referenceNode.metadata.visualStyle),
+      `Estilo completo de "${referenceNode.title}" pre-visualizado. Salve ou cancele para continuar.`,
+    );
   }
 
   async function previewAlignment(action: MasterMapAlignmentAction) {
@@ -911,7 +949,7 @@ export function MasterMapScreen({
         action,
         referenceNode.id,
       );
-      const previewNodes = createPreviewNodes(activeNodes, previewPositions, new Set<string>(), visualStyleDraft);
+      const previewNodes = createPreviewNodes(activeNodes, previewPositions, new Set<string>(), {});
       const collisions = detectPreviewCollisions(activeNodes, previewPositions, dimensions, affectedNodeIds);
 
       setNodes((current) => mergePreviewNodesIntoNodes(current, previewNodes));
@@ -946,12 +984,10 @@ export function MasterMapScreen({
 
     setSaveStatus("saving");
     try {
-      const savedPositionNodes = layoutPreview.previewPositions.length
-        ? await saveMasterMapNodePositionsRemote(layoutPreview.mapId, layoutPreview.previewPositions)
+      const updates = getMasterMapNodeLayoutUpdates(layoutPreview.originalNodes, layoutPreview.previewNodes);
+      const savedNodes = updates.length
+        ? await saveMasterMapNodeLayoutUpdatesRemote(layoutPreview.mapId, updates)
         : [];
-      const nodesWithMetadataChanges = getNodesWithMetadataChanges(layoutPreview.originalNodes, layoutPreview.previewNodes);
-      const savedMetadataNodes = await Promise.all(nodesWithMetadataChanges.map((node) => saveMasterMapNodeRemote(node)));
-      const savedNodes = [...savedPositionNodes, ...savedMetadataNodes];
       const savedNodeById = new Map(savedNodes.map((node) => [node.id, node]));
       setNodes((current) => {
         const nextNodes = savedNodes.length
@@ -968,6 +1004,7 @@ export function MasterMapScreen({
       });
       setLayoutPreferences(layoutPreview.previewPreferences);
       setVisualStyleDraft(normalizeMasterMapVisualStyle(visualStyleDraft));
+      setVisualStyleDirtyFields(new Set());
       saveMasterMapLayoutPreference(layoutPreview.mapId, layoutPreview.previewPreferences);
       setLayoutSessionSnapshot(null);
       setLayoutPreview(null);
@@ -985,6 +1022,7 @@ export function MasterMapScreen({
     setNodes((current) => restoreNodesFromSnapshot(current, layoutPreview.originalNodes));
     setLayoutPreferences(layoutPreview.originalPreferences);
     setVisualStyleDraft(layoutPreview.originalVisualStyle);
+    setVisualStyleDirtyFields(new Set());
     setLayoutPreview(null);
     setMessage("Pré-visualização cancelada. Posições anteriores restauradas.");
     window.setTimeout(() => flowInstance?.fitView(getFitViewOptions()), 100);
@@ -999,11 +1037,14 @@ export function MasterMapScreen({
     setNodes((current) => restoreNodesFromSnapshot(current, snapshot.nodes));
 
     try {
-      const positions = snapshot.nodes.map((node) => ({ id: node.id, positionX: node.positionX, positionY: node.positionY }));
-      const restoredNodes = restoreNodesFromSnapshot(nodes, snapshot.nodes).filter((node) => snapshot.nodes.some((snapshotNode) => snapshotNode.id === node.id));
-      const savedPositionNodes = positions.length ? await saveMasterMapNodePositionsRemote(snapshot.mapId, positions) : [];
-      const savedMetadataNodes = await Promise.all(restoredNodes.map((node) => saveMasterMapNodeRemote(node)));
-      const savedNodeById = new Map([...savedPositionNodes, ...savedMetadataNodes].map((node) => [node.id, node]));
+      const updates = snapshot.nodes.map((node): MasterMapNodeLayoutUpdate => ({
+        id: node.id,
+        positionX: node.positionX,
+        positionY: node.positionY,
+        visualStyle: node.metadata.visualStyle ? normalizeMasterMapVisualStyle(node.metadata.visualStyle) : null,
+      }));
+      const savedNodes = updates.length ? await saveMasterMapNodeLayoutUpdatesRemote(snapshot.mapId, updates) : [];
+      const savedNodeById = new Map(savedNodes.map((node) => [node.id, node]));
       setNodes((current) => {
         const nextNodes = savedNodeById.size
           ? current.map((node) => savedNodeById.get(node.id) ?? node)
@@ -1013,6 +1054,7 @@ export function MasterMapScreen({
       });
       setLayoutPreferences(snapshot.preferences);
       setVisualStyleDraft(snapshot.visualStyle);
+      setVisualStyleDirtyFields(new Set());
       saveMasterMapLayoutPreference(snapshot.mapId, snapshot.preferences);
       setLayoutUndoSnapshot(null);
       setSaveStatus("saved");
@@ -1055,14 +1097,17 @@ export function MasterMapScreen({
   function applyVisualStyleDimensions(
     dimensions: Map<string, MasterMapNodeDimension>,
     nodeIds: Set<string>,
-    visualStyle: Required<MasterMapNodeVisualStyle>,
+    visualStylePatch: Partial<Required<MasterMapNodeVisualStyle>>,
     density = layoutPreferences.nodeDensity,
   ) {
+    if (!hasMasterMapVisualStylePatch(visualStylePatch)) return;
     nodeIds.forEach((nodeId) => {
       const current = dimensions.get(nodeId);
+      const node = activeNodes.find((activeNode) => activeNode.id === nodeId);
+      const nextStyle = mergeMasterMapVisualStylePatch(node?.metadata.visualStyle, visualStylePatch);
       dimensions.set(nodeId, {
         id: nodeId,
-        width: getMasterMapNodeWidth(visualStyle, density === "compact"),
+        width: getMasterMapNodeWidth(nextStyle, density === "compact"),
         height: current?.height ?? (density === "compact" ? 104 : 178),
       });
     });
@@ -1291,6 +1336,7 @@ export function MasterMapScreen({
               selectedNodes={selectedLayoutNodes}
               referenceNodeId={layoutReferenceNodeId || selectedLayoutNodes[0]?.id || ""}
               visualStyle={visualStyleDraft}
+              visualStyleDirtyFields={visualStyleDirtyFields}
               editable={editable}
               calculating={layoutCalculating}
               previewActive={Boolean(layoutPreview)}
@@ -1299,7 +1345,8 @@ export function MasterMapScreen({
               collisionCount={layoutPreview?.collisionCount ?? 0}
               onChange={handleLayoutPreferencesChange}
               onReferenceChange={setLayoutReferenceNodeId}
-              onVisualStyleChange={setVisualStyleDraft}
+              onVisualStyleChange={handleVisualStyleDraftChange}
+              onApplyReferenceStyle={previewReferenceVisualStyle}
               onClose={closeLayoutPanel}
               onPreview={previewMasterMapLayout}
               onAlignmentPreview={previewAlignment}
@@ -1449,16 +1496,17 @@ function createPreviewNodes(
   nodes: MasterMapNode[],
   positions: MasterMapPositionPatch[],
   visualStyleNodeIds: Set<string>,
-  visualStyle: Required<MasterMapNodeVisualStyle>,
+  visualStylePatch: Partial<Required<MasterMapNodeVisualStyle>>,
 ) {
   const positionById = new Map(positions.map((position) => [position.id, position]));
-  const affectedIds = new Set([...positionById.keys(), ...visualStyleNodeIds]);
+  const hasVisualPatch = hasMasterMapVisualStylePatch(visualStylePatch);
+  const affectedIds = new Set([...positionById.keys(), ...(hasVisualPatch ? visualStyleNodeIds : new Set<string>())]);
   return nodes
     .filter((node) => affectedIds.has(node.id))
     .map((node) => {
       const position = positionById.get(node.id);
-      const metadata = visualStyleNodeIds.has(node.id)
-        ? { ...node.metadata, visualStyle: normalizeMasterMapVisualStyle(visualStyle) }
+      const metadata = hasVisualPatch && visualStyleNodeIds.has(node.id)
+        ? { ...node.metadata, visualStyle: mergeMasterMapVisualStylePatch(node.metadata.visualStyle, visualStylePatch) }
         : node.metadata;
       return {
         ...node,
@@ -1475,12 +1523,51 @@ function mergePreviewNodesIntoNodes(nodes: MasterMapNode[], previewNodes: Master
   return nodes.map((node) => previewById.get(node.id) ?? node);
 }
 
-function getNodesWithMetadataChanges(originalNodes: MasterMapNodeSnapshot[], previewNodes: MasterMapNode[]) {
+function getMasterMapNodeLayoutUpdates(originalNodes: MasterMapNodeSnapshot[], previewNodes: MasterMapNode[]): MasterMapNodeLayoutUpdate[] {
   const originalById = new Map(originalNodes.map((node) => [node.id, node]));
-  return previewNodes.filter((node) => {
+  return previewNodes.flatMap((node) => {
     const original = originalById.get(node.id);
-    return original && JSON.stringify(original.metadata ?? {}) !== JSON.stringify(node.metadata ?? {});
+    if (!original) return [];
+
+    const update: MasterMapNodeLayoutUpdate = { id: node.id };
+    const positionChanged = original.positionX !== node.positionX || original.positionY !== node.positionY;
+    const visualStyleChanged = !areSameMasterMapVisualStyle(original.metadata.visualStyle, node.metadata.visualStyle);
+
+    if (positionChanged) {
+      update.positionX = node.positionX;
+      update.positionY = node.positionY;
+    }
+
+    if (visualStyleChanged) {
+      update.visualStyle = node.metadata.visualStyle ? normalizeMasterMapVisualStyle(node.metadata.visualStyle) : null;
+    }
+
+    return positionChanged || visualStyleChanged ? [update] : [];
   });
+}
+
+function getVisualStylePatch(
+  dirtyFields: Set<MasterMapNodeVisualStyleField>,
+  visualStyle: Required<MasterMapNodeVisualStyle>,
+): Partial<Required<MasterMapNodeVisualStyle>> {
+  const patch: Partial<Required<MasterMapNodeVisualStyle>> = {};
+  dirtyFields.forEach((field) => {
+    patch[field] = visualStyle[field] as never;
+  });
+  return normalizeMasterMapVisualStylePatch(patch);
+}
+
+function normalizeMasterMapVisualStylePatch(patch: Partial<Required<MasterMapNodeVisualStyle>>) {
+  const normalized = normalizeMasterMapVisualStyle(patch);
+  const nextPatch: Partial<Required<MasterMapNodeVisualStyle>> = {};
+  (Object.keys(patch) as MasterMapNodeVisualStyleField[]).forEach((field) => {
+    nextPatch[field] = normalized[field] as never;
+  });
+  return nextPatch;
+}
+
+function hasMasterMapVisualStylePatch(patch: Partial<Required<MasterMapNodeVisualStyle>>) {
+  return Object.keys(patch).length > 0;
 }
 
 function detectPreviewCollisions(

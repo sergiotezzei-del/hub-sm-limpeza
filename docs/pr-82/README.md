@@ -24,12 +24,14 @@ Evidencias revisaveis:
 - `13-estilo-handles-top-base-preview.jpg`: estilo visual e handles source topo / target base em previa.
 - `14-estilo-persistido-reload.jpg`: persistencia de cor, borda, forma e handles apos recarregar.
 - `15-cancelamento-restaura-posicoes-estilos.jpg`: cancelamento restaurando posicoes e estilo anterior.
+- `16-rpc-transacional-estilo-parcial.md`: validacao da RPC transacional, RLS final e multisselecao com patch visual parcial.
 
 Validacoes executadas:
 
 - `pnpm run build`
 - `git diff --check`
 - Automacao visual local com Supabase fake confirmou `errors: []` e `stylePersisted: true`.
+- Supabase real validado com Admin, Carlos, Salomao e anon para a RPC transacional final.
 
 Escopo preservado:
 

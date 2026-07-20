@@ -66,6 +66,16 @@ export function normalizeMasterMapVisualStyle(style?: MasterMapNodeVisualStyle):
   };
 }
 
+export function mergeMasterMapVisualStylePatch(
+  currentStyle: MasterMapNodeVisualStyle | undefined,
+  patch: Partial<Required<MasterMapNodeVisualStyle>>,
+) {
+  return normalizeMasterMapVisualStyle({
+    ...normalizeMasterMapVisualStyle(currentStyle),
+    ...patch,
+  });
+}
+
 export function isValidMasterMapHexColor(value: string) {
   return /^#[0-9a-f]{6}$/i.test(value.trim());
 }

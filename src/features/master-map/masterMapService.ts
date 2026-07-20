@@ -1,7 +1,7 @@
 import { getSupabaseAccessToken, SUPABASE_KEY_HEADER, SUPABASE_PUBLIC_KEY, SUPABASE_URL, supabaseConfigured } from "../../modules/security/services/supabaseClient";
 import { defaultMasterMapEdges, defaultMasterMapNodes, defaultMasterMaps } from "./masterMapDefaults";
 import type { MasterMapPositionPatch } from "./layout/masterMapLayoutTypes";
-import type { MasterMap, MasterMapData, MasterMapDestinationType, MasterMapEdge, MasterMapNode, MasterMapRelationType, MasterMapStatus } from "./masterMapTypes";
+import type { MasterMap, MasterMapData, MasterMapDestinationType, MasterMapEdge, MasterMapNode, MasterMapNodeVisualStyle, MasterMapRelationType, MasterMapStatus } from "./masterMapTypes";
 
 const MASTER_MAP_CACHE_KEY = "hub-sm-master-map-cache";
 const MASTER_MAP_REQUEST_TIMEOUT_MS = 8000;
@@ -52,6 +52,13 @@ type MasterMapEdgeRow = {
   metadata: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;
+};
+
+export type MasterMapNodeLayoutUpdate = {
+  id: string;
+  positionX?: number;
+  positionY?: number;
+  visualStyle?: MasterMapNodeVisualStyle | null;
 };
 
 export class MasterMapRemoteError extends Error {
@@ -122,19 +129,34 @@ export async function createMasterMapNodeRemote(node: MasterMapNode) {
 }
 
 export async function saveMasterMapNodePositionsRemote(mapId: string, positions: MasterMapPositionPatch[]) {
-  ensureRemoteWriteReady();
-  if (!positions.length) return [];
+  return saveMasterMapNodeLayoutUpdatesRemote(
+    mapId,
+    positions.map((position) => ({
+      id: position.id,
+      positionX: position.positionX,
+      positionY: position.positionY,
+    })),
+  );
+}
 
-  const response = await masterMapRequest("rpc/apply_hub_map_node_positions", {
+export async function saveMasterMapNodeLayoutUpdatesRemote(mapId: string, updates: MasterMapNodeLayoutUpdate[]) {
+  ensureRemoteWriteReady();
+  if (!updates.length) return [];
+
+  const response = await masterMapRequest("rpc/apply_hub_map_node_layout_updates", {
     method: "POST",
     headers: { Prefer: "return=representation" },
     body: JSON.stringify({
       p_map_id: mapId,
-      p_positions: positions.map((position) => ({
-        id: position.id,
-        position_x: position.positionX,
-        position_y: position.positionY,
-      })),
+      p_updates: updates.map((update) => {
+        const payload: Record<string, unknown> = { id: update.id };
+        if (typeof update.positionX === "number" && typeof update.positionY === "number") {
+          payload.position_x = update.positionX;
+          payload.position_y = update.positionY;
+        }
+        if ("visualStyle" in update) payload.visualStyle = update.visualStyle ?? null;
+        return payload;
+      }),
     }),
   });
   const rows = (await response.json()) as MasterMapNodeRow[];
