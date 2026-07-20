@@ -28,6 +28,9 @@ export function MasterMapNavigationBar({
   onToggleEditMode,
   onAddNode,
   onAddChildNode,
+  onOpenLayoutPanel,
+  onUndoLayout,
+  undoLayoutAvailable,
 }: {
   maps: MasterMap[];
   activeMapId: string;
@@ -54,6 +57,9 @@ export function MasterMapNavigationBar({
   onToggleEditMode: () => void;
   onAddNode: () => void;
   onAddChildNode: () => void;
+  onOpenLayoutPanel: () => void;
+  onUndoLayout: () => void;
+  undoLayoutAvailable: boolean;
 }) {
   const saveLabel = saveStatus === "saving" ? "Salvando..." : saveStatus === "saved" ? "Salvo" : saveStatus === "error" ? "Erro ao salvar" : "Pronto";
   const hasNavigationState = Boolean(searchQuery.trim()) || activeFilterCount > 0;
@@ -65,6 +71,15 @@ export function MasterMapNavigationBar({
         <button className="ghost-button master-map-zoom-button" type="button" onClick={onZoomOut} aria-label="Diminuir zoom">-</button>
         <button className="ghost-button master-map-zoom-button" type="button" onClick={onZoomIn} aria-label="Aumentar zoom">+</button>
         <button className="secondary-button" type="button" onClick={onFullscreen}><AppIcon name="map" size="sm" className="action-icon" />Tela cheia</button>
+        <button className="secondary-button" type="button" disabled={!canEdit} onClick={onOpenLayoutPanel}>
+          <AppIcon name="settings" size="sm" className="action-icon" />
+          Organizar mapa
+        </button>
+        {undoLayoutAvailable && (
+          <button className="ghost-button" type="button" disabled={!canEdit} onClick={onUndoLayout}>
+            Desfazer organizacao
+          </button>
+        )}
         <button className={editMode ? "primary-button" : "secondary-button"} type="button" disabled={!canEdit} onClick={onToggleEditMode}>
           {editMode ? "Modo edicao" : "Modo visualizacao"}
         </button>

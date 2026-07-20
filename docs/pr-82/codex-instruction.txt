@@ -1,0 +1,18 @@
+Execute integralmente a issue #82 e os complementos em docs/pr-82/edrawmind-reference-notes.md.
+
+Use a branch já criada:
+codex/layouts-organizacao-mapa-mestre
+
+Requisitos novos obrigatórios:
+- alinhamento relativo usando um quadro como referência;
+- alinhar esquerda/centro/direita/topo/meio/base;
+- distribuir horizontal e verticalmente;
+- edição controlada de preenchimento, borda, formato, espessura e largura do quadro;
+- handles de entrada e saída configuráveis em esquerda/direita/topo/base ou automático;
+- layouts Árvore horizontal e Árvore vertical;
+- painel lateral inspirado na lógica do EdrawMind;
+- prévia, aplicar, cancelar e desfazer;
+- nenhum card sobreposto;
+- não implementar Enter/Tab/F2, IA ou módulo operacional de Chaves.
+
+Abra o PR #82 e não faça merge automático.
