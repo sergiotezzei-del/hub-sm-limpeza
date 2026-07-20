@@ -8,6 +8,7 @@ import type {
   DynamicPageCreatePayload,
   DynamicPagePayload,
   DynamicPagePriority,
+  DynamicPageSummary,
   DynamicPageTemplate,
   DynamicPageType,
 } from "./dynamicPageTypes";
@@ -57,6 +58,18 @@ type DynamicPageTemplateRow = {
   is_system: boolean | null;
   is_active: boolean | null;
   created_at: string;
+  updated_at: string;
+};
+
+type DynamicPageSummaryRow = {
+  id: string;
+  map_id: string;
+  node_id: string;
+  priority: DynamicPagePriority | null;
+  due_date: string | null;
+  status: MasterMapStatus;
+  responsible: string | null;
+  next_action: string | null;
   updated_at: string;
 };
 
@@ -149,6 +162,15 @@ export async function loadDynamicPage(pageId: string): Promise<DynamicPagePayloa
     page: mapDynamicPageRow(pages[0]),
     blocks: blocks.map(mapDynamicPageBlockRow),
   };
+}
+
+export async function loadDynamicPageSummaries(mapId?: string): Promise<DynamicPageSummary[]> {
+  ensureRemoteWriteReady();
+
+  const mapFilter = mapId ? `&map_id=eq.${encodeURIComponent(mapId)}` : "";
+  const response = await masterMapRequest(`hub_dynamic_pages?select=id,map_id,node_id,priority,due_date,status,responsible,next_action,updated_at&is_active=eq.true${mapFilter}`);
+  const rows = (await response.json()) as DynamicPageSummaryRow[];
+  return rows.map(mapDynamicPageSummaryRow);
 }
 
 export async function createDynamicPageForNode(input: CreateDynamicPageForNodeInput): Promise<DynamicPageCreatePayload> {
@@ -273,6 +295,20 @@ function mapDynamicPageRow(row: DynamicPageRow): DynamicPage {
     createdBy: row.created_by ?? undefined,
     updatedBy: row.updated_by ?? undefined,
     createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function mapDynamicPageSummaryRow(row: DynamicPageSummaryRow): DynamicPageSummary {
+  return {
+    id: row.id,
+    mapId: row.map_id,
+    nodeId: row.node_id,
+    priority: row.priority ?? "MEDIUM",
+    dueDate: row.due_date ?? undefined,
+    status: row.status,
+    responsible: row.responsible ?? "",
+    nextAction: row.next_action ?? "",
     updatedAt: row.updated_at,
   };
 }

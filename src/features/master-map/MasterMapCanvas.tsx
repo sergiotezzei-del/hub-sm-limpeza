@@ -21,6 +21,8 @@ const nodeTypes = {
   masterMapNode: MasterMapNodeCard,
 };
 
+const emptyNodeIdSet = new Set<string>();
+
 const relationLabels: Record<MasterMapRelationType, string> = {
   BELONGS_TO: "Pertence a",
   DEPENDS_ON: "Depende de",
@@ -35,6 +37,9 @@ export function MasterMapCanvas({
   editMode,
   selectedNodeId,
   selectedEdgeId,
+  highlightedNodeIds = emptyNodeIdSet,
+  dimmedNodeIds = emptyNodeIdSet,
+  forceVisibleNodeIds = emptyNodeIdSet,
   onInit,
   onSelectNode,
   onSelectEdge,
@@ -51,6 +56,9 @@ export function MasterMapCanvas({
   editMode: boolean;
   selectedNodeId?: string;
   selectedEdgeId?: string;
+  highlightedNodeIds?: Set<string>;
+  dimmedNodeIds?: Set<string>;
+  forceVisibleNodeIds?: Set<string>;
   onInit: (instance: ReactFlowInstance) => void;
   onSelectNode: (nodeId: string) => void;
   onSelectEdge: (edgeId: string) => void;
@@ -62,7 +70,7 @@ export function MasterMapCanvas({
   onOpenExternalUrl: (url: string) => void;
   onToggleCollapse: (nodeId: string) => void;
 }) {
-  const visibleGraph = useMemo(() => getVisibleMasterMapGraph(nodes, edges), [nodes, edges]);
+  const visibleGraph = useMemo(() => getVisibleMasterMapGraph(nodes, edges, forceVisibleNodeIds), [edges, forceVisibleNodeIds, nodes]);
   const [isCompactViewport, setIsCompactViewport] = useState(() => (
     typeof window !== "undefined" ? window.matchMedia("(max-width: 720px)").matches : false
   ));
@@ -82,13 +90,15 @@ export function MasterMapCanvas({
       node,
       childrenCount: getMasterMapChildrenCount(node.id, edges),
       editMode,
+      dimmed: dimmedNodeIds.has(node.id),
+      highlighted: highlightedNodeIds.has(node.id),
       onOpenDetails: onOpenNodeDetails,
       onOpenModule,
       onOpenDynamicPage,
       onOpenExternalUrl,
       onToggleCollapse,
     },
-  } satisfies MasterMapFlowNode)), [edges, editMode, onOpenDynamicPage, onOpenExternalUrl, onOpenModule, onOpenNodeDetails, onToggleCollapse, selectedNodeId, visibleGraph.nodes]);
+  } satisfies MasterMapFlowNode)), [dimmedNodeIds, edges, editMode, highlightedNodeIds, onOpenDynamicPage, onOpenExternalUrl, onOpenModule, onOpenNodeDetails, onToggleCollapse, selectedNodeId, visibleGraph.nodes]);
   const flowEdges = useMemo<Edge[]>(() => visibleGraph.edges.map((edge) => ({
     id: edge.id,
     source: edge.sourceNodeId,
