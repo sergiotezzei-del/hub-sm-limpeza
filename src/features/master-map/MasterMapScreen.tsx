@@ -206,7 +206,7 @@ export function MasterMapScreen({
     highlightedNodeIds.forEach((nodeId) => nextIds.add(nodeId));
     return nextIds;
   }, [highlightedNodeIds, selectedNodeId]);
-  const activeLayoutPreviewNodeIds = layoutPreview?.mapId === activeMap?.id ? layoutPreview.affectedNodeIds : undefined;
+  const activeLayoutPreviewNodeIds = layoutPreview && activeMap && layoutPreview.mapId === activeMap.id ? layoutPreview.affectedNodeIds : undefined;
   const attentionItems = useMemo(() => getMasterMapAttentionItems(filteredActiveNodes, activePageSummaries), [activePageSummaries, filteredActiveNodes]);
   const searchResults = useMemo(() => {
     if (!debouncedSearchQuery.trim()) return [];
