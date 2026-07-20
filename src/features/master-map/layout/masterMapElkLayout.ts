@@ -17,16 +17,18 @@ export async function calculateMasterMapElkLayout(input: MasterMapLayoutInput): 
   }
 
   const spacing = masterMapSpacingPresets[input.preferences.spacing];
-  const direction = input.preferences.layoutMode === "vertical" ? "DOWN" : "RIGHT";
+  const treeMode = input.preferences.layoutMode === "tree-horizontal" || input.preferences.layoutMode === "tree-vertical";
+  const direction = input.preferences.layoutMode === "vertical" || input.preferences.layoutMode === "tree-vertical" ? "DOWN" : "RIGHT";
   const graph: ElkNode = {
     id: "master-map-layout-root",
     layoutOptions: {
-      "elk.algorithm": "layered",
+      "elk.algorithm": treeMode ? "mrtree" : "layered",
       "elk.direction": direction,
       "elk.spacing.nodeNode": String(spacing.nodeGap),
       "elk.layered.spacing.nodeNodeBetweenLayers": String(spacing.layerGap),
       "elk.layered.spacing.edgeNodeBetweenLayers": String(spacing.edgeGap),
       "elk.layered.nodePlacement.strategy": "NETWORK_SIMPLEX",
+      "elk.mrtree.spacing.nodeNode": String(spacing.nodeGap),
       "elk.edgeRouting": "ORTHOGONAL",
       "elk.hierarchyHandling": "INCLUDE_CHILDREN",
       "elk.padding": `[top=${spacing.branchMargin},left=${spacing.branchMargin},bottom=${spacing.branchMargin},right=${spacing.branchMargin}]`,

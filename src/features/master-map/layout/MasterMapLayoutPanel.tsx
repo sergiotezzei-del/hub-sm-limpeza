@@ -1,11 +1,14 @@
 import { AppIcon } from "../../../components/AppIcon";
 import type { MasterMapNode } from "../masterMapTypes";
+import type { MasterMapHandleSide, MasterMapNodeBorderStyle, MasterMapNodeShape, MasterMapNodeVisualStyle, MasterMapNodeWidthPreset } from "../masterMapTypes";
 import {
+  masterMapAlignmentLabels,
   masterMapConnectionModeLabels,
   masterMapLayoutModeLabels,
   masterMapLayoutScopeLabels,
   masterMapNodeDensityLabels,
   masterMapSpacingLabels,
+  type MasterMapAlignmentAction,
   type MasterMapConnectionMode,
   type MasterMapLayoutMode,
   type MasterMapLayoutPreferences,
@@ -13,11 +16,21 @@ import {
   type MasterMapNodeDensity,
   type MasterMapSpacingPreset,
 } from "./masterMapLayoutTypes";
+import {
+  masterMapBorderStyleLabels,
+  masterMapHandleSideLabels,
+  masterMapNodeShapeLabels,
+  masterMapOfficialPalette,
+  masterMapWidthPresetLabels,
+} from "./masterMapVisualStyle";
 
 export function MasterMapLayoutPanel({
   open,
   preferences,
   selectedNode,
+  selectedNodes,
+  referenceNodeId,
+  visualStyle,
   editable,
   calculating,
   previewActive,
@@ -25,8 +38,11 @@ export function MasterMapLayoutPanel({
   affectedCount,
   collisionCount,
   onChange,
+  onReferenceChange,
+  onVisualStyleChange,
   onClose,
   onPreview,
+  onAlignmentPreview,
   onApply,
   onCancelPreview,
   onUndo,
@@ -34,6 +50,9 @@ export function MasterMapLayoutPanel({
   open: boolean;
   preferences: MasterMapLayoutPreferences;
   selectedNode: MasterMapNode | null;
+  selectedNodes: MasterMapNode[];
+  referenceNodeId: string;
+  visualStyle: Required<MasterMapNodeVisualStyle>;
   editable: boolean;
   calculating: boolean;
   previewActive: boolean;
@@ -41,8 +60,11 @@ export function MasterMapLayoutPanel({
   affectedCount: number;
   collisionCount: number;
   onChange: (preferences: MasterMapLayoutPreferences) => void;
+  onReferenceChange: (nodeId: string) => void;
+  onVisualStyleChange: (style: Required<MasterMapNodeVisualStyle>) => void;
   onClose: () => void;
   onPreview: () => void;
+  onAlignmentPreview: (action: MasterMapAlignmentAction) => void;
   onApply: () => void;
   onCancelPreview: () => void;
   onUndo: () => void;
@@ -52,6 +74,13 @@ export function MasterMapLayoutPanel({
   function update<K extends keyof MasterMapLayoutPreferences>(key: K, value: MasterMapLayoutPreferences[K]) {
     onChange({ ...preferences, [key]: value });
   }
+
+  function updateStyle<K extends keyof Required<MasterMapNodeVisualStyle>>(key: K, value: Required<MasterMapNodeVisualStyle>[K]) {
+    onVisualStyleChange({ ...visualStyle, [key]: value });
+  }
+
+  const canAlign = selectedNodes.length >= 2;
+  const canDistribute = selectedNodes.length >= 3;
 
   return (
     <aside className="master-map-layout-panel" aria-label="Organizar mapa">
@@ -63,6 +92,13 @@ export function MasterMapLayoutPanel({
         </div>
         <button className="ghost-button" type="button" onClick={onClose}>Fechar</button>
       </div>
+
+      <section className="master-map-layout-section">
+        <div>
+          <p className="eyebrow">Organizacao</p>
+          <h3>Layout do mapa</h3>
+        </div>
+      </section>
 
       <div className="master-map-layout-grid">
         <label>
@@ -125,6 +161,118 @@ export function MasterMapLayoutPanel({
           </select>
         </label>
       </div>
+
+      <section className="master-map-layout-section">
+        <div>
+          <p className="eyebrow">Alinhamento</p>
+          <h3>{selectedNodes.length ? `${selectedNodes.length} quadro(s) selecionado(s)` : "Selecione quadros no mapa"}</h3>
+          <p className="master-map-muted">Use Ctrl/Cmd + clique nos quadros para selecionar em lote.</p>
+        </div>
+        <label className="master-map-layout-wide-label">
+          Quadro de referencia
+          <select
+            value={referenceNodeId}
+            disabled={!canAlign}
+            onChange={(event) => onReferenceChange(event.target.value)}
+          >
+            {selectedNodes.map((node) => (
+              <option key={node.id} value={node.id}>{node.title}</option>
+            ))}
+          </select>
+        </label>
+        <div className="master-map-layout-button-grid">
+          {(["align-left", "align-center-x", "align-right", "align-top", "align-center-y", "align-bottom"] as MasterMapAlignmentAction[]).map((action) => (
+            <button key={action} className="secondary-button" type="button" disabled={!canAlign || calculating || previewActive} onClick={() => onAlignmentPreview(action)}>
+              {masterMapAlignmentLabels[action]}
+            </button>
+          ))}
+          <button className="secondary-button" type="button" disabled={!canDistribute || calculating || previewActive} onClick={() => onAlignmentPreview("distribute-x")}>
+            {masterMapAlignmentLabels["distribute-x"]}
+          </button>
+          <button className="secondary-button" type="button" disabled={!canDistribute || calculating || previewActive} onClick={() => onAlignmentPreview("distribute-y")}>
+            {masterMapAlignmentLabels["distribute-y"]}
+          </button>
+        </div>
+      </section>
+
+      <section className="master-map-layout-section">
+        <div>
+          <p className="eyebrow">Quadro</p>
+          <h3>Estilo e conectores</h3>
+        </div>
+        <div className="master-map-color-palette" aria-label="Paleta oficial do HUB SM">
+          {masterMapOfficialPalette.map((color) => (
+            <button
+              key={color}
+              className="master-map-color-swatch"
+              type="button"
+              style={{ background: color }}
+              aria-label={`Usar cor ${color}`}
+              disabled={!selectedNodes.length || previewActive}
+              onClick={() => updateStyle("fillColor", color)}
+            />
+          ))}
+        </div>
+        <div className="master-map-layout-grid">
+          <label>
+            Preenchimento
+            <input
+              type="text"
+              value={visualStyle.fillColor}
+              disabled={!selectedNodes.length || previewActive}
+              onChange={(event) => updateStyle("fillColor", event.target.value)}
+            />
+          </label>
+          <label>
+            Borda
+            <input
+              type="text"
+              value={visualStyle.borderColor}
+              disabled={!selectedNodes.length || previewActive}
+              onChange={(event) => updateStyle("borderColor", event.target.value)}
+            />
+          </label>
+          <label>
+            Formato
+            <select value={visualStyle.shape} disabled={!selectedNodes.length || previewActive} onChange={(event) => updateStyle("shape", event.target.value as MasterMapNodeShape)}>
+              {(Object.keys(masterMapNodeShapeLabels) as MasterMapNodeShape[]).map((shape) => <option key={shape} value={shape}>{masterMapNodeShapeLabels[shape]}</option>)}
+            </select>
+          </label>
+          <label>
+            Estilo da borda
+            <select value={visualStyle.borderStyle} disabled={!selectedNodes.length || previewActive} onChange={(event) => updateStyle("borderStyle", event.target.value as MasterMapNodeBorderStyle)}>
+              {(Object.keys(masterMapBorderStyleLabels) as MasterMapNodeBorderStyle[]).map((style) => <option key={style} value={style}>{masterMapBorderStyleLabels[style]}</option>)}
+            </select>
+          </label>
+          <label>
+            Espessura
+            <select value={String(visualStyle.borderWidth)} disabled={!selectedNodes.length || previewActive} onChange={(event) => updateStyle("borderWidth", Number(event.target.value) as 1 | 2 | 3)}>
+              <option value="1">1 px</option>
+              <option value="2">2 px</option>
+              <option value="3">3 px</option>
+            </select>
+          </label>
+          <label>
+            Largura
+            <select value={visualStyle.widthPreset} disabled={!selectedNodes.length || previewActive} onChange={(event) => updateStyle("widthPreset", event.target.value as MasterMapNodeWidthPreset)}>
+              {(Object.keys(masterMapWidthPresetLabels) as MasterMapNodeWidthPreset[]).map((preset) => <option key={preset} value={preset}>{masterMapWidthPresetLabels[preset]}</option>)}
+            </select>
+          </label>
+          <label>
+            Saida da linha
+            <select value={visualStyle.sourcePosition} disabled={!selectedNodes.length || previewActive} onChange={(event) => updateStyle("sourcePosition", event.target.value as MasterMapHandleSide)}>
+              {(Object.keys(masterMapHandleSideLabels) as MasterMapHandleSide[]).map((side) => <option key={side} value={side}>{masterMapHandleSideLabels[side]}</option>)}
+            </select>
+          </label>
+          <label>
+            Entrada da linha
+            <select value={visualStyle.targetPosition} disabled={!selectedNodes.length || previewActive} onChange={(event) => updateStyle("targetPosition", event.target.value as MasterMapHandleSide)}>
+              {(Object.keys(masterMapHandleSideLabels) as MasterMapHandleSide[]).map((side) => <option key={side} value={side}>{masterMapHandleSideLabels[side]}</option>)}
+            </select>
+          </label>
+        </div>
+        <p className="master-map-muted">Use Pre-visualizar para testar estilo e handles. Nada e salvo antes de Aplicar e salvar.</p>
+      </section>
 
       <div className="master-map-layout-help">
         <p><strong>Previa:</strong> move os cards somente na tela, sem gravar no Supabase.</p>

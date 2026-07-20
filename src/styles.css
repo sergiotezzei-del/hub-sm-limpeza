@@ -1771,9 +1771,9 @@ button:focus-visible,
   display: grid;
   gap: 8px;
   padding: 12px;
-  color: var(--ink);
-  background: #ffffff;
-  border: 1px solid #e5eaf1;
+  color: var(--master-map-node-text, var(--ink));
+  background: var(--master-map-node-fill, #ffffff);
+  border: var(--master-map-node-border-width, 1px) var(--master-map-node-border-style, solid) var(--master-map-node-border, #e5eaf1);
   border-left: 6px solid var(--orange);
   border-radius: 8px;
   box-shadow: 0 10px 22px rgba(31, 41, 51, 0.08);
@@ -1833,7 +1833,7 @@ button:focus-visible,
 
 .master-map-node h3 {
   margin: 0;
-  color: var(--ink);
+  color: var(--master-map-node-text, var(--ink));
   font-size: 1rem;
   line-height: 1.2;
 }
@@ -1844,7 +1844,7 @@ button:focus-visible,
 
 .master-map-node p {
   margin: 0;
-  color: #475569;
+  color: var(--master-map-node-muted, #475569);
   font-size: 0.86rem;
   font-weight: 700;
   line-height: 1.35;
@@ -1861,8 +1861,8 @@ button:focus-visible,
 .master-map-edit-hint {
   border-radius: 8px;
   padding: 5px 7px;
-  color: var(--muted);
-  background: #f1f5f9;
+  color: var(--master-map-node-muted, var(--muted));
+  background: var(--master-map-node-chip, #f1f5f9);
   font-size: 0.74rem;
   font-weight: 900;
 }
@@ -1925,7 +1925,22 @@ button:focus-visible,
   gap: 10px;
 }
 
-.master-map-layout-grid label {
+.master-map-layout-section {
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid #e5eaf1;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.master-map-layout-section h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 0.96rem;
+}
+
+.master-map-layout-wide-label {
   display: grid;
   gap: 6px;
   color: var(--muted);
@@ -1934,7 +1949,7 @@ button:focus-visible,
   text-transform: uppercase;
 }
 
-.master-map-layout-grid select {
+.master-map-layout-wide-label select {
   min-height: 42px;
   width: 100%;
   border: 1px solid var(--line);
@@ -1945,6 +1960,61 @@ button:focus-visible,
   font-size: 0.95rem;
   font-weight: 800;
   text-transform: none;
+}
+
+.master-map-layout-grid label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.master-map-layout-grid select,
+.master-map-layout-grid input {
+  min-height: 42px;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: var(--ink);
+  background: #ffffff;
+  font-size: 0.95rem;
+  font-weight: 800;
+  text-transform: none;
+}
+
+.master-map-layout-button-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.master-map-layout-button-grid .secondary-button {
+  min-height: 40px;
+  justify-content: center;
+  padding: 8px;
+  font-size: 0.78rem;
+}
+
+.master-map-color-palette {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.master-map-color-swatch {
+  width: 34px;
+  height: 34px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.master-map-color-swatch:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 .master-map-layout-help {
@@ -5138,6 +5208,7 @@ button:focus-visible,
 
   .master-map-filter-grid,
   .master-map-layout-grid,
+  .master-map-layout-button-grid,
   .master-map-focus-grid,
   .master-map-impact-grid,
   .master-map-summary-grid,

@@ -11,14 +11,21 @@ import { getMasterMapAttentionItems } from "./attention/masterMapAttention";
 import { getFilteredMasterMapNodes, getMasterMapDescendants, masterMapStatusLabels } from "./graph/masterMapGraphUtils";
 import { MasterMapLayoutPanel } from "./layout/MasterMapLayoutPanel";
 import { calculateMasterMapLayout } from "./layout/masterMapLayoutWorker";
-import { createMasterMapPositionSnapshot, detectMasterMapLayoutCollisions } from "./layout/masterMapLayoutValidation";
+import { detectMasterMapLayoutCollisions, mergeMasterMapPositions } from "./layout/masterMapLayoutValidation";
 import {
+  masterMapSpacingPresets,
   defaultMasterMapLayoutPreferences,
   defaultMobileMasterMapLayoutPreferences,
+  type MasterMapAlignmentAction,
   type MasterMapLayoutPreferences,
   type MasterMapNodeDimension,
   type MasterMapPositionPatch,
 } from "./layout/masterMapLayoutTypes";
+import {
+  defaultMasterMapVisualStyle,
+  getMasterMapNodeWidth,
+  normalizeMasterMapVisualStyle,
+} from "./layout/masterMapVisualStyle";
 import { MasterMapFilters } from "./navigation/MasterMapFilters";
 import { MasterMapNavigationBar } from "./navigation/MasterMapNavigationBar";
 import { MasterMapDirectorView } from "./views/MasterMapDirectorView";
@@ -39,12 +46,26 @@ import {
   saveMasterMapNodePositionsRemote,
 } from "./masterMapService";
 import { getVisibleMasterMapGraph } from "./masterMapLayout";
-import type { MasterMap, MasterMapData, MasterMapEdge, MasterMapNode, MasterMapSaveStatus, MasterMapTargetScreen } from "./masterMapTypes";
+import type { MasterMap, MasterMapData, MasterMapEdge, MasterMapNode, MasterMapNodeVisualStyle, MasterMapSaveStatus, MasterMapTargetScreen } from "./masterMapTypes";
 import { defaultMasterMapFilters, getMasterMapActiveFilterCount, type MasterMapFilterState, type MasterMapViewMode } from "./types/masterMapNavigationTypes";
 
 const MASTER_MAP_VIEW_MODE_KEY = "hub-sm-master-map-view-mode";
 const MASTER_MAP_FILTERS_KEY = "hub-sm-master-map-filters";
 const MASTER_MAP_LAYOUT_KEY = "hub-sm-master-map-layout";
+
+type MasterMapNodeSnapshot = Pick<MasterMapNode, "id" | "positionX" | "positionY" | "metadata" | "updatedAt">;
+
+type MasterMapLayoutPreviewState = {
+  mapId: string;
+  originalNodes: MasterMapNodeSnapshot[];
+  previewNodes: MasterMapNode[];
+  previewPositions: MasterMapPositionPatch[];
+  affectedNodeIds: Set<string>;
+  collisionCount: number;
+  originalPreferences: MasterMapLayoutPreferences;
+  previewPreferences: MasterMapLayoutPreferences;
+  originalVisualStyle: Required<MasterMapNodeVisualStyle>;
+};
 
 export function MasterMapScreen({
   canEdit,
@@ -67,7 +88,11 @@ export function MasterMapScreen({
   const [message, setMessage] = useState("");
   const [editMode, setEditMode] = useState(false);
   const [selectedNodeId, setSelectedNodeId] = useState<string>();
+  const [selectedNodeIds, setSelectedNodeIds] = useState<Set<string>>(new Set());
+  const selectedNodeIdRef = useRef<string | undefined>(undefined);
+  const selectedNodeIdsRef = useRef<Set<string>>(new Set());
   const [selectedEdgeId, setSelectedEdgeId] = useState<string>();
+  const selectedEdgeIdRef = useRef<string | undefined>(undefined);
   const [saveStatus, setSaveStatus] = useState<MasterMapSaveStatus>("idle");
   const [flowInstance, setFlowInstance] = useState<ReactFlowInstance | null>(null);
   const [templates, setTemplates] = useState<DynamicPageTemplate[]>([]);
@@ -82,19 +107,22 @@ export function MasterMapScreen({
   const [pageSummaries, setPageSummaries] = useState<DynamicPageSummary[]>([]);
   const [highlightedNodeId, setHighlightedNodeId] = useState<string | null>(null);
   const [layoutPanelOpen, setLayoutPanelOpen] = useState(false);
+  const ignoreCanvasSelectionUntilRef = useRef(0);
   const [layoutPreferences, setLayoutPreferences] = useState<MasterMapLayoutPreferences>(() => getInitialMasterMapLayoutPreferences(""));
   const [layoutCalculating, setLayoutCalculating] = useState(false);
-  const [layoutPreview, setLayoutPreview] = useState<{
-    mapId: string;
-    originalPositions: MasterMapPositionPatch[];
-    previewPositions: MasterMapPositionPatch[];
-    affectedNodeIds: Set<string>;
-    collisionCount: number;
-  } | null>(null);
+  const [layoutPreview, setLayoutPreview] = useState<MasterMapLayoutPreviewState | null>(null);
   const [layoutUndoSnapshot, setLayoutUndoSnapshot] = useState<{
     mapId: string;
-    positions: MasterMapPositionPatch[];
+    nodes: MasterMapNodeSnapshot[];
+    preferences: MasterMapLayoutPreferences;
+    visualStyle: Required<MasterMapNodeVisualStyle>;
   } | null>(null);
+  const [layoutSessionSnapshot, setLayoutSessionSnapshot] = useState<{
+    preferences: MasterMapLayoutPreferences;
+    visualStyle: Required<MasterMapNodeVisualStyle>;
+  } | null>(null);
+  const [layoutReferenceNodeId, setLayoutReferenceNodeId] = useState("");
+  const [visualStyleDraft, setVisualStyleDraft] = useState<Required<MasterMapNodeVisualStyle>>(defaultMasterMapVisualStyle);
 
   useEffect(() => {
     let active = true;
@@ -125,6 +153,18 @@ export function MasterMapScreen({
       active = false;
     };
   }, [canEdit]);
+
+  useEffect(() => {
+    selectedNodeIdRef.current = selectedNodeId;
+  }, [selectedNodeId]);
+
+  useEffect(() => {
+    selectedNodeIdsRef.current = selectedNodeIds;
+  }, [selectedNodeIds]);
+
+  useEffect(() => {
+    selectedEdgeIdRef.current = selectedEdgeId;
+  }, [selectedEdgeId]);
 
   useEffect(() => {
     if (!canEdit) {
@@ -158,6 +198,14 @@ export function MasterMapScreen({
   useEffect(() => {
     setLayoutPreferences(getInitialMasterMapLayoutPreferences(activeMapId));
     setLayoutPreview(null);
+    setLayoutSessionSnapshot(null);
+    selectedNodeIdsRef.current = new Set();
+    selectedNodeIdRef.current = undefined;
+    selectedEdgeIdRef.current = undefined;
+    setSelectedNodeIds(new Set());
+    setSelectedNodeId(undefined);
+    setSelectedEdgeId(undefined);
+    setLayoutReferenceNodeId("");
   }, [activeMapId]);
 
   useEffect(() => {
@@ -181,6 +229,20 @@ export function MasterMapScreen({
   const activeEdges = useMemo(() => edges.filter((edge) => edge.mapId === activeMap?.id), [activeMap?.id, edges]);
   const selectedNode = activeNodes.find((node) => node.id === selectedNodeId) ?? null;
   const selectedEdge = activeEdges.find((edge) => edge.id === selectedEdgeId) ?? null;
+  const selectedLayoutNodes = useMemo(() => {
+    const ids = selectedNodeIds.size ? selectedNodeIds : selectedNodeId ? new Set([selectedNodeId]) : new Set<string>();
+    return activeNodes.filter((node) => ids.has(node.id));
+  }, [activeNodes, selectedNodeId, selectedNodeIds]);
+
+  useEffect(() => {
+    if (!selectedNode) {
+      setVisualStyleDraft(defaultMasterMapVisualStyle);
+      return;
+    }
+    setVisualStyleDraft(normalizeMasterMapVisualStyle(selectedNode.metadata.visualStyle));
+    setLayoutReferenceNodeId((current) => selectedNodeIds.has(current) ? current : selectedNode.id);
+  }, [selectedNode, selectedNodeIds]);
+
   const editable = canEdit && remoteEditable;
   const activePageSummaries = useMemo(() => pageSummaries.filter((summary) => summary.mapId === activeMap?.id), [activeMap?.id, pageSummaries]);
   const activeFilterCount = getMasterMapActiveFilterCount(filters);
@@ -294,9 +356,16 @@ export function MasterMapScreen({
   }
 
   function handleMapChange(mapId: string) {
-    if (layoutPreview) cancelLayoutPreview();
+    if (layoutPreview) {
+      setMessage("Aplique ou cancele a pre-visualizacao atual antes de criar outra.");
+      return;
+    }
     setActiveMapId(mapId);
+    selectedNodeIdRef.current = undefined;
+    selectedNodeIdsRef.current = new Set();
+    selectedEdgeIdRef.current = undefined;
     setSelectedNodeId(undefined);
+    setSelectedNodeIds(new Set());
     setSelectedEdgeId(undefined);
     window.setTimeout(() => flowInstance?.fitView(getFitViewOptions()), 80);
   }
@@ -354,14 +423,88 @@ export function MasterMapScreen({
     openNodeDetails(node.id);
   }
 
-  function handleSelectNode(nodeId: string) {
+  function handleSelectNode(nodeId: string, additive = false) {
+    if (additive) {
+      ignoreCanvasSelectionUntilRef.current = Date.now() + 1500;
+      const currentNodeIds = selectedNodeIdsRef.current;
+      const currentNodeId = selectedNodeIdRef.current;
+      const nextNodeIds = currentNodeIds.size
+        ? new Set(currentNodeIds)
+        : currentNodeId
+          ? new Set([currentNodeId])
+          : new Set<string>();
+
+      if (nextNodeIds.has(nodeId) && nextNodeIds.size > 1) {
+        nextNodeIds.delete(nodeId);
+      } else {
+        nextNodeIds.add(nodeId);
+      }
+
+      const nextSelectedNodeId = nextNodeIds.has(nodeId) ? nodeId : Array.from(nextNodeIds)[0];
+      selectedNodeIdsRef.current = nextNodeIds;
+      selectedNodeIdRef.current = nextSelectedNodeId;
+      selectedEdgeIdRef.current = undefined;
+      setSelectedNodeIds(nextNodeIds);
+      setSelectedNodeId(nextSelectedNodeId);
+      setSelectedEdgeId(undefined);
+      return;
+    }
+
+    selectedNodeIdsRef.current = new Set([nodeId]);
+    selectedNodeIdRef.current = nodeId;
+    selectedEdgeIdRef.current = undefined;
     setSelectedNodeId(nodeId);
+    setSelectedNodeIds(new Set([nodeId]));
     setSelectedEdgeId(undefined);
   }
 
   function handleSelectEdge(edgeId: string) {
+    selectedEdgeIdRef.current = edgeId;
+    selectedNodeIdRef.current = undefined;
+    selectedNodeIdsRef.current = new Set();
     setSelectedEdgeId(edgeId);
     setSelectedNodeId(undefined);
+    setSelectedNodeIds(new Set());
+  }
+
+  function handleCanvasSelectionChange(nodeIds: string[], edgeIds: string[]) {
+    if (Date.now() < ignoreCanvasSelectionUntilRef.current) return;
+
+    const nextNodeIds = new Set(nodeIds);
+
+    if (nodeIds.length > 0) {
+      const nextNodeId = selectedNodeIdRef.current && nextNodeIds.has(selectedNodeIdRef.current) ? selectedNodeIdRef.current : nodeIds[0];
+      if (
+        areSameStringSets(selectedNodeIdsRef.current, nextNodeIds)
+        && selectedNodeIdRef.current === nextNodeId
+        && selectedEdgeIdRef.current === undefined
+      ) {
+        return;
+      }
+      selectedNodeIdsRef.current = nextNodeIds;
+      selectedNodeIdRef.current = nextNodeId;
+      selectedEdgeIdRef.current = undefined;
+      setSelectedNodeIds(nextNodeIds);
+      setSelectedNodeId(nextNodeId);
+      setSelectedEdgeId(undefined);
+      return;
+    }
+
+    const nextEdgeId = edgeIds.length === 1 ? edgeIds[0] : undefined;
+    if (
+      selectedNodeIdsRef.current.size === 0
+      && selectedNodeIdRef.current === undefined
+      && selectedEdgeIdRef.current === nextEdgeId
+    ) {
+      return;
+    }
+
+    selectedNodeIdRef.current = undefined;
+    selectedNodeIdsRef.current = nextNodeIds;
+    selectedEdgeIdRef.current = nextEdgeId;
+    setSelectedNodeIds(nextNodeIds);
+    setSelectedNodeId(undefined);
+    setSelectedEdgeId(nextEdgeId);
   }
 
   function openDynamicPage(pageId: string) {
@@ -604,18 +747,44 @@ export function MasterMapScreen({
 
   function handleLayoutPreferencesChange(nextPreferences: MasterMapLayoutPreferences) {
     setLayoutPreferences(nextPreferences);
-    saveMasterMapLayoutPreference(activeMap?.id ?? "", nextPreferences);
   }
 
   function openLayoutPanel() {
     if (!guardEditAction()) return;
     if (viewMode !== "map") setViewMode("map");
+    setLayoutSessionSnapshot({
+      preferences: layoutPreferences,
+      visualStyle: visualStyleDraft,
+    });
     setLayoutPanelOpen(true);
+  }
+
+  function closeLayoutPanel() {
+    if (layoutPreview) {
+      cancelLayoutPreview();
+    } else if (layoutSessionSnapshot) {
+      setLayoutPreferences(layoutSessionSnapshot.preferences);
+      setVisualStyleDraft(layoutSessionSnapshot.visualStyle);
+    }
+    setLayoutSessionSnapshot(null);
+    setLayoutPanelOpen(false);
   }
 
   async function previewMasterMapLayout() {
     if (!activeMap) return;
-    if (layoutPreview) cancelLayoutPreview();
+    if (layoutPreview) {
+      setMessage("Aplique ou cancele a pre-visualizacao atual antes de criar outra.");
+      return;
+    }
+    const styleTargetIds = getVisualStyleTargetNodeIds();
+    const styleChanged = selectedLayoutNodes.some((node) => !areSameMasterMapVisualStyle(node.metadata.visualStyle, visualStyleDraft));
+    const preferencesChanged = layoutSessionSnapshot
+      ? !areSameMasterMapLayoutPreferences(layoutSessionSnapshot.preferences, layoutPreferences)
+      : false;
+    if (styleTargetIds.size > 0 && styleChanged && !preferencesChanged) {
+      await previewVisualStyleOnly(styleTargetIds);
+      return;
+    }
     if (layoutPreferences.scope === "branch" && !selectedNode) {
       setMessage("Selecione um quadro para organizar apenas uma ramificação.");
       return;
@@ -630,13 +799,10 @@ export function MasterMapScreen({
     try {
       const visibleGraph = getVisibleMasterMapGraph(activeNodes, activeEdges, forceVisibleNodeIds);
       const affectedNodeIds = getAffectedLayoutNodeIds(visibleGraph.nodes, visibleGraph.edges, layoutPreferences, selectedNode);
-      const affectedNodes = activeNodes.filter((node) => affectedNodeIds.has(node.id));
-      const originalPositions = createMasterMapPositionSnapshot(affectedNodes.map((node) => ({
-        id: node.id,
-        positionX: node.positionX,
-        positionY: node.positionY,
-      })));
+      const originalNodeIds = new Set([...affectedNodeIds, ...styleTargetIds]);
+      const originalNodes = createMasterMapNodeSnapshot(activeNodes.filter((node) => originalNodeIds.has(node.id)));
       const dimensions = getMeasuredMasterMapNodeDimensions(layoutPreferences.nodeDensity);
+      applyVisualStyleDimensions(dimensions, styleTargetIds, visualStyleDraft, layoutPreferences.nodeDensity);
       const result = await calculateMasterMapLayout({
         nodes: visibleGraph.nodes,
         edges: visibleGraph.edges,
@@ -645,15 +811,21 @@ export function MasterMapScreen({
         preferences: layoutPreferences,
         anchorNodeId: layoutPreferences.scope === "branch" ? selectedNode?.id : undefined,
       });
-      const collisions = detectMasterMapLayoutCollisions(result.positions, dimensions);
+      const previewNodes = createPreviewNodes(activeNodes, result.positions, styleTargetIds, visualStyleDraft);
+      const previewAffectedNodeIds = new Set([...result.affectedNodeIds, ...styleTargetIds]);
+      const collisions = detectPreviewCollisions(visibleGraph.nodes, result.positions, dimensions, previewAffectedNodeIds);
 
-      setNodes((current) => mergePositionsIntoNodes(current, result.positions));
+      setNodes((current) => mergePreviewNodesIntoNodes(current, previewNodes));
       setLayoutPreview({
         mapId: activeMap.id,
-        originalPositions,
+        originalNodes,
+        previewNodes,
         previewPositions: result.positions,
-        affectedNodeIds: result.affectedNodeIds,
+        affectedNodeIds: previewAffectedNodeIds,
         collisionCount: collisions.length,
+        originalPreferences: layoutSessionSnapshot?.preferences ?? layoutPreferences,
+        previewPreferences: layoutPreferences,
+        originalVisualStyle: layoutSessionSnapshot?.visualStyle ?? visualStyleDraft,
       });
       setHighlightedNodeId(null);
       setMessage(collisions.length
@@ -668,6 +840,103 @@ export function MasterMapScreen({
     }
   }
 
+  async function previewVisualStyleOnly(styleTargetIds: Set<string>) {
+    if (!activeMap) return;
+    setViewMode("map");
+    setLayoutCalculating(true);
+    setMessage("Criando previa do estilo dos quadros...");
+
+    await waitForMapMeasurements();
+
+    try {
+      const originalNodes = createMasterMapNodeSnapshot(activeNodes.filter((node) => styleTargetIds.has(node.id)));
+      const dimensions = getMeasuredMasterMapNodeDimensions(layoutPreferences.nodeDensity);
+      applyVisualStyleDimensions(dimensions, styleTargetIds, visualStyleDraft, layoutPreferences.nodeDensity);
+      const previewNodes = createPreviewNodes(activeNodes, [], styleTargetIds, visualStyleDraft);
+      const collisions = detectPreviewCollisions(activeNodes, [], dimensions, styleTargetIds);
+
+      setNodes((current) => mergePreviewNodesIntoNodes(current, previewNodes));
+      setLayoutPreview({
+        mapId: activeMap.id,
+        originalNodes,
+        previewNodes,
+        previewPositions: [],
+        affectedNodeIds: new Set(styleTargetIds),
+        collisionCount: collisions.length,
+        originalPreferences: layoutSessionSnapshot?.preferences ?? layoutPreferences,
+        previewPreferences: layoutPreferences,
+        originalVisualStyle: layoutSessionSnapshot?.visualStyle ?? visualStyleDraft,
+      });
+      setMessage(collisions.length
+        ? `Previa criada, mas existem ${collisions.length} sobreposicoes. Ajuste a largura antes de salvar.`
+        : "Estilo pre-visualizado. Salve ou cancele para continuar.");
+    } catch {
+      setSaveStatus("error");
+      setMessage("Nao foi possivel criar a previa do estilo agora.");
+    } finally {
+      setLayoutCalculating(false);
+    }
+  }
+
+  async function previewAlignment(action: MasterMapAlignmentAction) {
+    if (!activeMap) return;
+    if (layoutPreview) {
+      setMessage("Aplique ou cancele a pre-visualizacao atual antes de criar outra.");
+      return;
+    }
+    if (selectedLayoutNodes.length < 2) {
+      setMessage("Selecione pelo menos dois quadros para alinhar.");
+      return;
+    }
+    if ((action === "distribute-x" || action === "distribute-y") && selectedLayoutNodes.length < 3) {
+      setMessage("Selecione pelo menos tres quadros para distribuir.");
+      return;
+    }
+
+    setViewMode("map");
+    setLayoutCalculating(true);
+    setMessage("Calculando alinhamento...");
+
+    await waitForMapMeasurements();
+
+    try {
+      const dimensions = getMeasuredMasterMapNodeDimensions(layoutPreferences.nodeDensity);
+      const affectedNodeIds = new Set(selectedLayoutNodes.map((node) => node.id));
+      const referenceNode = selectedLayoutNodes.find((node) => node.id === layoutReferenceNodeId) ?? selectedLayoutNodes[0];
+      const previewPositions = resolveAlignmentCollisions(
+        activeNodes,
+        calculateAlignmentPositions(selectedLayoutNodes, dimensions, referenceNode, action),
+        dimensions,
+        affectedNodeIds,
+        action,
+        referenceNode.id,
+      );
+      const previewNodes = createPreviewNodes(activeNodes, previewPositions, new Set<string>(), visualStyleDraft);
+      const collisions = detectPreviewCollisions(activeNodes, previewPositions, dimensions, affectedNodeIds);
+
+      setNodes((current) => mergePreviewNodesIntoNodes(current, previewNodes));
+      setLayoutPreview({
+        mapId: activeMap.id,
+        originalNodes: createMasterMapNodeSnapshot(selectedLayoutNodes),
+        previewNodes,
+        previewPositions,
+        affectedNodeIds,
+        collisionCount: collisions.length,
+        originalPreferences: layoutSessionSnapshot?.preferences ?? layoutPreferences,
+        previewPreferences: layoutPreferences,
+        originalVisualStyle: layoutSessionSnapshot?.visualStyle ?? visualStyleDraft,
+      });
+      setMessage(collisions.length
+        ? `Previa criada, mas existem ${collisions.length} sobreposicoes. Ajuste o espacamento antes de salvar.`
+        : "Alinhamento pre-visualizado. Salve ou cancele para continuar.");
+    } catch {
+      setSaveStatus("error");
+      setMessage("Nao foi possivel calcular o alinhamento agora.");
+    } finally {
+      setLayoutCalculating(false);
+    }
+  }
+
   async function applyLayoutPreview() {
     if (!layoutPreview || !activeMap || !guardEditAction()) return;
     if (layoutPreview.collisionCount > 0) {
@@ -677,15 +946,30 @@ export function MasterMapScreen({
 
     setSaveStatus("saving");
     try {
-      const savedNodes = await saveMasterMapNodePositionsRemote(layoutPreview.mapId, layoutPreview.previewPositions);
+      const savedPositionNodes = layoutPreview.previewPositions.length
+        ? await saveMasterMapNodePositionsRemote(layoutPreview.mapId, layoutPreview.previewPositions)
+        : [];
+      const nodesWithMetadataChanges = getNodesWithMetadataChanges(layoutPreview.originalNodes, layoutPreview.previewNodes);
+      const savedMetadataNodes = await Promise.all(nodesWithMetadataChanges.map((node) => saveMasterMapNodeRemote(node)));
+      const savedNodes = [...savedPositionNodes, ...savedMetadataNodes];
+      const savedNodeById = new Map(savedNodes.map((node) => [node.id, node]));
       setNodes((current) => {
         const nextNodes = savedNodes.length
-          ? current.map((node) => savedNodes.find((savedNode) => savedNode.id === node.id) ?? node)
-          : mergePositionsIntoNodes(current, layoutPreview.previewPositions);
+          ? current.map((node) => savedNodeById.get(node.id) ?? node)
+          : mergePreviewNodesIntoNodes(current, layoutPreview.previewNodes);
         saveLocalMasterMapCache({ maps, nodes: nextNodes, edges });
         return nextNodes;
       });
-      setLayoutUndoSnapshot({ mapId: layoutPreview.mapId, positions: layoutPreview.originalPositions });
+      setLayoutUndoSnapshot({
+        mapId: layoutPreview.mapId,
+        nodes: layoutPreview.originalNodes,
+        preferences: layoutPreview.originalPreferences,
+        visualStyle: layoutPreview.originalVisualStyle,
+      });
+      setLayoutPreferences(layoutPreview.previewPreferences);
+      setVisualStyleDraft(normalizeMasterMapVisualStyle(visualStyleDraft));
+      saveMasterMapLayoutPreference(layoutPreview.mapId, layoutPreview.previewPreferences);
+      setLayoutSessionSnapshot(null);
       setLayoutPreview(null);
       setSaveStatus("saved");
       setMessage("Organização salva no Mapa Mestre.");
@@ -698,7 +982,9 @@ export function MasterMapScreen({
 
   function cancelLayoutPreview() {
     if (!layoutPreview) return;
-    setNodes((current) => mergePositionsIntoNodes(current, layoutPreview.originalPositions));
+    setNodes((current) => restoreNodesFromSnapshot(current, layoutPreview.originalNodes));
+    setLayoutPreferences(layoutPreview.originalPreferences);
+    setVisualStyleDraft(layoutPreview.originalVisualStyle);
     setLayoutPreview(null);
     setMessage("Pré-visualização cancelada. Posições anteriores restauradas.");
     window.setTimeout(() => flowInstance?.fitView(getFitViewOptions()), 100);
@@ -710,17 +996,24 @@ export function MasterMapScreen({
     const snapshot = layoutUndoSnapshot;
     setActiveMapId(snapshot.mapId);
     setSaveStatus("saving");
-    setNodes((current) => mergePositionsIntoNodes(current, snapshot.positions));
+    setNodes((current) => restoreNodesFromSnapshot(current, snapshot.nodes));
 
     try {
-      const savedNodes = await saveMasterMapNodePositionsRemote(snapshot.mapId, snapshot.positions);
+      const positions = snapshot.nodes.map((node) => ({ id: node.id, positionX: node.positionX, positionY: node.positionY }));
+      const restoredNodes = restoreNodesFromSnapshot(nodes, snapshot.nodes).filter((node) => snapshot.nodes.some((snapshotNode) => snapshotNode.id === node.id));
+      const savedPositionNodes = positions.length ? await saveMasterMapNodePositionsRemote(snapshot.mapId, positions) : [];
+      const savedMetadataNodes = await Promise.all(restoredNodes.map((node) => saveMasterMapNodeRemote(node)));
+      const savedNodeById = new Map([...savedPositionNodes, ...savedMetadataNodes].map((node) => [node.id, node]));
       setNodes((current) => {
-        const nextNodes = savedNodes.length
-          ? current.map((node) => savedNodes.find((savedNode) => savedNode.id === node.id) ?? node)
-          : mergePositionsIntoNodes(current, snapshot.positions);
+        const nextNodes = savedNodeById.size
+          ? current.map((node) => savedNodeById.get(node.id) ?? node)
+          : restoreNodesFromSnapshot(current, snapshot.nodes);
         saveLocalMasterMapCache({ maps, nodes: nextNodes, edges });
         return nextNodes;
       });
+      setLayoutPreferences(snapshot.preferences);
+      setVisualStyleDraft(snapshot.visualStyle);
+      saveMasterMapLayoutPreference(snapshot.mapId, snapshot.preferences);
       setLayoutUndoSnapshot(null);
       setSaveStatus("saved");
       setMessage("Última organização desfeita e salva.");
@@ -744,12 +1037,35 @@ export function MasterMapScreen({
 
     activeNodes.forEach((node) => {
       if (dimensions.has(node.id)) return;
-      dimensions.set(node.id, density === "compact"
-        ? { id: node.id, width: 226, height: 104 }
-        : { id: node.id, width: 270, height: 178 });
+      dimensions.set(node.id, {
+        id: node.id,
+        width: getMasterMapNodeWidth(node.metadata.visualStyle, density === "compact"),
+        height: density === "compact" ? 104 : 178,
+      });
     });
 
     return dimensions;
+  }
+
+  function getVisualStyleTargetNodeIds() {
+    if (!selectedLayoutNodes.length) return new Set<string>();
+    return new Set(selectedLayoutNodes.map((node) => node.id));
+  }
+
+  function applyVisualStyleDimensions(
+    dimensions: Map<string, MasterMapNodeDimension>,
+    nodeIds: Set<string>,
+    visualStyle: Required<MasterMapNodeVisualStyle>,
+    density = layoutPreferences.nodeDensity,
+  ) {
+    nodeIds.forEach((nodeId) => {
+      const current = dimensions.get(nodeId);
+      dimensions.set(nodeId, {
+        id: nodeId,
+        width: getMasterMapNodeWidth(visualStyle, density === "compact"),
+        height: current?.height ?? (density === "compact" ? 104 : 178),
+      });
+    });
   }
 
   function waitForMapMeasurements() {
@@ -833,6 +1149,7 @@ export function MasterMapScreen({
         connectionMode={layoutPreferences.connectionMode}
         layoutMode={layoutPreferences.layoutMode}
         selectedNodeId={selectedNodeId}
+        selectedNodeIds={selectedNodeIds}
         selectedEdgeId={selectedEdgeId}
         highlightedNodeIds={highlightedNodeIds}
         dimmedNodeIds={dimmedNodeIds}
@@ -841,6 +1158,7 @@ export function MasterMapScreen({
         onInit={setFlowInstance}
         onSelectNode={handleSelectNode}
         onSelectEdge={handleSelectEdge}
+        onSelectionChange={handleCanvasSelectionChange}
         onMoveNode={handleNodeMove}
         onCreateConnection={createConnection}
         onOpenNodeDetails={openNodeDetails}
@@ -970,6 +1288,9 @@ export function MasterMapScreen({
               open={layoutPanelOpen}
               preferences={layoutPreferences}
               selectedNode={selectedNode}
+              selectedNodes={selectedLayoutNodes}
+              referenceNodeId={layoutReferenceNodeId || selectedLayoutNodes[0]?.id || ""}
+              visualStyle={visualStyleDraft}
               editable={editable}
               calculating={layoutCalculating}
               previewActive={Boolean(layoutPreview)}
@@ -977,8 +1298,11 @@ export function MasterMapScreen({
               affectedCount={layoutPreview?.affectedNodeIds.size ?? 0}
               collisionCount={layoutPreview?.collisionCount ?? 0}
               onChange={handleLayoutPreferencesChange}
-              onClose={() => setLayoutPanelOpen(false)}
+              onReferenceChange={setLayoutReferenceNodeId}
+              onVisualStyleChange={setVisualStyleDraft}
+              onClose={closeLayoutPanel}
               onPreview={previewMasterMapLayout}
+              onAlignmentPreview={previewAlignment}
               onApply={applyLayoutPreview}
               onCancelPreview={cancelLayoutPreview}
               onUndo={undoLastLayout}
@@ -1096,18 +1420,215 @@ function getAffectedLayoutNodeIds(
   return new Set(visibleNodes.map((node) => node.id));
 }
 
-function mergePositionsIntoNodes(nodes: MasterMapNode[], positions: MasterMapPositionPatch[]) {
-  const positionById = new Map(positions.map((position) => [position.id, position]));
+function createMasterMapNodeSnapshot(nodes: MasterMapNode[]): MasterMapNodeSnapshot[] {
+  return nodes.map((node) => ({
+    id: node.id,
+    positionX: node.positionX,
+    positionY: node.positionY,
+    metadata: cloneNodeMetadata(node.metadata),
+    updatedAt: node.updatedAt,
+  }));
+}
+
+function restoreNodesFromSnapshot(nodes: MasterMapNode[], snapshot: MasterMapNodeSnapshot[]) {
+  const snapshotById = new Map(snapshot.map((node) => [node.id, node]));
   return nodes.map((node) => {
-    const position = positionById.get(node.id);
-    if (!position) return node;
+    const previous = snapshotById.get(node.id);
+    if (!previous) return node;
     return {
       ...node,
-      positionX: position.positionX,
-      positionY: position.positionY,
+      positionX: previous.positionX,
+      positionY: previous.positionY,
+      metadata: cloneNodeMetadata(previous.metadata),
       updatedAt: new Date().toISOString(),
     };
   });
+}
+
+function createPreviewNodes(
+  nodes: MasterMapNode[],
+  positions: MasterMapPositionPatch[],
+  visualStyleNodeIds: Set<string>,
+  visualStyle: Required<MasterMapNodeVisualStyle>,
+) {
+  const positionById = new Map(positions.map((position) => [position.id, position]));
+  const affectedIds = new Set([...positionById.keys(), ...visualStyleNodeIds]);
+  return nodes
+    .filter((node) => affectedIds.has(node.id))
+    .map((node) => {
+      const position = positionById.get(node.id);
+      const metadata = visualStyleNodeIds.has(node.id)
+        ? { ...node.metadata, visualStyle: normalizeMasterMapVisualStyle(visualStyle) }
+        : node.metadata;
+      return {
+        ...node,
+        positionX: position?.positionX ?? node.positionX,
+        positionY: position?.positionY ?? node.positionY,
+        metadata,
+        updatedAt: new Date().toISOString(),
+      };
+    });
+}
+
+function mergePreviewNodesIntoNodes(nodes: MasterMapNode[], previewNodes: MasterMapNode[]) {
+  const previewById = new Map(previewNodes.map((node) => [node.id, node]));
+  return nodes.map((node) => previewById.get(node.id) ?? node);
+}
+
+function getNodesWithMetadataChanges(originalNodes: MasterMapNodeSnapshot[], previewNodes: MasterMapNode[]) {
+  const originalById = new Map(originalNodes.map((node) => [node.id, node]));
+  return previewNodes.filter((node) => {
+    const original = originalById.get(node.id);
+    return original && JSON.stringify(original.metadata ?? {}) !== JSON.stringify(node.metadata ?? {});
+  });
+}
+
+function detectPreviewCollisions(
+  nodes: MasterMapNode[],
+  previewPositions: MasterMapPositionPatch[],
+  dimensions: Map<string, MasterMapNodeDimension>,
+  affectedNodeIds: Set<string>,
+) {
+  const mergedPositions = mergeMasterMapPositions(
+    nodes.map((node) => ({ id: node.id, positionX: node.positionX, positionY: node.positionY })),
+    previewPositions,
+  );
+  return detectMasterMapLayoutCollisions(mergedPositions, dimensions)
+    .filter((collision) => affectedNodeIds.has(collision.firstNodeId) || affectedNodeIds.has(collision.secondNodeId));
+}
+
+function calculateAlignmentPositions(
+  nodes: MasterMapNode[],
+  dimensions: Map<string, MasterMapNodeDimension>,
+  referenceNode: MasterMapNode,
+  action: MasterMapAlignmentAction,
+): MasterMapPositionPatch[] {
+  const spacing = masterMapSpacingPresets.comfortable.nodeGap;
+  const referenceBox = getMasterMapNodeBox(referenceNode, dimensions);
+  const boxes = nodes.map((node) => ({ node, box: getMasterMapNodeBox(node, dimensions) }));
+
+  if (action === "distribute-x") {
+    const sorted = [...boxes].sort((a, b) => a.box.left - b.box.left);
+    const minLeft = sorted[0].box.left;
+    const totalWidth = sorted.reduce((total, item) => total + item.box.width, 0);
+    const maxRight = sorted[sorted.length - 1].box.right;
+    const gap = Math.max(spacing, (maxRight - minLeft - totalWidth) / Math.max(1, sorted.length - 1));
+    let cursorX = minLeft;
+    return sorted.map(({ node, box }) => {
+      const patch = { id: node.id, positionX: Math.round(cursorX), positionY: node.positionY };
+      cursorX += box.width + gap;
+      return patch;
+    });
+  }
+
+  if (action === "distribute-y") {
+    const sorted = [...boxes].sort((a, b) => a.box.top - b.box.top);
+    const minTop = sorted[0].box.top;
+    const totalHeight = sorted.reduce((total, item) => total + item.box.height, 0);
+    const maxBottom = sorted[sorted.length - 1].box.bottom;
+    const gap = Math.max(spacing, (maxBottom - minTop - totalHeight) / Math.max(1, sorted.length - 1));
+    let cursorY = minTop;
+    return sorted.map(({ node, box }) => {
+      const patch = { id: node.id, positionX: node.positionX, positionY: Math.round(cursorY) };
+      cursorY += box.height + gap;
+      return patch;
+    });
+  }
+
+  return boxes.map(({ node, box }) => {
+    if (action === "align-left") return { id: node.id, positionX: referenceBox.left, positionY: node.positionY };
+    if (action === "align-center-x") return { id: node.id, positionX: Math.round(referenceBox.centerX - box.width / 2), positionY: node.positionY };
+    if (action === "align-right") return { id: node.id, positionX: Math.round(referenceBox.right - box.width), positionY: node.positionY };
+    if (action === "align-top") return { id: node.id, positionX: node.positionX, positionY: referenceBox.top };
+    if (action === "align-center-y") return { id: node.id, positionX: node.positionX, positionY: Math.round(referenceBox.centerY - box.height / 2) };
+    return { id: node.id, positionX: node.positionX, positionY: Math.round(referenceBox.bottom - box.height) };
+  });
+}
+
+function resolveAlignmentCollisions(
+  nodes: MasterMapNode[],
+  positions: MasterMapPositionPatch[],
+  dimensions: Map<string, MasterMapNodeDimension>,
+  affectedNodeIds: Set<string>,
+  action: MasterMapAlignmentAction,
+  referenceNodeId: string,
+) {
+  const spacing = masterMapSpacingPresets.comfortable.nodeGap;
+  const movableAxis: "x" | "y" = ["align-left", "align-center-x", "align-right", "distribute-x"].includes(action) ? "y" : "x";
+  const nextPositions = positions.map((position) => ({ ...position }));
+  const positionById = new Map(nextPositions.map((position) => [position.id, position]));
+  const orderedMovableIds = nextPositions.map((position) => position.id).filter((nodeId) => nodeId !== referenceNodeId);
+
+  orderedMovableIds.forEach((nodeId) => {
+    const patch = positionById.get(nodeId);
+    if (!patch) return;
+
+    for (let attempt = 0; attempt < 60; attempt += 1) {
+      const nodeBox = getMasterMapPreviewNodeBox(nodeId, nodes, dimensions, positionById);
+      const collisionNode = nodes.find((node) => node.id !== nodeId && boxesOverlap(nodeBox, getMasterMapPreviewNodeBox(node.id, nodes, dimensions, positionById)));
+      if (!collisionNode) return;
+
+      const collisionBox = getMasterMapPreviewNodeBox(collisionNode.id, nodes, dimensions, positionById);
+      if (movableAxis === "x") {
+        patch.positionX = Math.max(patch.positionX, Math.ceil(collisionBox.right + spacing));
+      } else {
+        patch.positionY = Math.max(patch.positionY, Math.ceil(collisionBox.bottom + spacing));
+      }
+    }
+  });
+
+  return nextPositions.filter((position) => affectedNodeIds.has(position.id));
+}
+
+function getMasterMapNodeBox(node: MasterMapNode, dimensions: Map<string, MasterMapNodeDimension>) {
+  const dimension = dimensions.get(node.id);
+  const width = dimension?.width ?? 270;
+  const height = dimension?.height ?? 140;
+  return {
+    left: node.positionX,
+    top: node.positionY,
+    right: node.positionX + width,
+    bottom: node.positionY + height,
+    centerX: node.positionX + width / 2,
+    centerY: node.positionY + height / 2,
+    width,
+    height,
+  };
+}
+
+function getMasterMapPreviewNodeBox(
+  nodeId: string,
+  nodes: MasterMapNode[],
+  dimensions: Map<string, MasterMapNodeDimension>,
+  positionById: Map<string, MasterMapPositionPatch>,
+) {
+  const node = nodes.find((current) => current.id === nodeId);
+  const position = positionById.get(nodeId);
+  const dimension = dimensions.get(nodeId);
+  const width = dimension?.width ?? 270;
+  const height = dimension?.height ?? 140;
+  const left = position?.positionX ?? node?.positionX ?? 0;
+  const top = position?.positionY ?? node?.positionY ?? 0;
+  return {
+    left,
+    top,
+    right: left + width,
+    bottom: top + height,
+  };
+}
+
+function boxesOverlap(
+  first: { left: number; top: number; right: number; bottom: number },
+  second: { left: number; top: number; right: number; bottom: number },
+) {
+  return first.left < second.right
+    && first.right > second.left
+    && first.top < second.bottom
+    && first.bottom > second.top;
+}
+
+function cloneNodeMetadata(metadata: MasterMapNode["metadata"]) {
+  return JSON.parse(JSON.stringify(metadata ?? {})) as MasterMapNode["metadata"];
 }
 
 function getInitialMasterMapLayoutPreferences(mapId: string): MasterMapLayoutPreferences {
@@ -1146,11 +1667,45 @@ function getMasterMapLayoutStorageKey(mapId: string) {
 }
 
 function isMasterMapLayoutMode(value: unknown): value is MasterMapLayoutPreferences["layoutMode"] {
-  return value === "manual" || value === "horizontal" || value === "vertical" || value === "mind";
+  return value === "manual"
+    || value === "horizontal"
+    || value === "vertical"
+    || value === "mind"
+    || value === "tree-horizontal"
+    || value === "tree-vertical";
 }
 
 function isMasterMapSpacingPreset(value: unknown): value is MasterMapLayoutPreferences["spacing"] {
   return value === "compact" || value === "comfortable" || value === "wide";
+}
+
+function areSameStringSets(first: Set<string>, second: Set<string>) {
+  if (first.size !== second.size) return false;
+  for (const value of first) {
+    if (!second.has(value)) return false;
+  }
+  return true;
+}
+
+function areSameMasterMapVisualStyle(first: MasterMapNodeVisualStyle | undefined, second: MasterMapNodeVisualStyle | undefined) {
+  const normalizedFirst = normalizeMasterMapVisualStyle(first);
+  const normalizedSecond = normalizeMasterMapVisualStyle(second);
+  return normalizedFirst.fillColor === normalizedSecond.fillColor
+    && normalizedFirst.borderColor === normalizedSecond.borderColor
+    && normalizedFirst.shape === normalizedSecond.shape
+    && normalizedFirst.borderStyle === normalizedSecond.borderStyle
+    && normalizedFirst.borderWidth === normalizedSecond.borderWidth
+    && normalizedFirst.widthPreset === normalizedSecond.widthPreset
+    && normalizedFirst.sourcePosition === normalizedSecond.sourcePosition
+    && normalizedFirst.targetPosition === normalizedSecond.targetPosition;
+}
+
+function areSameMasterMapLayoutPreferences(first: MasterMapLayoutPreferences, second: MasterMapLayoutPreferences) {
+  return first.layoutMode === second.layoutMode
+    && first.scope === second.scope
+    && first.spacing === second.spacing
+    && first.nodeDensity === second.nodeDensity
+    && first.connectionMode === second.connectionMode;
 }
 
 function renderHighlightedText(text: string, query: string) {

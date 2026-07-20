@@ -1,11 +1,20 @@
 import type { MasterMapEdge, MasterMapNode } from "../masterMapTypes";
 
-export type MasterMapLayoutMode = "manual" | "horizontal" | "vertical" | "mind";
+export type MasterMapLayoutMode = "manual" | "horizontal" | "vertical" | "mind" | "tree-horizontal" | "tree-vertical";
 export type MasterMapLayoutScope = "map" | "branch";
 export type MasterMapSpacingPreset = "compact" | "comfortable" | "wide";
 export type MasterMapNodeDensity = "compact" | "detailed";
 export type MasterMapConnectionMode = "hierarchy" | "operational" | "all";
 export type MasterMapHandleVariant = "horizontal" | "vertical" | "mind-left" | "mind-right";
+export type MasterMapAlignmentAction =
+  | "align-left"
+  | "align-center-x"
+  | "align-right"
+  | "align-top"
+  | "align-center-y"
+  | "align-bottom"
+  | "distribute-x"
+  | "distribute-y";
 
 export type MasterMapLayoutPreferences = {
   layoutMode: MasterMapLayoutMode;
@@ -53,6 +62,8 @@ export const masterMapLayoutModeLabels: Record<MasterMapLayoutMode, string> = {
   horizontal: "Horizontal",
   vertical: "Vertical",
   mind: "Mapa mental balanceado",
+  "tree-horizontal": "Arvore horizontal",
+  "tree-vertical": "Arvore vertical",
 };
 
 export const masterMapLayoutScopeLabels: Record<MasterMapLayoutScope, string> = {
@@ -75,6 +86,17 @@ export const masterMapConnectionModeLabels: Record<MasterMapConnectionMode, stri
   hierarchy: "Hierarquia",
   operational: "Operacionais",
   all: "Todas",
+};
+
+export const masterMapAlignmentLabels: Record<MasterMapAlignmentAction, string> = {
+  "align-left": "Alinhar esquerda",
+  "align-center-x": "Centralizar horizontal",
+  "align-right": "Alinhar direita",
+  "align-top": "Alinhar topo",
+  "align-center-y": "Centralizar vertical",
+  "align-bottom": "Alinhar base",
+  "distribute-x": "Distribuir horizontal",
+  "distribute-y": "Distribuir vertical",
 };
 
 export const masterMapSpacingPresets: Record<MasterMapSpacingPreset, MasterMapLayoutSpacing> = {

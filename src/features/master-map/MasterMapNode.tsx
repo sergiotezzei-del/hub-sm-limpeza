@@ -1,8 +1,9 @@
 import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
-import type { MouseEvent } from "react";
+import type { CSSProperties, MouseEvent } from "react";
 import { AppIcon } from "../../components/AppIcon";
 import type { MasterMapHandleVariant, MasterMapNodeDensity } from "./layout/masterMapLayoutTypes";
-import type { MasterMapNode as MasterMapNodeRecord, MasterMapStatus, MasterMapTargetScreen } from "./masterMapTypes";
+import { getMasterMapNodeWidth, getMasterMapTextTone, normalizeMasterMapVisualStyle } from "./layout/masterMapVisualStyle";
+import type { MasterMapHandleSide, MasterMapNode as MasterMapNodeRecord, MasterMapStatus, MasterMapTargetScreen } from "./masterMapTypes";
 
 export type MasterMapNodeData = {
   node: MasterMapNodeRecord;
@@ -17,6 +18,7 @@ export type MasterMapNodeData = {
   onOpenDynamicPage: (pageId: string) => void;
   onOpenExternalUrl: (url: string) => void;
   onToggleCollapse: (nodeId: string) => void;
+  onSelectNode: (nodeId: string, additive?: boolean) => void;
 };
 
 export type MasterMapFlowNode = Node<MasterMapNodeData, "masterMapNode">;
@@ -28,11 +30,24 @@ const statusLabels: Record<MasterMapStatus, string> = {
 };
 
 export function MasterMapNodeCard({ data, selected }: NodeProps<MasterMapFlowNode>) {
-  const { node, childrenCount, editMode, density, handleVariant, dimmed, highlighted, onOpenDetails, onOpenModule, onOpenDynamicPage, onOpenExternalUrl, onToggleCollapse } = data;
+  const { node, childrenCount, editMode, density, handleVariant, dimmed, highlighted, onOpenDetails, onOpenModule, onOpenDynamicPage, onOpenExternalUrl, onToggleCollapse, onSelectNode } = data;
   const hasChildren = childrenCount > 0;
   const hasDynamicPage = node.destinationType === "DYNAMIC_PAGE" && Boolean(node.dynamicPageId);
   const compact = density === "compact";
-  const handlePositions = getHandlePositions(handleVariant);
+  const visualStyle = normalizeMasterMapVisualStyle(node.metadata.visualStyle);
+  const handlePositions = getHandlePositions(handleVariant, visualStyle.targetPosition, visualStyle.sourcePosition);
+  const tone = getMasterMapTextTone(visualStyle.fillColor);
+  const nodeStyle = {
+    "--master-map-node-fill": visualStyle.fillColor,
+    "--master-map-node-border": visualStyle.borderColor,
+    "--master-map-node-border-width": `${visualStyle.borderWidth}px`,
+    "--master-map-node-border-style": visualStyle.borderStyle.toLowerCase(),
+    "--master-map-node-text": tone.text,
+    "--master-map-node-muted": tone.muted,
+    "--master-map-node-chip": tone.chip,
+    width: `${getMasterMapNodeWidth(visualStyle, compact)}px`,
+    borderRadius: visualStyle.shape === "RECTANGLE" ? "4px" : "8px",
+  } as CSSProperties;
 
   function handlePrimaryClick() {
     if (hasDynamicPage && node.dynamicPageId) {
@@ -48,10 +63,25 @@ export function MasterMapNodeCard({ data, selected }: NodeProps<MasterMapFlowNod
     action();
   }
 
+  function handleNodeMouseDown(event: MouseEvent<HTMLElement>) {
+    if (!editMode || (!event.ctrlKey && !event.metaKey)) return;
+    event.stopPropagation();
+  }
+
+  function handleNodeClick(event: MouseEvent<HTMLElement>) {
+    if (!editMode || (!event.ctrlKey && !event.metaKey)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    onSelectNode(node.id, true);
+  }
+
   return (
     <article
       className={`master-map-node master-map-node-${node.status.toLowerCase().replace(/_/g, "-")} master-map-node-${density} ${selected ? "selected" : ""} ${dimmed ? "dimmed" : ""} ${highlighted ? "highlighted" : ""}`}
+      style={nodeStyle}
+      onClick={handleNodeClick}
       onDoubleClick={handlePrimaryClick}
+      onMouseDown={handleNodeMouseDown}
     >
       <Handle className="master-map-handle" type="target" position={handlePositions.target} />
       <div className="master-map-node-head">
@@ -88,12 +118,23 @@ export function MasterMapNodeCard({ data, selected }: NodeProps<MasterMapFlowNod
   );
 }
 
-function getHandlePositions(variant: MasterMapHandleVariant) {
-  if (variant === "vertical") {
-    return { target: Position.Top, source: Position.Bottom };
-  }
-  if (variant === "mind-left") {
-    return { target: Position.Right, source: Position.Left };
-  }
+function getHandlePositions(variant: MasterMapHandleVariant, targetSide: MasterMapHandleSide, sourceSide: MasterMapHandleSide) {
+  const automatic = getAutomaticHandlePositions(variant);
+  return {
+    target: targetSide === "AUTO" ? automatic.target : getPositionFromSide(targetSide),
+    source: sourceSide === "AUTO" ? automatic.source : getPositionFromSide(sourceSide),
+  };
+}
+
+function getAutomaticHandlePositions(variant: MasterMapHandleVariant) {
+  if (variant === "vertical") return { target: Position.Top, source: Position.Bottom };
+  if (variant === "mind-left") return { target: Position.Right, source: Position.Left };
   return { target: Position.Left, source: Position.Right };
+}
+
+function getPositionFromSide(side: MasterMapHandleSide) {
+  if (side === "TOP") return Position.Top;
+  if (side === "BOTTOM") return Position.Bottom;
+  if (side === "RIGHT") return Position.Right;
+  return Position.Left;
 }

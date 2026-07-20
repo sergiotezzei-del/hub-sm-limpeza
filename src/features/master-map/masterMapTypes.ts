@@ -41,6 +41,22 @@ export type MasterMapDestinationType =
   | "EXTERNAL_URL"
   | "PLANNED_MODULE";
 
+export type MasterMapHandleSide = "AUTO" | "LEFT" | "RIGHT" | "TOP" | "BOTTOM";
+export type MasterMapNodeShape = "RECTANGLE" | "ROUNDED";
+export type MasterMapNodeBorderStyle = "SOLID" | "DASHED";
+export type MasterMapNodeWidthPreset = "COMPACT" | "STANDARD" | "WIDE";
+
+export type MasterMapNodeVisualStyle = {
+  fillColor?: string;
+  borderColor?: string;
+  shape?: MasterMapNodeShape;
+  borderStyle?: MasterMapNodeBorderStyle;
+  borderWidth?: 1 | 2 | 3;
+  widthPreset?: MasterMapNodeWidthPreset;
+  sourcePosition?: MasterMapHandleSide;
+  targetPosition?: MasterMapHandleSide;
+};
+
 export type MasterMap = {
   id: string;
   name: string;
@@ -62,6 +78,7 @@ export type MasterMapNodeMetadata = {
   evidenceUrl?: string;
   realTest?: string;
   observations?: string;
+  visualStyle?: MasterMapNodeVisualStyle;
 };
 
 export type MasterMapNode = {
