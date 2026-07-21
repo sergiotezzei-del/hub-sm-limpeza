@@ -61,6 +61,8 @@ export type MasterMapNodeLayoutUpdate = {
   visualStyle?: MasterMapNodeVisualStyle | null;
 };
 
+export type MasterMapOutlineMutationResult = Pick<MasterMapData, "nodes" | "edges">;
+
 export class MasterMapRemoteError extends Error {
   constructor(
     public readonly status: number,
@@ -187,6 +189,80 @@ export async function createMasterMapEdgeRemote(edge: MasterMapEdge) {
   const rows = (await response.json()) as MasterMapEdgeRow[];
   if (!rows[0]?.id) throw new Error("Não foi possível confirmar a conexão criada.");
   return mapMasterMapEdgeRow(rows[0]);
+}
+
+export async function createMasterMapOutlineBatchRemote(
+  mapId: string,
+  nextNodes: MasterMapNode[],
+  nextEdges: MasterMapEdge[],
+): Promise<MasterMapOutlineMutationResult> {
+  ensureRemoteWriteReady();
+  if (!nextNodes.length && !nextEdges.length) return { nodes: [], edges: [] };
+
+  const response = await masterMapRequest("rpc/apply_hub_map_outline_batch", {
+    method: "POST",
+    body: JSON.stringify({
+      p_map_id: mapId,
+      p_nodes: nextNodes.map(masterMapNodeToRow),
+      p_edges: nextEdges.map(masterMapEdgeToRow),
+    }),
+  });
+
+  return parseOutlineMutationResponse(await response.json());
+}
+
+export async function saveMasterMapOutlineOrderRemote(
+  mapId: string,
+  parentId: string | null,
+  orderedNodeIds: string[],
+): Promise<MasterMapOutlineMutationResult> {
+  ensureRemoteWriteReady();
+  const response = await masterMapRequest("rpc/apply_hub_map_outline_order", {
+    method: "POST",
+    body: JSON.stringify({
+      p_map_id: mapId,
+      p_parent_id: parentId,
+      p_ordered_node_ids: orderedNodeIds,
+    }),
+  });
+
+  return parseOutlineMutationResponse(await response.json());
+}
+
+export async function reparentMasterMapNodeRemote(
+  mapId: string,
+  nodeId: string,
+  newParentId: string | null,
+): Promise<MasterMapOutlineMutationResult> {
+  ensureRemoteWriteReady();
+  const response = await masterMapRequest("rpc/reparent_hub_map_outline_node", {
+    method: "POST",
+    body: JSON.stringify({
+      p_map_id: mapId,
+      p_node_id: nodeId,
+      p_new_parent_id: newParentId,
+    }),
+  });
+
+  return parseOutlineMutationResponse(await response.json());
+}
+
+export async function inactivateMasterMapOutlineBatchRemote(
+  mapId: string,
+  nodeIds: string[],
+  edgeIds: string[],
+): Promise<MasterMapOutlineMutationResult> {
+  ensureRemoteWriteReady();
+  const response = await masterMapRequest("rpc/inactivate_hub_map_outline_batch", {
+    method: "POST",
+    body: JSON.stringify({
+      p_map_id: mapId,
+      p_node_ids: nodeIds,
+      p_edge_ids: edgeIds,
+    }),
+  });
+
+  return parseOutlineMutationResponse(await response.json());
 }
 
 export function saveLocalMasterMapCache(data: Pick<MasterMapData, "maps" | "nodes" | "edges">) {
@@ -349,6 +425,14 @@ function mapMasterMapEdgeRow(row: MasterMapEdgeRow): MasterMapEdge {
     metadata: row.metadata ?? {},
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+  };
+}
+
+function parseOutlineMutationResponse(payload: unknown): MasterMapOutlineMutationResult {
+  const response = payload as { nodes?: MasterMapNodeRow[]; edges?: MasterMapEdgeRow[] } | null;
+  return {
+    nodes: Array.isArray(response?.nodes) ? response.nodes.map(mapMasterMapNodeRow) : [],
+    edges: Array.isArray(response?.edges) ? response.edges.map(mapMasterMapEdgeRow) : [],
   };
 }
 

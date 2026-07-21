@@ -126,6 +126,12 @@ export function getFilteredMasterMapNodes(nodes: MasterMapNode[], filters: Maste
 export function buildMasterMapHierarchy(nodes: MasterMapNode[], edges: MasterMapEdge[]): MasterMapHierarchy {
   const activeNodeIds = new Set(nodes.filter((node) => node.isActive).map((node) => node.id));
   const nodeOrder = new Map(nodes.map((node, index) => [node.id, index]));
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+  const getNodeSortValue = (nodeId: string) => {
+    const node = nodeById.get(nodeId);
+    const outlineOrder = Number(node?.metadata.outlineOrder);
+    return Number.isFinite(outlineOrder) ? outlineOrder : nodeOrder.get(nodeId) ?? 0;
+  };
   const childrenByParent = new Map<string, string[]>();
   const parentByChild = new Map<string, string>();
 
@@ -137,17 +143,19 @@ export function buildMasterMapHierarchy(nodes: MasterMapNode[], edges: MasterMap
     });
 
   childrenByParent.forEach((childIds, parentId) => {
-    childrenByParent.set(parentId, childIds.sort((a, b) => (nodeOrder.get(a) ?? 0) - (nodeOrder.get(b) ?? 0)));
+    childrenByParent.set(parentId, childIds.sort((a, b) => getNodeSortValue(a) - getNodeSortValue(b)));
   });
 
   const rootIds = nodes
     .filter((node) => node.isActive && !parentByChild.has(node.id))
     .filter((node) => node.nodeType === "root" || (childrenByParent.get(node.id)?.length ?? 0) > 0)
+    .sort((a, b) => getNodeSortValue(a.id) - getNodeSortValue(b.id))
     .map((node) => node.id);
 
   const rootIdSet = new Set(rootIds);
   const orphanIds = nodes
     .filter((node) => node.isActive && !parentByChild.has(node.id) && !rootIdSet.has(node.id))
+    .sort((a, b) => getNodeSortValue(a.id) - getNodeSortValue(b.id))
     .map((node) => node.id);
 
   return { rootIds, orphanIds, childrenByParent, parentByChild };

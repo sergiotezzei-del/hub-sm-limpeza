@@ -8,16 +8,42 @@ export function MasterMapListView({
   nodes,
   edges,
   pageSummaries,
+  editMode,
+  selectedNodeId,
+  inlineEditingNodeId,
+  inlineTitleDraft,
   onOpenPage,
   onViewInMap,
   onOpenDetails,
+  onSelectNode,
+  onStartInlineTitleEdit,
+  onInlineTitleDraftChange,
+  onCommitInlineTitleEdit,
+  onCancelInlineTitleEdit,
+  onCreateSibling,
+  onCreateChild,
+  onReorderSibling,
+  onRequestReparent,
 }: {
   nodes: MasterMapNode[];
   edges: MasterMapEdge[];
   pageSummaries: DynamicPageSummary[];
+  editMode: boolean;
+  selectedNodeId?: string;
+  inlineEditingNodeId?: string | null;
+  inlineTitleDraft?: string;
   onOpenPage: (node: MasterMapNode) => void;
   onViewInMap: (nodeId: string) => void;
   onOpenDetails: (nodeId: string) => void;
+  onSelectNode: (nodeId: string) => void;
+  onStartInlineTitleEdit: (nodeId: string) => void;
+  onInlineTitleDraftChange: (value: string) => void;
+  onCommitInlineTitleEdit: () => void;
+  onCancelInlineTitleEdit: () => void;
+  onCreateSibling: (nodeId: string, before?: boolean) => void;
+  onCreateChild: (nodeId: string) => void;
+  onReorderSibling: (nodeId: string, direction: "up" | "down") => void;
+  onRequestReparent: (nodeId: string) => void;
 }) {
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(() => new Set());
   const hierarchy = useMemo(() => buildMasterMapHierarchy(nodes, edges), [edges, nodes]);
@@ -42,20 +68,57 @@ export function MasterMapListView({
 
     return (
       <div className="master-map-list-branch" key={node.id}>
-        <article className="master-map-list-item" style={{ "--level": level } as CSSProperties}>
+        <article className={`master-map-list-item ${selectedNodeId === node.id ? "selected" : ""}`} style={{ "--level": level } as CSSProperties} onClick={() => onSelectNode(node.id)}>
           <button
             aria-label={children.length > 0 ? (collapsed ? "Expandir ramo" : "Recolher ramo") : "Sem filhos"}
             className="ghost-button master-map-tree-toggle"
             disabled={children.length === 0}
             type="button"
-            onClick={() => toggleCollapsed(node.id)}
+            onClick={(event) => {
+              event.stopPropagation();
+              toggleCollapsed(node.id);
+            }}
           >
             {children.length > 0 ? (collapsed ? "+" : "-") : ""}
           </button>
           <span className="module-icon-circle" aria-hidden="true"><AppIcon name={node.iconKey} size="md" className="module-icon" /></span>
           <div className="master-map-list-main">
             <div className="master-map-list-title">
-              <h3>{node.title}</h3>
+              {inlineEditingNodeId === node.id ? (
+                <input
+                  className="master-map-inline-title-input"
+                  aria-label="Editar titulo do quadro"
+                  autoFocus
+                  value={inlineTitleDraft ?? node.title}
+                  onClick={(event) => event.stopPropagation()}
+                  onChange={(event) => onInlineTitleDraftChange(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      onCommitInlineTitleEdit();
+                    }
+                    if (event.key === "Escape") {
+                      event.preventDefault();
+                      onCancelInlineTitleEdit();
+                    }
+                  }}
+                />
+              ) : (
+                <button
+                  className="master-map-inline-title-button"
+                  type="button"
+                  onDoubleClick={(event) => {
+                    event.stopPropagation();
+                    if (editMode) onStartInlineTitleEdit(node.id);
+                  }}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onSelectNode(node.id);
+                  }}
+                >
+                  <strong>{node.title}</strong>
+                </button>
+              )}
               <span className={`master-map-chip status-${node.status.toLowerCase().replace(/_/g, "-")}`}>{masterMapStatusLabels[node.status]}</span>
             </div>
             <p>{node.description || masterMapDestinationLabels[node.destinationType]}</p>
@@ -68,9 +131,19 @@ export function MasterMapListView({
             </div>
           </div>
           <div className="master-map-card-actions">
-            {node.dynamicPageId && <button className="secondary-button" type="button" onClick={() => onOpenPage(node)}>Abrir pagina</button>}
-            <button className="ghost-button" type="button" onClick={() => onViewInMap(node.id)}>Ver no mapa</button>
-            <button className="ghost-button" type="button" onClick={() => onOpenDetails(node.id)}>Detalhes</button>
+            {editMode && (
+              <>
+                <button className="ghost-button master-map-outline-handle" type="button" onClick={(event) => { event.stopPropagation(); onReorderSibling(node.id, "up"); }}>Subir</button>
+                <button className="ghost-button master-map-outline-handle" type="button" onClick={(event) => { event.stopPropagation(); onReorderSibling(node.id, "down"); }}>Descer</button>
+                <button className="secondary-button" type="button" onClick={(event) => { event.stopPropagation(); onCreateSibling(node.id); }}>Criar irmao</button>
+                <button className="secondary-button" type="button" onClick={(event) => { event.stopPropagation(); onCreateChild(node.id); }}>Adicionar filho</button>
+                <button className="ghost-button" type="button" onClick={(event) => { event.stopPropagation(); onStartInlineTitleEdit(node.id); }}>Editar titulo</button>
+                <button className="ghost-button" type="button" onClick={(event) => { event.stopPropagation(); onRequestReparent(node.id); }}>Alterar pai</button>
+              </>
+            )}
+            {node.dynamicPageId && <button className="secondary-button" type="button" onClick={(event) => { event.stopPropagation(); onOpenPage(node); }}>Abrir pagina</button>}
+            <button className="ghost-button" type="button" onClick={(event) => { event.stopPropagation(); onViewInMap(node.id); }}>Ver no mapa</button>
+            <button className="ghost-button" type="button" onClick={(event) => { event.stopPropagation(); onOpenDetails(node.id); }}>Detalhes</button>
           </div>
         </article>
         {!collapsed && children.map((childId) => renderNode(childId, level + 1))}

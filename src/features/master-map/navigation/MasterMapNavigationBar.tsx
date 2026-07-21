@@ -28,9 +28,15 @@ export function MasterMapNavigationBar({
   onToggleEditMode,
   onAddNode,
   onAddChildNode,
+  onAddQuickSibling,
+  onAddQuickChild,
+  onOpenBranchText,
   onOpenLayoutPanel,
+  onOpenShortcutHelp,
   onUndoLayout,
+  onUndoOutline,
   undoLayoutAvailable,
+  undoOutlineAvailable,
 }: {
   maps: MasterMap[];
   activeMapId: string;
@@ -57,9 +63,15 @@ export function MasterMapNavigationBar({
   onToggleEditMode: () => void;
   onAddNode: () => void;
   onAddChildNode: () => void;
+  onAddQuickSibling: () => void;
+  onAddQuickChild: () => void;
+  onOpenBranchText: () => void;
   onOpenLayoutPanel: () => void;
+  onOpenShortcutHelp: () => void;
   onUndoLayout: () => void;
+  onUndoOutline: () => void;
   undoLayoutAvailable: boolean;
+  undoOutlineAvailable: boolean;
 }) {
   const saveLabel = saveStatus === "saving" ? "Salvando..." : saveStatus === "saved" ? "Salvo" : saveStatus === "error" ? "Erro ao salvar" : "Pronto";
   const hasNavigationState = Boolean(searchQuery.trim()) || activeFilterCount > 0;
@@ -80,11 +92,20 @@ export function MasterMapNavigationBar({
             Desfazer organizacao
           </button>
         )}
+        {undoOutlineAvailable && (
+          <button className="ghost-button" type="button" disabled={!canEdit} onClick={onUndoOutline}>
+            Desfazer outline
+          </button>
+        )}
         <button className={editMode ? "primary-button" : "secondary-button"} type="button" disabled={!canEdit} onClick={onToggleEditMode}>
           {editMode ? "Modo edicao" : "Modo visualizacao"}
         </button>
+        <button className="ghost-button" type="button" onClick={onOpenShortcutHelp}>Atalhos</button>
         {editMode && (
           <>
+            <button className="primary-button" type="button" onClick={onAddQuickSibling}>+ Quadro</button>
+            <button className="secondary-button" type="button" onClick={onAddQuickChild}>+ Filho</button>
+            <button className="secondary-button" type="button" onClick={onOpenBranchText}>Criar por texto</button>
             <button className="secondary-button" type="button" onClick={onAddNode}><AppIcon name="edit" size="sm" className="action-icon" />Criar no</button>
             <button className="secondary-button" type="button" onClick={onAddChildNode}>Criar filho</button>
           </>
@@ -118,6 +139,7 @@ export function MasterMapNavigationBar({
         <label className="master-map-search-field">
           Buscar quadro
           <input
+            data-master-map-search
             aria-label="Buscar quadro no Mapa Mestre"
             placeholder="Buscar por titulo, responsavel, acao..."
             type="search"

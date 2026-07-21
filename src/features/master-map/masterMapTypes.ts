@@ -81,6 +81,7 @@ export type MasterMapNodeMetadata = {
   realTest?: string;
   observations?: string;
   visualStyle?: MasterMapNodeVisualStyle;
+  outlineOrder?: number;
 };
 
 export type MasterMapNode = {

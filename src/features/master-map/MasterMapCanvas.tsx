@@ -42,6 +42,8 @@ export function MasterMapCanvas({
   selectedNodeId,
   selectedNodeIds,
   selectedEdgeId,
+  inlineEditingNodeId,
+  inlineTitleDraft,
   highlightedNodeIds = emptyNodeIdSet,
   dimmedNodeIds = emptyNodeIdSet,
   layoutPreviewNodeIds = emptyNodeIdSet,
@@ -57,6 +59,10 @@ export function MasterMapCanvas({
   onOpenDynamicPage,
   onOpenExternalUrl,
   onToggleCollapse,
+  onStartInlineTitleEdit,
+  onInlineTitleDraftChange,
+  onCommitInlineTitleEdit,
+  onCancelInlineTitleEdit,
 }: {
   nodes: MasterMapNode[];
   edges: MasterMapEdge[];
@@ -67,6 +73,8 @@ export function MasterMapCanvas({
   selectedNodeId?: string;
   selectedNodeIds?: Set<string>;
   selectedEdgeId?: string;
+  inlineEditingNodeId?: string | null;
+  inlineTitleDraft?: string;
   highlightedNodeIds?: Set<string>;
   dimmedNodeIds?: Set<string>;
   layoutPreviewNodeIds?: Set<string>;
@@ -82,6 +90,10 @@ export function MasterMapCanvas({
   onOpenDynamicPage: (pageId: string) => void;
   onOpenExternalUrl: (url: string) => void;
   onToggleCollapse: (nodeId: string) => void;
+  onStartInlineTitleEdit: (nodeId: string) => void;
+  onInlineTitleDraftChange: (value: string) => void;
+  onCommitInlineTitleEdit: () => void;
+  onCancelInlineTitleEdit: () => void;
 }) {
   const visibleGraph = useMemo(() => getVisibleMasterMapGraph(nodes, edges, forceVisibleNodeIds), [edges, forceVisibleNodeIds, nodes]);
   const visibleEdges = useMemo(() => filterEdgesByConnectionMode(visibleGraph.edges, connectionMode), [connectionMode, visibleGraph.edges]);
@@ -96,6 +108,10 @@ export function MasterMapCanvas({
     onOpenExternalUrl,
     onToggleCollapse,
     onSelectNode,
+    onStartInlineTitleEdit,
+    onInlineTitleDraftChange,
+    onCommitInlineTitleEdit,
+    onCancelInlineTitleEdit,
   });
   const fitViewOptions = useMemo(() => ({
     padding: isCompactViewport ? 0.08 : 0.24,
@@ -112,8 +128,12 @@ export function MasterMapCanvas({
       onOpenExternalUrl,
       onToggleCollapse,
       onSelectNode,
+      onStartInlineTitleEdit,
+      onInlineTitleDraftChange,
+      onCommitInlineTitleEdit,
+      onCancelInlineTitleEdit,
     };
-  }, [onOpenDynamicPage, onOpenExternalUrl, onOpenModule, onOpenNodeDetails, onSelectNode, onToggleCollapse]);
+  }, [onCancelInlineTitleEdit, onCommitInlineTitleEdit, onInlineTitleDraftChange, onOpenDynamicPage, onOpenExternalUrl, onOpenModule, onOpenNodeDetails, onSelectNode, onStartInlineTitleEdit, onToggleCollapse]);
 
   const handleCardOpenDetails = useCallback((nodeId: string) => nodeActionHandlersRef.current.onOpenNodeDetails(nodeId), []);
   const handleCardOpenModule = useCallback((targetScreen: MasterMapTargetScreen) => nodeActionHandlersRef.current.onOpenModule(targetScreen), []);
@@ -121,6 +141,10 @@ export function MasterMapCanvas({
   const handleCardOpenExternalUrl = useCallback((url: string) => nodeActionHandlersRef.current.onOpenExternalUrl(url), []);
   const handleCardToggleCollapse = useCallback((nodeId: string) => nodeActionHandlersRef.current.onToggleCollapse(nodeId), []);
   const handleCardSelectNode = useCallback((nodeId: string, additive?: boolean) => nodeActionHandlersRef.current.onSelectNode(nodeId, additive), []);
+  const handleCardStartInlineTitleEdit = useCallback((nodeId: string) => nodeActionHandlersRef.current.onStartInlineTitleEdit(nodeId), []);
+  const handleCardInlineTitleDraftChange = useCallback((value: string) => nodeActionHandlersRef.current.onInlineTitleDraftChange(value), []);
+  const handleCardCommitInlineTitleEdit = useCallback(() => nodeActionHandlersRef.current.onCommitInlineTitleEdit(), []);
+  const handleCardCancelInlineTitleEdit = useCallback(() => nodeActionHandlersRef.current.onCancelInlineTitleEdit(), []);
 
   const hasLayoutSelection = (selectedNodeIds?.size ?? 0) > 1;
   const flowNodes = useMemo<Node[]>(() => visibleGraph.nodes.map((node) => {
@@ -138,15 +162,21 @@ export function MasterMapCanvas({
         handleVariant: getHandleVariantForNode(node, visibleGraph.nodes, layoutMode),
         dimmed: dimmedNodeIds.has(node.id),
         highlighted: (hasLayoutSelection && selectedForLayout) || highlightedNodeIds.has(node.id) || layoutPreviewNodeIds.has(node.id),
+        inlineEditing: inlineEditingNodeId === node.id,
+        inlineTitleDraft,
         onOpenDetails: handleCardOpenDetails,
         onOpenModule: handleCardOpenModule,
         onOpenDynamicPage: handleCardOpenDynamicPage,
         onOpenExternalUrl: handleCardOpenExternalUrl,
         onToggleCollapse: handleCardToggleCollapse,
         onSelectNode: handleCardSelectNode,
+        onStartInlineTitleEdit: handleCardStartInlineTitleEdit,
+        onInlineTitleDraftChange: handleCardInlineTitleDraftChange,
+        onCommitInlineTitleEdit: handleCardCommitInlineTitleEdit,
+        onCancelInlineTitleEdit: handleCardCancelInlineTitleEdit,
       },
     } satisfies MasterMapFlowNode;
-  }), [dimmedNodeIds, edges, editMode, handleCardOpenDetails, handleCardOpenDynamicPage, handleCardOpenExternalUrl, handleCardOpenModule, handleCardSelectNode, handleCardToggleCollapse, hasLayoutSelection, highlightedNodeIds, layoutMode, layoutPreviewNodeIds, nodeDensity, selectedNodeId, selectedNodeIds, visibleGraph.nodes]);
+  }), [dimmedNodeIds, edges, editMode, handleCardCancelInlineTitleEdit, handleCardCommitInlineTitleEdit, handleCardInlineTitleDraftChange, handleCardOpenDetails, handleCardOpenDynamicPage, handleCardOpenExternalUrl, handleCardOpenModule, handleCardSelectNode, handleCardStartInlineTitleEdit, handleCardToggleCollapse, hasLayoutSelection, highlightedNodeIds, inlineEditingNodeId, inlineTitleDraft, layoutMode, layoutPreviewNodeIds, nodeDensity, selectedNodeId, selectedNodeIds, visibleGraph.nodes]);
   const flowEdges = useMemo<Edge[]>(() => visibleEdges.map((edge) => ({
     id: edge.id,
     source: edge.sourceNodeId,
@@ -196,6 +226,10 @@ export function MasterMapCanvas({
 
   function handleNodeDoubleClick(flowNode: Node) {
     const mapNode = (flowNode as MasterMapFlowNode).data.node;
+    if (editMode) {
+      onStartInlineTitleEdit(mapNode.id);
+      return;
+    }
     if (mapNode.destinationType === "DYNAMIC_PAGE" && mapNode.dynamicPageId) {
       onOpenDynamicPage(mapNode.dynamicPageId);
       return;

@@ -8,7 +8,7 @@ import { MasterMapDetails } from "./MasterMapDetails";
 import { MasterMapLegend } from "./MasterMapLegend";
 import { MasterMapAttentionPanel } from "./attention/MasterMapAttentionPanel";
 import { getMasterMapAttentionItems } from "./attention/masterMapAttention";
-import { getFilteredMasterMapNodes, getMasterMapDescendants, masterMapStatusLabels } from "./graph/masterMapGraphUtils";
+import { buildMasterMapHierarchy, getFilteredMasterMapNodes, getMasterMapDescendants, masterMapStatusLabels } from "./graph/masterMapGraphUtils";
 import { MasterMapLayoutPanel } from "./layout/MasterMapLayoutPanel";
 import { calculateMasterMapLayout } from "./layout/masterMapLayoutWorker";
 import { detectMasterMapLayoutCollisions, mergeMasterMapPositions } from "./layout/masterMapLayoutValidation";
@@ -29,6 +29,11 @@ import {
 } from "./layout/masterMapVisualStyle";
 import { MasterMapFilters } from "./navigation/MasterMapFilters";
 import { MasterMapNavigationBar } from "./navigation/MasterMapNavigationBar";
+import { MasterMapBranchTextDialog } from "./outline/MasterMapBranchTextDialog";
+import { MasterMapQuickTitleDialog, type MasterMapQuickCreateKind } from "./outline/MasterMapQuickTitleDialog";
+import { MasterMapReparentDialog } from "./outline/MasterMapReparentDialog";
+import { MasterMapShortcutHelp } from "./outline/MasterMapShortcutHelp";
+import { parseMasterMapOutlineText, type MasterMapOutlineTextItem } from "./outline/masterMapOutlineText";
 import { MasterMapDirectorView } from "./views/MasterMapDirectorView";
 import { MasterMapFocusView } from "./views/MasterMapFocusView";
 import { MasterMapImpactView } from "./views/MasterMapImpactView";
@@ -37,15 +42,20 @@ import { createDynamicPageForNode, loadDynamicPageSummaries, loadDynamicPageTemp
 import type { DynamicPage, DynamicPageSummary, DynamicPageTemplate } from "./dynamicPageTypes";
 import {
   createEmptyMasterMapNode,
+  createMasterMapOutlineBatchRemote,
   createMasterMapEdgeDraft,
   createMasterMapEdgeRemote,
   createMasterMapNodeRemote,
+  inactivateMasterMapOutlineBatchRemote,
   loadMasterMapData,
+  reparentMasterMapNodeRemote,
   saveLocalMasterMapCache,
   saveMasterMapEdgeRemote,
   saveMasterMapNodeLayoutUpdatesRemote,
   saveMasterMapNodeRemote,
+  saveMasterMapOutlineOrderRemote,
   type MasterMapNodeLayoutUpdate,
+  type MasterMapOutlineMutationResult,
 } from "./masterMapService";
 import { getVisibleMasterMapGraph } from "./masterMapLayout";
 import type { MasterMap, MasterMapData, MasterMapEdge, MasterMapNode, MasterMapNodeVisualStyle, MasterMapNodeVisualStyleField, MasterMapSaveStatus, MasterMapTargetScreen } from "./masterMapTypes";
@@ -68,6 +78,17 @@ type MasterMapLayoutPreviewState = {
   previewPreferences: MasterMapLayoutPreferences;
   originalVisualStyle: Required<MasterMapNodeVisualStyle>;
 };
+
+type MasterMapQuickCreateRequest = {
+  kind: MasterMapQuickCreateKind;
+  referenceNodeId: string;
+};
+
+type MasterMapOutlineUndoAction =
+  | { kind: "create-batch"; mapId: string; nodeIds: string[]; edgeIds: string[] }
+  | { kind: "edit-title"; mapId: string; nodeId: string; previousTitle: string; nextTitle: string }
+  | { kind: "reorder"; mapId: string; parentId: string | null; previousOrder: string[]; nextOrder: string[] }
+  | { kind: "reparent"; mapId: string; nodeId: string; previousParentId: string | null; nextParentId: string | null };
 
 export function MasterMapScreen({
   canEdit,
@@ -126,6 +147,13 @@ export function MasterMapScreen({
   const [layoutReferenceNodeId, setLayoutReferenceNodeId] = useState("");
   const [visualStyleDraft, setVisualStyleDraft] = useState<Required<MasterMapNodeVisualStyle>>(defaultMasterMapVisualStyle);
   const [visualStyleDirtyFields, setVisualStyleDirtyFields] = useState<Set<MasterMapNodeVisualStyleField>>(new Set());
+  const [inlineEditingNodeId, setInlineEditingNodeId] = useState<string | null>(null);
+  const [inlineTitleDraft, setInlineTitleDraft] = useState("");
+  const [quickCreateRequest, setQuickCreateRequest] = useState<MasterMapQuickCreateRequest | null>(null);
+  const [branchTextOpen, setBranchTextOpen] = useState(false);
+  const [shortcutHelpOpen, setShortcutHelpOpen] = useState(false);
+  const [reparentNodeId, setReparentNodeId] = useState<string | null>(null);
+  const [outlineUndoAction, setOutlineUndoAction] = useState<MasterMapOutlineUndoAction | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -210,6 +238,10 @@ export function MasterMapScreen({
     setSelectedEdgeId(undefined);
     setLayoutReferenceNodeId("");
     setVisualStyleDirtyFields(new Set());
+    setInlineEditingNodeId(null);
+    setQuickCreateRequest(null);
+    setBranchTextOpen(false);
+    setReparentNodeId(null);
   }, [activeMapId]);
 
   useEffect(() => {
@@ -220,13 +252,62 @@ export function MasterMapScreen({
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      setFiltersOpen(false);
-      setAttentionOpen(false);
+      if (isEditableShortcutTarget(event.target)) return;
+
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f") {
+        event.preventDefault();
+        document.querySelector<HTMLInputElement>("[data-master-map-search]")?.focus();
+        return;
+      }
+
+      if (event.key === "?" || (event.shiftKey && event.key === "/")) {
+        event.preventDefault();
+        setShortcutHelpOpen(true);
+        return;
+      }
+
+      if (event.key === "Escape") {
+        if (inlineEditingNodeId) {
+          cancelInlineTitleEdit();
+          return;
+        }
+        setQuickCreateRequest(null);
+        setBranchTextOpen(false);
+        setReparentNodeId(null);
+        setShortcutHelpOpen(false);
+        setFiltersOpen(false);
+        setAttentionOpen(false);
+        return;
+      }
+
+      if (!editMode || !(canEdit && remoteEditable) || !selectedNodeId || activeDynamicPageId || layoutPreview) return;
+
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") {
+        event.preventDefault();
+        void undoLastOutlineAction();
+        return;
+      }
+
+      if (event.key === "F2") {
+        event.preventDefault();
+        startInlineTitleEdit(selectedNodeId);
+        return;
+      }
+
+      if (event.key === "Tab") {
+        event.preventDefault();
+        requestQuickCreate("child", selectedNodeId);
+        return;
+      }
+
+      if (event.key === "Enter") {
+        event.preventDefault();
+        requestQuickCreate(event.shiftKey ? "sibling-before" : "sibling-after", selectedNodeId);
+      }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  }, [activeDynamicPageId, canEdit, editMode, inlineEditingNodeId, layoutPreview, remoteEditable, selectedNodeId, outlineUndoAction, nodes, edges]);
 
   const activeMap = maps.find((map) => map.id === activeMapId) ?? maps[0];
   const activeNodes = useMemo(() => nodes.filter((node) => node.mapId === activeMap?.id), [activeMap?.id, nodes]);
@@ -318,6 +399,14 @@ export function MasterMapScreen({
       saveLocalMasterMapCache({ maps, nodes, edges: nextEdges });
       return nextEdges;
     });
+  }
+
+  function replaceActiveMapState(mapId: string, result: MasterMapOutlineMutationResult) {
+    const nextNodes = [...nodes.filter((node) => node.mapId !== mapId), ...result.nodes];
+    const nextEdges = [...edges.filter((edge) => edge.mapId !== mapId), ...result.edges];
+    setNodes(nextNodes);
+    setEdges(nextEdges);
+    saveLocalMasterMapCache({ maps, nodes: nextNodes, edges: nextEdges });
   }
 
   function upsertPageSummaryFromPage(page: DynamicPage) {
@@ -574,6 +663,239 @@ export function MasterMapScreen({
   function addChildNode() {
     if (!activeMap || !editMode || !guardEditAction()) return;
     setCreateDialogMode("child");
+  }
+
+  function startInlineTitleEdit(nodeId: string) {
+    if (!editMode || !guardEditAction()) return;
+    const node = activeNodes.find((current) => current.id === nodeId);
+    if (!node) return;
+    setSelectedNodeId(node.id);
+    setSelectedNodeIds(new Set([node.id]));
+    setSelectedEdgeId(undefined);
+    setInlineEditingNodeId(node.id);
+    setInlineTitleDraft(node.title);
+    setMessage("Editando titulo. Enter salva, Escape cancela.");
+  }
+
+  function cancelInlineTitleEdit() {
+    setInlineEditingNodeId(null);
+    setInlineTitleDraft("");
+    setMessage("Edicao cancelada.");
+  }
+
+  async function commitInlineTitleEdit() {
+    if (!inlineEditingNodeId || !guardEditAction()) return;
+    const node = nodes.find((current) => current.id === inlineEditingNodeId);
+    const nextTitle = inlineTitleDraft.trim();
+    if (!node) return;
+    if (!nextTitle) {
+      setMessage("Titulo vazio nao pode ser salvo.");
+      setSaveStatus("error");
+      return;
+    }
+    if (nextTitle === node.title) {
+      setInlineEditingNodeId(null);
+      setInlineTitleDraft("");
+      setMessage("Titulo mantido.");
+      return;
+    }
+
+    const previousNode = node;
+    const nextNode = { ...node, title: nextTitle, updatedAt: new Date().toISOString() };
+    setSaveStatus("saving");
+    updateNodeLocal(nextNode);
+    setInlineEditingNodeId(null);
+    setInlineTitleDraft("");
+
+    try {
+      const savedNode = await saveMasterMapNodeRemote(nextNode);
+      if (savedNode.destinationType === "DYNAMIC_PAGE" && savedNode.dynamicPageId) {
+        await syncDynamicPageProjectionFromNode(savedNode);
+      }
+      updateNodeLocal(savedNode);
+      setOutlineUndoAction({
+        kind: "edit-title",
+        mapId: savedNode.mapId,
+        nodeId: savedNode.id,
+        previousTitle: previousNode.title,
+        nextTitle: savedNode.title,
+      });
+      setSaveStatus("saved");
+      setMessage("Titulo salvo.");
+    } catch {
+      updateNodeLocal(previousNode);
+      setSaveStatus("error");
+      setMessage("Erro ao salvar titulo. O texto anterior foi restaurado.");
+    }
+  }
+
+  function requestQuickCreate(kind: MasterMapQuickCreateKind, nodeId = selectedNodeId) {
+    if (!activeMap || !editMode || !guardEditAction()) return;
+    if (!nodeId) {
+      setMessage("Selecione um quadro para usar a criacao rapida.");
+      return;
+    }
+    setQuickCreateRequest({ kind, referenceNodeId: nodeId });
+  }
+
+  async function submitQuickCreate(title: string) {
+    if (!activeMap || !quickCreateRequest || !guardEditAction()) return;
+    const referenceNode = activeNodes.find((node) => node.id === quickCreateRequest.referenceNodeId);
+    if (!referenceNode) return;
+
+    setQuickCreateRequest(null);
+    setSaveStatus("saving");
+    setMessage("Criando quadro rapido...");
+
+    const { node, edge } = createQuickOutlineNode(activeMap.id, referenceNode, quickCreateRequest.kind, title, activeNodes, activeEdges);
+    try {
+      const result = await createMasterMapOutlineBatchRemote(activeMap.id, [node], edge ? [edge] : []);
+      replaceActiveMapState(activeMap.id, result);
+      setSelectedNodeId(node.id);
+      setSelectedNodeIds(new Set([node.id]));
+      setSelectedEdgeId(undefined);
+      setOutlineUndoAction({ kind: "create-batch", mapId: activeMap.id, nodeIds: [node.id], edgeIds: edge ? [edge.id] : [] });
+      setSaveStatus("saved");
+      setMessage("Quadro rapido criado.");
+      setViewMode("map");
+      window.setTimeout(() => flowInstance?.setCenter(node.positionX + 140, node.positionY + 90, { zoom: 0.95, duration: 320 }), 120);
+    } catch {
+      setSaveStatus("error");
+      setMessage("Erro ao criar quadro rapido. Nada foi gravado.");
+    }
+  }
+
+  async function submitBranchText(text: string) {
+    if (!activeMap || !guardEditAction()) return;
+    const parsed = parseMasterMapOutlineText(text);
+    if (parsed.errors.length > 0) {
+      setMessage("Corrija os erros da ramificacao antes de criar.");
+      return;
+    }
+    const baseParent = selectedNode ?? activeNodes.find((node) => node.nodeType === "root") ?? activeNodes[0] ?? null;
+    if (!baseParent) {
+      setMessage("Nenhum quadro base encontrado para criar a ramificacao.");
+      return;
+    }
+
+    setBranchTextOpen(false);
+    setSaveStatus("saving");
+    setMessage("Criando ramificacao em lote...");
+
+    const { nodes: batchNodes, edges: batchEdges } = createOutlineNodesFromText(activeMap.id, baseParent, parsed.items);
+    try {
+      const result = await createMasterMapOutlineBatchRemote(activeMap.id, batchNodes, batchEdges);
+      replaceActiveMapState(activeMap.id, result);
+      setSelectedNodeId(batchNodes[0]?.id);
+      setSelectedNodeIds(batchNodes[0] ? new Set([batchNodes[0].id]) : new Set());
+      setOutlineUndoAction({
+        kind: "create-batch",
+        mapId: activeMap.id,
+        nodeIds: batchNodes.map((node) => node.id),
+        edgeIds: batchEdges.map((edge) => edge.id),
+      });
+      setSaveStatus("saved");
+      setMessage("Ramificacao criada em uma unica transacao.");
+    } catch {
+      setSaveStatus("error");
+      setMessage("Erro ao criar ramificacao. Nenhum quadro do lote foi gravado.");
+    }
+  }
+
+  async function reorderSibling(nodeId: string, direction: "up" | "down") {
+    if (!activeMap || !guardEditAction()) return;
+    const hierarchy = buildMasterMapHierarchy(activeNodes, activeEdges);
+    const parentId = hierarchy.parentByChild.get(nodeId) ?? null;
+    const siblings = getOutlineSiblingIds(parentId, hierarchy);
+    const currentIndex = siblings.indexOf(nodeId);
+    const nextIndex = direction === "up" ? currentIndex - 1 : currentIndex + 1;
+    if (currentIndex < 0 || nextIndex < 0 || nextIndex >= siblings.length) {
+      setMessage("Nao ha irmao para mover nessa direcao.");
+      return;
+    }
+
+    const nextOrder = [...siblings];
+    const [moved] = nextOrder.splice(currentIndex, 1);
+    nextOrder.splice(nextIndex, 0, moved);
+    setSaveStatus("saving");
+    try {
+      const result = await saveMasterMapOutlineOrderRemote(activeMap.id, parentId, nextOrder);
+      replaceActiveMapState(activeMap.id, result);
+      setOutlineUndoAction({ kind: "reorder", mapId: activeMap.id, parentId, previousOrder: siblings, nextOrder });
+      setSaveStatus("saved");
+      setMessage("Ordem dos irmaos salva.");
+    } catch {
+      setSaveStatus("error");
+      setMessage("Erro ao reordenar irmaos. Nenhuma ordem parcial foi gravada.");
+    }
+  }
+
+  function requestReparent(nodeId: string) {
+    if (!editMode || !guardEditAction()) return;
+    setReparentNodeId(nodeId);
+  }
+
+  async function submitReparent(nodeId: string, newParentId: string | null) {
+    if (!activeMap || !guardEditAction()) return;
+    const hierarchy = buildMasterMapHierarchy(activeNodes, activeEdges);
+    const previousParentId = hierarchy.parentByChild.get(nodeId) ?? null;
+    if (previousParentId === newParentId) {
+      setReparentNodeId(null);
+      setMessage("Pai mantido.");
+      return;
+    }
+
+    setSaveStatus("saving");
+    try {
+      const result = await reparentMasterMapNodeRemote(activeMap.id, nodeId, newParentId);
+      replaceActiveMapState(activeMap.id, result);
+      setOutlineUndoAction({ kind: "reparent", mapId: activeMap.id, nodeId, previousParentId, nextParentId: newParentId });
+      setReparentNodeId(null);
+      setSelectedNodeId(nodeId);
+      setSelectedNodeIds(new Set([nodeId]));
+      setSaveStatus("saved");
+      setMessage("Pai hierarquico alterado. Conexoes operacionais preservadas.");
+    } catch {
+      setSaveStatus("error");
+      setMessage("Erro ao alterar pai. A hierarquia anterior foi mantida.");
+    }
+  }
+
+  async function undoLastOutlineAction() {
+    if (!outlineUndoAction || !guardEditAction()) {
+      setMessage("Nao ha acao rapida para desfazer.");
+      return;
+    }
+
+    setSaveStatus("saving");
+    try {
+      if (outlineUndoAction.kind === "create-batch") {
+        const result = await inactivateMasterMapOutlineBatchRemote(outlineUndoAction.mapId, outlineUndoAction.nodeIds, outlineUndoAction.edgeIds);
+        replaceActiveMapState(outlineUndoAction.mapId, result);
+        setSelectedNodeId(undefined);
+        setSelectedNodeIds(new Set());
+      } else if (outlineUndoAction.kind === "edit-title") {
+        const node = nodes.find((current) => current.id === outlineUndoAction.nodeId);
+        if (!node) throw new Error("Node not found");
+        const savedNode = await saveMasterMapNodeRemote({ ...node, title: outlineUndoAction.previousTitle, updatedAt: new Date().toISOString() });
+        if (savedNode.destinationType === "DYNAMIC_PAGE" && savedNode.dynamicPageId) {
+          await syncDynamicPageProjectionFromNode(savedNode);
+        }
+        updateNodeLocal(savedNode);
+      } else if (outlineUndoAction.kind === "reorder") {
+        const result = await saveMasterMapOutlineOrderRemote(outlineUndoAction.mapId, outlineUndoAction.parentId, outlineUndoAction.previousOrder);
+        replaceActiveMapState(outlineUndoAction.mapId, result);
+      } else {
+        const result = await reparentMasterMapNodeRemote(outlineUndoAction.mapId, outlineUndoAction.nodeId, outlineUndoAction.previousParentId);
+        replaceActiveMapState(outlineUndoAction.mapId, result);
+      }
+      setOutlineUndoAction(null);
+      setSaveStatus("saved");
+      setMessage("Ultima acao do outline desfeita.");
+    } catch {
+      setSaveStatus("error");
+      setMessage("Nao foi possivel desfazer a ultima acao agora.");
+    }
   }
 
   async function submitCreateNode(draft: MasterMapCreateNodeDraft) {
@@ -1132,9 +1454,22 @@ export function MasterMapScreen({
           nodes={filteredActiveNodes}
           edges={activeEdges}
           pageSummaries={activePageSummaries}
+          editMode={editMode}
+          selectedNodeId={selectedNodeId}
+          inlineEditingNodeId={inlineEditingNodeId}
+          inlineTitleDraft={inlineTitleDraft}
           onOpenPage={openNodePage}
           onViewInMap={(nodeId) => centerNodeInMap(nodeId, true)}
           onOpenDetails={openNodeDetails}
+          onSelectNode={(nodeId) => handleSelectNode(nodeId)}
+          onStartInlineTitleEdit={startInlineTitleEdit}
+          onInlineTitleDraftChange={setInlineTitleDraft}
+          onCommitInlineTitleEdit={commitInlineTitleEdit}
+          onCancelInlineTitleEdit={cancelInlineTitleEdit}
+          onCreateSibling={(nodeId, before) => requestQuickCreate(before ? "sibling-before" : "sibling-after", nodeId)}
+          onCreateChild={(nodeId) => requestQuickCreate("child", nodeId)}
+          onReorderSibling={reorderSibling}
+          onRequestReparent={requestReparent}
         />
       );
     }
@@ -1196,6 +1531,8 @@ export function MasterMapScreen({
         selectedNodeId={selectedNodeId}
         selectedNodeIds={selectedNodeIds}
         selectedEdgeId={selectedEdgeId}
+        inlineEditingNodeId={inlineEditingNodeId}
+        inlineTitleDraft={inlineTitleDraft}
         highlightedNodeIds={highlightedNodeIds}
         dimmedNodeIds={dimmedNodeIds}
         layoutPreviewNodeIds={activeLayoutPreviewNodeIds}
@@ -1211,6 +1548,10 @@ export function MasterMapScreen({
         onOpenDynamicPage={openDynamicPage}
         onOpenExternalUrl={openExternalUrl}
         onToggleCollapse={toggleCollapse}
+        onStartInlineTitleEdit={startInlineTitleEdit}
+        onInlineTitleDraftChange={setInlineTitleDraft}
+        onCommitInlineTitleEdit={commitInlineTitleEdit}
+        onCancelInlineTitleEdit={cancelInlineTitleEdit}
       />
     );
   }
@@ -1269,9 +1610,18 @@ export function MasterMapScreen({
             onToggleEditMode={toggleEditMode}
             onAddNode={addNode}
             onAddChildNode={addChildNode}
+            onAddQuickSibling={() => requestQuickCreate("sibling-after")}
+            onAddQuickChild={() => requestQuickCreate("child")}
+            onOpenBranchText={() => {
+              if (!guardEditAction()) return;
+              setBranchTextOpen(true);
+            }}
             onOpenLayoutPanel={openLayoutPanel}
+            onOpenShortcutHelp={() => setShortcutHelpOpen(true)}
             onUndoLayout={undoLastLayout}
+            onUndoOutline={() => void undoLastOutlineAction()}
             undoLayoutAvailable={Boolean(layoutUndoSnapshot)}
+            undoOutlineAvailable={Boolean(outlineUndoAction)}
             onZoomIn={() => flowInstance?.zoomIn({ duration: 180 })}
             onZoomOut={() => flowInstance?.zoomOut({ duration: 180 })}
             onCenter={() => flowInstance?.fitView(getFitViewOptions())}
@@ -1380,6 +1730,31 @@ export function MasterMapScreen({
               templates={templates}
               onClose={() => setCreateDialogMode(null)}
               onSubmit={submitCreateNode}
+            />
+            <MasterMapQuickTitleDialog
+              open={Boolean(quickCreateRequest)}
+              kind={quickCreateRequest?.kind ?? "sibling-after"}
+              referenceTitle={quickCreateRequest ? activeNodes.find((node) => node.id === quickCreateRequest.referenceNodeId)?.title : undefined}
+              onClose={() => setQuickCreateRequest(null)}
+              onSubmit={submitQuickCreate}
+            />
+            <MasterMapBranchTextDialog
+              open={branchTextOpen}
+              referenceTitle={(selectedNode ?? activeNodes.find((node) => node.nodeType === "root") ?? activeNodes[0])?.title}
+              onClose={() => setBranchTextOpen(false)}
+              onSubmit={submitBranchText}
+            />
+            <MasterMapReparentDialog
+              open={Boolean(reparentNodeId)}
+              node={reparentNodeId ? activeNodes.find((node) => node.id === reparentNodeId) ?? null : null}
+              nodes={activeNodes}
+              edges={activeEdges}
+              onClose={() => setReparentNodeId(null)}
+              onSubmit={submitReparent}
+            />
+            <MasterMapShortcutHelp
+              open={shortcutHelpOpen}
+              onClose={() => setShortcutHelpOpen(false)}
             />
           </section>
         </>
@@ -1716,6 +2091,111 @@ function boxesOverlap(
 
 function cloneNodeMetadata(metadata: MasterMapNode["metadata"]) {
   return JSON.parse(JSON.stringify(metadata ?? {})) as MasterMapNode["metadata"];
+}
+
+function createQuickOutlineNode(
+  mapId: string,
+  referenceNode: MasterMapNode,
+  kind: MasterMapQuickCreateKind,
+  title: string,
+  nodes: MasterMapNode[],
+  edges: MasterMapEdge[],
+) {
+  const hierarchy = buildMasterMapHierarchy(nodes, edges);
+  const parentId = kind === "child" ? referenceNode.id : hierarchy.parentByChild.get(referenceNode.id) ?? undefined;
+  const siblings = parentId ? hierarchy.childrenByParent.get(parentId) ?? [] : getOutlineSiblingIds(null, hierarchy);
+  const referenceIndex = Math.max(0, siblings.indexOf(referenceNode.id));
+  const referenceOrder = getNodeOutlineOrder(referenceNode, referenceIndex + 1);
+  const outlineOrder = kind === "child"
+    ? getNextChildOutlineOrder(referenceNode.id, nodes, hierarchy)
+    : kind === "sibling-before"
+      ? referenceOrder - 0.5
+      : referenceOrder + 0.5;
+  const positionX = kind === "child" ? referenceNode.positionX + 330 : referenceNode.positionX;
+  const positionY = kind === "sibling-before" ? referenceNode.positionY - 150 : referenceNode.positionY + 150;
+  const node = {
+    ...createEmptyMasterMapNode(mapId, positionX, positionY, parentId),
+    title,
+    nodeType: "task" as const,
+    iconKey: "settings" as const,
+    status: "NOT_STARTED" as const,
+    destinationType: "NONE" as const,
+    metadata: {
+      ...(parentId ? { parentId } : {}),
+      outlineOrder,
+    },
+  };
+
+  return {
+    node,
+    edge: parentId ? createMasterMapEdgeDraft(mapId, parentId, node.id, "BELONGS_TO") : null,
+  };
+}
+
+function createOutlineNodesFromText(
+  mapId: string,
+  baseParent: MasterMapNode,
+  items: MasterMapOutlineTextItem[],
+) {
+  const nodeByTempId = new Map<string, MasterMapNode>();
+  const orderByParent = new Map<string, number>();
+  const nodes: MasterMapNode[] = [];
+  const edges: MasterMapEdge[] = [];
+
+  items.forEach((item, index) => {
+    const parentNode = item.parentTempId ? nodeByTempId.get(item.parentTempId) : baseParent;
+    const parentKey = parentNode?.id ?? "__root__";
+    const outlineOrder = (orderByParent.get(parentKey) ?? 0) + 1;
+    orderByParent.set(parentKey, outlineOrder);
+    const node = {
+      ...createEmptyMasterMapNode(
+        mapId,
+        baseParent.positionX + ((item.level + 1) * 330),
+        baseParent.positionY + ((index + 1) * 125),
+        parentNode?.id,
+      ),
+      title: item.title,
+      nodeType: "task" as const,
+      iconKey: "settings" as const,
+      status: "NOT_STARTED" as const,
+      destinationType: "NONE" as const,
+      metadata: {
+        ...(parentNode ? { parentId: parentNode.id } : {}),
+        outlineOrder,
+      },
+    };
+    nodes.push(node);
+    nodeByTempId.set(item.id, node);
+    if (parentNode) edges.push(createMasterMapEdgeDraft(mapId, parentNode.id, node.id, "BELONGS_TO"));
+  });
+
+  return { nodes, edges };
+}
+
+function getOutlineSiblingIds(parentId: string | null, hierarchy: ReturnType<typeof buildMasterMapHierarchy>) {
+  if (parentId) return [...(hierarchy.childrenByParent.get(parentId) ?? [])];
+  return [...hierarchy.rootIds, ...hierarchy.orphanIds];
+}
+
+function getNodeOutlineOrder(node: MasterMapNode, fallback: number) {
+  const parsed = Number(node.metadata.outlineOrder);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function getNextChildOutlineOrder(parentId: string, nodes: MasterMapNode[], hierarchy: ReturnType<typeof buildMasterMapHierarchy>) {
+  const children = hierarchy.childrenByParent.get(parentId) ?? [];
+  return children.reduce((maxOrder, childId, index) => {
+    const child = nodes.find((node) => node.id === childId);
+    return Math.max(maxOrder, child ? getNodeOutlineOrder(child, index + 1) : index + 1);
+  }, 0) + 1;
+}
+
+function isEditableShortcutTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) return false;
+  const tagName = target.tagName.toLowerCase();
+  if (["input", "textarea", "select", "button"].includes(tagName)) return true;
+  if (target.isContentEditable) return true;
+  return Boolean(target.closest(".ProseMirror, .tiptap, [contenteditable='true'], .dialog"));
 }
 
 function getInitialMasterMapLayoutPreferences(mapId: string): MasterMapLayoutPreferences {
