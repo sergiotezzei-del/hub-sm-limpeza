@@ -1492,6 +1492,20 @@ button:focus-visible,
   margin-left: calc(var(--level, 0) * 24px);
 }
 
+.master-map-list-item.selected {
+  border-color: var(--orange);
+  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.14), 0 10px 22px rgba(31, 41, 51, 0.1);
+}
+
+.master-map-list-item.dragging {
+  opacity: 0.62;
+}
+
+.master-map-list-item.drag-over {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.16), 0 10px 22px rgba(31, 41, 51, 0.1);
+}
+
 .master-map-tree-toggle {
   width: 38px;
   min-width: 38px;
@@ -1509,6 +1523,62 @@ button:focus-visible,
   flex-wrap: wrap;
   gap: 8px;
   align-items: center;
+}
+
+.master-map-inline-title-button {
+  min-height: 0;
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.master-map-inline-title-button strong {
+  color: var(--ink);
+  font-size: 1.02rem;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.master-map-inline-title-button:focus-visible {
+  border-radius: 6px;
+  outline: 3px solid rgba(249, 115, 22, 0.28);
+  outline-offset: 3px;
+}
+
+.master-map-inline-title-input,
+.master-map-node-title-input {
+  width: min(100%, 100%);
+  min-height: 40px;
+  border: 1px solid var(--orange);
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: var(--ink);
+  background: #ffffff;
+  font-weight: 900;
+  line-height: 1.2;
+}
+
+.master-map-node-title-input {
+  font-size: 1rem;
+}
+
+.master-map-outline-handle {
+  min-width: 72px;
+}
+
+.master-map-outline-drag-handle {
+  min-width: 82px;
+  cursor: grab;
+}
+
+.master-map-outline-drag-handle:active {
+  cursor: grabbing;
 }
 
 .master-map-list-meta {
@@ -1540,6 +1610,137 @@ button:focus-visible,
   margin: 0;
   color: var(--ink);
   font-size: 1rem;
+}
+
+.master-map-title-field {
+  display: grid;
+  gap: 8px;
+}
+
+.master-map-quick-dialog,
+.master-map-reparent-dialog,
+.master-map-shortcut-dialog {
+  width: min(100%, 520px);
+  max-height: min(86vh, 720px);
+  overflow: auto;
+}
+
+.master-map-branch-dialog {
+  width: min(100%, 920px);
+  max-height: min(86vh, 780px);
+  overflow: auto;
+}
+
+.master-map-branch-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(260px, 0.9fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.master-map-branch-grid textarea {
+  min-height: 300px;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 0.92rem;
+  line-height: 1.35;
+}
+
+.master-map-branch-preview {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #e5eaf1;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.master-map-branch-preview h3,
+.master-map-validation-list h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 1rem;
+}
+
+.master-map-branch-preview ol {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.master-map-branch-preview li {
+  display: grid;
+  gap: 3px;
+  margin-left: min(calc(var(--level, 0) * 18px), 72px);
+  padding: 8px 10px;
+  border: 1px solid #e5eaf1;
+  border-left: 4px solid var(--orange);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.master-map-branch-preview li span {
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.master-map-validation-list {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid #e5eaf1;
+  border-radius: 8px;
+}
+
+.master-map-validation-list p {
+  margin: 0;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.master-map-validation-list.error {
+  border-color: #fecaca;
+  color: #991b1b;
+  background: #fef2f2;
+}
+
+.master-map-validation-list.warning {
+  border-color: #fde68a;
+  color: #92400e;
+  background: #fffbeb;
+}
+
+.master-map-shortcut-list {
+  display: grid;
+  grid-template-columns: minmax(120px, auto) minmax(0, 1fr);
+  gap: 8px 12px;
+  margin: 0;
+}
+
+.master-map-shortcut-list div {
+  display: contents;
+}
+
+.master-map-shortcut-list dt {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  padding: 6px 10px;
+  color: var(--ink);
+  background: #f1f5f9;
+  font-weight: 900;
+}
+
+.master-map-shortcut-list dd {
+  margin: 0;
+  color: #475569;
+  font-weight: 800;
+  line-height: 1.4;
 }
 
 .master-map-breadcrumb {
@@ -5209,6 +5410,7 @@ button:focus-visible,
   .master-map-filter-grid,
   .master-map-layout-grid,
   .master-map-layout-button-grid,
+  .master-map-branch-grid,
   .master-map-focus-grid,
   .master-map-impact-grid,
   .master-map-summary-grid,
@@ -5242,6 +5444,16 @@ button:focus-visible,
     margin-left: min(calc(var(--level, 0) * 14px), 42px);
   }
 
+  .master-map-inline-title-button strong {
+    font-size: 0.98rem;
+  }
+
+  .master-map-inline-title-input,
+  .master-map-node-title-input {
+    min-height: 44px;
+    font-size: 1rem;
+  }
+
   .master-map-card-actions {
     display: grid;
     grid-template-columns: 1fr;
@@ -5252,6 +5464,10 @@ button:focus-visible,
   .master-map-card-actions .ghost-button {
     width: 100%;
     min-height: 42px;
+  }
+
+  .master-map-outline-drag-handle {
+    display: none;
   }
 
   .master-map-layout-actions {
@@ -5289,6 +5505,43 @@ button:focus-visible,
   .master-map-node-actions .secondary-button {
     width: 100%;
     min-height: 42px;
+  }
+
+  .master-map-quick-dialog,
+  .master-map-reparent-dialog,
+  .master-map-shortcut-dialog,
+  .master-map-branch-dialog {
+    width: 100%;
+    max-height: calc(100dvh - 16px);
+    overflow-y: auto;
+  }
+
+  .master-map-branch-grid textarea {
+    min-height: 220px;
+  }
+
+  .master-map-branch-preview li {
+    margin-left: min(calc(var(--level, 0) * 12px), 36px);
+  }
+
+  .master-map-shortcut-list {
+    grid-template-columns: 1fr;
+  }
+
+  .master-map-shortcut-list div {
+    display: grid;
+    gap: 4px;
+    padding: 8px 0;
+    border-bottom: 1px solid #e5eaf1;
+  }
+
+  .master-map-shortcut-list div:last-child {
+    border-bottom: 0;
+  }
+
+  .master-map-shortcut-list dt {
+    justify-content: flex-start;
+    width: fit-content;
   }
 
   .master-map-details-panel {

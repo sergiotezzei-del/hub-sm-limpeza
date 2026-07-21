@@ -13,12 +13,18 @@ export type MasterMapNodeData = {
   handleVariant: MasterMapHandleVariant;
   dimmed?: boolean;
   highlighted?: boolean;
+  inlineEditing?: boolean;
+  inlineTitleDraft?: string;
   onOpenDetails: (nodeId: string) => void;
   onOpenModule: (targetScreen: MasterMapTargetScreen) => void;
   onOpenDynamicPage: (pageId: string) => void;
   onOpenExternalUrl: (url: string) => void;
   onToggleCollapse: (nodeId: string) => void;
   onSelectNode: (nodeId: string, additive?: boolean) => void;
+  onStartInlineTitleEdit: (nodeId: string) => void;
+  onInlineTitleDraftChange: (value: string) => void;
+  onCommitInlineTitleEdit: () => void;
+  onCancelInlineTitleEdit: () => void;
 };
 
 export type MasterMapFlowNode = Node<MasterMapNodeData, "masterMapNode">;
@@ -30,7 +36,27 @@ const statusLabels: Record<MasterMapStatus, string> = {
 };
 
 export function MasterMapNodeCard({ data, selected }: NodeProps<MasterMapFlowNode>) {
-  const { node, childrenCount, editMode, density, handleVariant, dimmed, highlighted, onOpenDetails, onOpenModule, onOpenDynamicPage, onOpenExternalUrl, onToggleCollapse, onSelectNode } = data;
+  const {
+    node,
+    childrenCount,
+    editMode,
+    density,
+    handleVariant,
+    dimmed,
+    highlighted,
+    inlineEditing,
+    inlineTitleDraft,
+    onOpenDetails,
+    onOpenModule,
+    onOpenDynamicPage,
+    onOpenExternalUrl,
+    onToggleCollapse,
+    onSelectNode,
+    onStartInlineTitleEdit,
+    onInlineTitleDraftChange,
+    onCommitInlineTitleEdit,
+    onCancelInlineTitleEdit,
+  } = data;
   const hasChildren = childrenCount > 0;
   const hasDynamicPage = node.destinationType === "DYNAMIC_PAGE" && Boolean(node.dynamicPageId);
   const compact = density === "compact";
@@ -80,7 +106,15 @@ export function MasterMapNodeCard({ data, selected }: NodeProps<MasterMapFlowNod
       className={`master-map-node master-map-node-${node.status.toLowerCase().replace(/_/g, "-")} master-map-node-${density} ${selected ? "selected" : ""} ${dimmed ? "dimmed" : ""} ${highlighted ? "highlighted" : ""}`}
       style={nodeStyle}
       onClick={handleNodeClick}
-      onDoubleClick={handlePrimaryClick}
+      onDoubleClick={(event) => {
+        if (editMode) {
+          event.preventDefault();
+          event.stopPropagation();
+          onStartInlineTitleEdit(node.id);
+          return;
+        }
+        handlePrimaryClick();
+      }}
       onMouseDown={handleNodeMouseDown}
     >
       <Handle className="master-map-handle" type="target" position={handlePositions.target} />
@@ -93,7 +127,29 @@ export function MasterMapNodeCard({ data, selected }: NodeProps<MasterMapFlowNod
           {statusLabels[node.status]}
         </span>
       </div>
-      <h3>{node.title}</h3>
+      {inlineEditing ? (
+        <input
+          className="master-map-node-title-input nodrag nopan"
+          aria-label="Editar titulo do quadro"
+          value={inlineTitleDraft ?? node.title}
+          autoFocus
+          onChange={(event) => onInlineTitleDraftChange(event.target.value)}
+          onClick={(event) => event.stopPropagation()}
+          onDoubleClick={(event) => event.stopPropagation()}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              onCommitInlineTitleEdit();
+            }
+            if (event.key === "Escape") {
+              event.preventDefault();
+              onCancelInlineTitleEdit();
+            }
+          }}
+        />
+      ) : (
+        <h3>{node.title}</h3>
+      )}
       {hasDynamicPage && <span className="master-map-page-indicator">Pagina dinamica</span>}
       {!compact && node.description && <p>{node.description}</p>}
       <div className="master-map-node-meta">
