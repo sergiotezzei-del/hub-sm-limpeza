@@ -41,6 +41,35 @@ export type MasterMapDestinationType =
   | "EXTERNAL_URL"
   | "PLANNED_MODULE";
 
+export type MasterMapCardKind =
+  | "MODULE"
+  | "SCREEN"
+  | "SYSTEM_COMPONENT"
+  | "ADMIN_ACTION"
+  | "PROJECT";
+
+export type MasterMapActionType =
+  | "OPEN_SCREEN"
+  | "CREATE_RECORD"
+  | "UPDATE_STATUS"
+  | "UPDATE_DATA"
+  | "DELETE_OR_INACTIVATE"
+  | "QUEUE_OFFLINE"
+  | "SYNC"
+  | "DESTRUCTIVE";
+
+export type MasterMapAction = {
+  id: string;
+  label: string;
+  actionType: MasterMapActionType;
+  description: string;
+  targetNodeIds?: string[];
+  opensScreen?: boolean;
+  condition?: string;
+  permission?: string;
+  offlineBehavior?: string;
+};
+
 export type MasterMapHandleSide = "AUTO" | "LEFT" | "RIGHT" | "TOP" | "BOTTOM";
 export type MasterMapNodeShape = "RECTANGLE" | "ROUNDED";
 export type MasterMapNodeBorderStyle = "SOLID" | "DASHED";
@@ -82,6 +111,9 @@ export type MasterMapNodeMetadata = {
   observations?: string;
   visualStyle?: MasterMapNodeVisualStyle;
   outlineOrder?: number;
+  cardKind?: MasterMapCardKind;
+  screenKey?: string;
+  actions?: MasterMapAction[];
 };
 
 export type MasterMapNode = {
