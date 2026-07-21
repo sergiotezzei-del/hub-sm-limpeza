@@ -1497,6 +1497,15 @@ button:focus-visible,
   box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.14), 0 10px 22px rgba(31, 41, 51, 0.1);
 }
 
+.master-map-list-item.dragging {
+  opacity: 0.62;
+}
+
+.master-map-list-item.drag-over {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.16), 0 10px 22px rgba(31, 41, 51, 0.1);
+}
+
 .master-map-tree-toggle {
   width: 38px;
   min-width: 38px;
@@ -1561,6 +1570,15 @@ button:focus-visible,
 
 .master-map-outline-handle {
   min-width: 72px;
+}
+
+.master-map-outline-drag-handle {
+  min-width: 82px;
+  cursor: grab;
+}
+
+.master-map-outline-drag-handle:active {
+  cursor: grabbing;
 }
 
 .master-map-list-meta {
@@ -5446,6 +5464,10 @@ button:focus-visible,
   .master-map-card-actions .ghost-button {
     width: 100%;
     min-height: 42px;
+  }
+
+  .master-map-outline-drag-handle {
+    display: none;
   }
 
   .master-map-layout-actions {

@@ -62,6 +62,22 @@ export type MasterMapNodeLayoutUpdate = {
 };
 
 export type MasterMapOutlineMutationResult = Pick<MasterMapData, "nodes" | "edges">;
+export type MasterMapOutlineInsertPosition = "before" | "after" | "child";
+
+export type MasterMapNodeProjectionResult = {
+  node: MasterMapNode;
+  pageSummary?: {
+    id: string;
+    mapId: string;
+    nodeId: string;
+    priority: "LOW" | "MEDIUM" | "HIGH";
+    dueDate?: string;
+    status: MasterMapStatus;
+    responsible: string;
+    nextAction: string;
+    updatedAt: string;
+  };
+};
 
 export class MasterMapRemoteError extends Error {
   constructor(
@@ -211,6 +227,30 @@ export async function createMasterMapOutlineBatchRemote(
   return parseOutlineMutationResponse(await response.json());
 }
 
+export async function insertMasterMapOutlineBatchAtPositionRemote(
+  mapId: string,
+  referenceNodeId: string,
+  position: MasterMapOutlineInsertPosition,
+  nextNodes: MasterMapNode[],
+  nextEdges: MasterMapEdge[],
+): Promise<MasterMapOutlineMutationResult> {
+  ensureRemoteWriteReady();
+  if (!nextNodes.length && !nextEdges.length) return { nodes: [], edges: [] };
+
+  const response = await masterMapRequest("rpc/insert_hub_map_outline_batch_at_position", {
+    method: "POST",
+    body: JSON.stringify({
+      p_map_id: mapId,
+      p_reference_node_id: referenceNodeId,
+      p_position: position,
+      p_nodes: nextNodes.map(masterMapNodeToRow),
+      p_edges: nextEdges.map(masterMapEdgeToRow),
+    }),
+  });
+
+  return parseOutlineMutationResponse(await response.json());
+}
+
 export async function saveMasterMapOutlineOrderRemote(
   mapId: string,
   parentId: string | null,
@@ -247,6 +287,26 @@ export async function reparentMasterMapNodeRemote(
   return parseOutlineMutationResponse(await response.json());
 }
 
+export async function reparentMasterMapNodeAtPositionRemote(
+  mapId: string,
+  nodeId: string,
+  newParentId: string | null,
+  orderedNodeIds: string[],
+): Promise<MasterMapOutlineMutationResult> {
+  ensureRemoteWriteReady();
+  const response = await masterMapRequest("rpc/reparent_hub_map_outline_node_at_position", {
+    method: "POST",
+    body: JSON.stringify({
+      p_map_id: mapId,
+      p_node_id: nodeId,
+      p_new_parent_id: newParentId,
+      p_ordered_node_ids: orderedNodeIds,
+    }),
+  });
+
+  return parseOutlineMutationResponse(await response.json());
+}
+
 export async function inactivateMasterMapOutlineBatchRemote(
   mapId: string,
   nodeIds: string[],
@@ -263,6 +323,19 @@ export async function inactivateMasterMapOutlineBatchRemote(
   });
 
   return parseOutlineMutationResponse(await response.json());
+}
+
+export async function saveMasterMapNodeWithProjectionRemote(node: MasterMapNode): Promise<MasterMapNodeProjectionResult> {
+  ensureRemoteWriteReady();
+
+  const response = await masterMapRequest("rpc/update_hub_map_node_with_page_projection", {
+    method: "POST",
+    body: JSON.stringify({
+      p_node: masterMapNodeToRow(node),
+    }),
+  });
+
+  return parseNodeProjectionResponse(await response.json());
 }
 
 export function saveLocalMasterMapCache(data: Pick<MasterMapData, "maps" | "nodes" | "edges">) {
@@ -433,6 +506,38 @@ function parseOutlineMutationResponse(payload: unknown): MasterMapOutlineMutatio
   return {
     nodes: Array.isArray(response?.nodes) ? response.nodes.map(mapMasterMapNodeRow) : [],
     edges: Array.isArray(response?.edges) ? response.edges.map(mapMasterMapEdgeRow) : [],
+  };
+}
+
+function parseNodeProjectionResponse(payload: unknown): MasterMapNodeProjectionResult {
+  const response = payload as {
+    node?: MasterMapNodeRow;
+    page_summary?: {
+      id: string;
+      map_id: string;
+      node_id: string;
+      priority: "LOW" | "MEDIUM" | "HIGH" | null;
+      due_date: string | null;
+      status: MasterMapStatus | null;
+      responsible: string | null;
+      next_action: string | null;
+      updated_at: string;
+    } | null;
+  } | null;
+  if (!response?.node) throw new Error("No atualizado nao retornado pelo Supabase.");
+  return {
+    node: mapMasterMapNodeRow(response.node),
+    pageSummary: response.page_summary ? {
+      id: response.page_summary.id,
+      mapId: response.page_summary.map_id,
+      nodeId: response.page_summary.node_id,
+      priority: response.page_summary.priority ?? "MEDIUM",
+      dueDate: response.page_summary.due_date ?? undefined,
+      status: response.page_summary.status ?? "NOT_STARTED",
+      responsible: response.page_summary.responsible ?? "",
+      nextAction: response.page_summary.next_action ?? "",
+      updatedAt: response.page_summary.updated_at,
+    } : undefined,
   };
 }
 

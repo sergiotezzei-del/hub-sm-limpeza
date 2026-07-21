@@ -23,6 +23,7 @@ export function MasterMapListView({
   onCreateSibling,
   onCreateChild,
   onReorderSibling,
+  onReorderSiblingTo,
   onRequestReparent,
 }: {
   nodes: MasterMapNode[];
@@ -43,9 +44,12 @@ export function MasterMapListView({
   onCreateSibling: (nodeId: string, before?: boolean) => void;
   onCreateChild: (nodeId: string) => void;
   onReorderSibling: (nodeId: string, direction: "up" | "down") => void;
+  onReorderSiblingTo: (nodeId: string, targetNodeId: string) => void;
   onRequestReparent: (nodeId: string) => void;
 }) {
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(() => new Set());
+  const [draggingNodeId, setDraggingNodeId] = useState<string | null>(null);
+  const [dragOverNodeId, setDragOverNodeId] = useState<string | null>(null);
   const hierarchy = useMemo(() => buildMasterMapHierarchy(nodes, edges), [edges, nodes]);
   const nodeById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
   const pageSummaryByNode = useMemo(() => createPageSummaryMap(pageSummaries), [pageSummaries]);
@@ -59,6 +63,11 @@ export function MasterMapListView({
     });
   }
 
+  function canDropOnSibling(targetNodeId: string) {
+    if (!draggingNodeId || draggingNodeId === targetNodeId) return false;
+    return (hierarchy.parentByChild.get(draggingNodeId) ?? null) === (hierarchy.parentByChild.get(targetNodeId) ?? null);
+  }
+
   function renderNode(nodeId: string, level: number) {
     const node = nodeById.get(nodeId);
     if (!node) return null;
@@ -68,7 +77,28 @@ export function MasterMapListView({
 
     return (
       <div className="master-map-list-branch" key={node.id}>
-        <article className={`master-map-list-item ${selectedNodeId === node.id ? "selected" : ""}`} style={{ "--level": level } as CSSProperties} onClick={() => onSelectNode(node.id)}>
+        <article
+          className={`master-map-list-item ${selectedNodeId === node.id ? "selected" : ""} ${draggingNodeId === node.id ? "dragging" : ""} ${dragOverNodeId === node.id ? "drag-over" : ""}`}
+          style={{ "--level": level } as CSSProperties}
+          onClick={() => onSelectNode(node.id)}
+          onDragOver={(event) => {
+            if (!editMode || !canDropOnSibling(node.id)) return;
+            event.preventDefault();
+            event.dataTransfer.dropEffect = "move";
+            setDragOverNodeId(node.id);
+          }}
+          onDragLeave={() => {
+            if (dragOverNodeId === node.id) setDragOverNodeId(null);
+          }}
+          onDrop={(event) => {
+            event.preventDefault();
+            const sourceNodeId = event.dataTransfer.getData("text/plain") || draggingNodeId;
+            setDraggingNodeId(null);
+            setDragOverNodeId(null);
+            if (!sourceNodeId || sourceNodeId === node.id || !canDropOnSibling(node.id)) return;
+            onReorderSiblingTo(sourceNodeId, node.id);
+          }}
+        >
           <button
             aria-label={children.length > 0 ? (collapsed ? "Expandir ramo" : "Recolher ramo") : "Sem filhos"}
             className="ghost-button master-map-tree-toggle"
@@ -133,6 +163,25 @@ export function MasterMapListView({
           <div className="master-map-card-actions">
             {editMode && (
               <>
+                <button
+                  aria-label={`Mover ${node.title}`}
+                  className="ghost-button master-map-outline-drag-handle"
+                  draggable
+                  type="button"
+                  onClick={(event) => event.stopPropagation()}
+                  onDragStart={(event) => {
+                    event.stopPropagation();
+                    setDraggingNodeId(node.id);
+                    event.dataTransfer.effectAllowed = "move";
+                    event.dataTransfer.setData("text/plain", node.id);
+                  }}
+                  onDragEnd={() => {
+                    setDraggingNodeId(null);
+                    setDragOverNodeId(null);
+                  }}
+                >
+                  Mover
+                </button>
                 <button className="ghost-button master-map-outline-handle" type="button" onClick={(event) => { event.stopPropagation(); onReorderSibling(node.id, "up"); }}>Subir</button>
                 <button className="ghost-button master-map-outline-handle" type="button" onClick={(event) => { event.stopPropagation(); onReorderSibling(node.id, "down"); }}>Descer</button>
                 <button className="secondary-button" type="button" onClick={(event) => { event.stopPropagation(); onCreateSibling(node.id); }}>Criar irmao</button>
