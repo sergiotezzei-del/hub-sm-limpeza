@@ -1,7 +1,17 @@
 import { useEffect, useState } from "react";
 import { AppIcon, type AppIconName } from "../../components/AppIcon";
 import { getMasterMapNodeDependencies } from "./masterMapLayout";
-import type { MasterMapDestinationType, MasterMapEdge, MasterMapNode, MasterMapNodeType, MasterMapRelationType, MasterMapStatus, MasterMapTargetScreen } from "./masterMapTypes";
+import type {
+  MasterMapActionType,
+  MasterMapCardKind,
+  MasterMapDestinationType,
+  MasterMapEdge,
+  MasterMapNode,
+  MasterMapNodeType,
+  MasterMapRelationType,
+  MasterMapStatus,
+  MasterMapTargetScreen,
+} from "./masterMapTypes";
 
 const statusOptions: Array<{ value: MasterMapStatus; label: string }> = [
   { value: "NOT_STARTED", label: "Nao iniciado" },
@@ -27,6 +37,25 @@ const relationTypeOptions: Array<{ value: MasterMapRelationType; label: string }
   { value: "TRIGGERS", label: "Se acontecer, aciona" },
   { value: "INTEGRATES_WITH", label: "Integra com" },
 ];
+
+const cardKindLabels: Record<MasterMapCardKind, string> = {
+  MODULE: "Modulo",
+  SCREEN: "Tela real do sistema",
+  SYSTEM_COMPONENT: "Componente interno",
+  ADMIN_ACTION: "Acao administrativa",
+  PROJECT: "Projeto",
+};
+
+const actionTypeLabels: Record<MasterMapActionType, string> = {
+  OPEN_SCREEN: "Abre outra pagina",
+  CREATE_RECORD: "Cria registro",
+  UPDATE_STATUS: "Altera status",
+  UPDATE_DATA: "Atualiza dados",
+  DELETE_OR_INACTIVATE: "Exclui ou inativa",
+  QUEUE_OFFLINE: "Envia para fila offline",
+  SYNC: "Sincroniza dados",
+  DESTRUCTIVE: "Acao administrativa critica",
+};
 
 const iconOptions: AppIconName[] = [
   "map",
@@ -108,8 +137,12 @@ export function MasterMapDetails({
 }) {
   const [nodeDraft, setNodeDraft] = useState<MasterMapNode | null>(selectedNode);
   const [edgeDraft, setEdgeDraft] = useState<MasterMapEdge | null>(selectedEdge);
+  const [expandedActionId, setExpandedActionId] = useState<string | null>(null);
 
-  useEffect(() => setNodeDraft(selectedNode), [selectedNode]);
+  useEffect(() => {
+    setNodeDraft(selectedNode);
+    setExpandedActionId(null);
+  }, [selectedNode]);
   useEffect(() => setEdgeDraft(selectedEdge), [selectedEdge]);
 
   if (!selectedNode && !selectedEdge) return null;
@@ -156,6 +189,7 @@ export function MasterMapDetails({
   if (!selectedNode || !nodeDraft) return null;
 
   const dependencies = getMasterMapNodeDependencies(selectedNode, nodes, edges);
+  const actions = selectedNode.metadata.actions ?? [];
 
   return (
     <aside className="master-map-details-panel" aria-label="Detalhes do no">
@@ -169,6 +203,8 @@ export function MasterMapDetails({
 
       <dl className="master-map-details-list">
         <div><dt>Tipo</dt><dd>{nodeTypeOptions.find((option) => option.value === selectedNode.nodeType)?.label ?? selectedNode.nodeType}</dd></div>
+        <div><dt>Representa</dt><dd>{selectedNode.metadata.cardKind ? cardKindLabels[selectedNode.metadata.cardKind] : "Estrutura do mapa"}</dd></div>
+        <div><dt>Rota interna</dt><dd>{selectedNode.metadata.screenKey || "Nao se aplica"}</dd></div>
         <div><dt>Status</dt><dd>{statusOptions.find((option) => option.value === selectedNode.status)?.label}</dd></div>
         <div><dt>Destino</dt><dd>{destinationOptions.find((option) => option.value === selectedNode.destinationType)?.label ?? "Apenas mostrar detalhes"}</dd></div>
         <div><dt>Responsavel</dt><dd>{selectedNode.responsible || "Nao informado"}</dd></div>
@@ -198,6 +234,50 @@ export function MasterMapDetails({
         <button className="secondary-button wide-button" type="button" onClick={() => onOpenExternalUrl(selectedNode.externalUrl as string)}>
           Abrir link externo
         </button>
+      )}
+
+      {actions.length > 0 && (
+        <section className="master-map-edit-form" aria-label="Botoes e acoes desta tela">
+          <div>
+            <p className="eyebrow">Fluxo funcional</p>
+            <h3>Botoes e acoes desta tela</h3>
+          </div>
+          {actions.map((action) => {
+            const relatedNodes = (action.targetNodeIds ?? [])
+              .map((nodeId) => nodes.find((node) => node.id === nodeId))
+              .filter((node): node is MasterMapNode => Boolean(node));
+            const expanded = expandedActionId === action.id;
+
+            return (
+              <article className="master-map-search-result" key={action.id}>
+                <div>
+                  <strong>{action.label}</strong>
+                  <p>{actionTypeLabels[action.actionType]}</p>
+                </div>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={() => setExpandedActionId(expanded ? null : action.id)}
+                  aria-expanded={expanded}
+                >
+                  {expanded ? "Ocultar acao" : "Ver acao"}
+                </button>
+                {expanded && (
+                  <div className="master-map-edit-form">
+                    <p>{action.description}</p>
+                    <dl className="master-map-details-list">
+                      <div><dt>Abre outra pagina</dt><dd>{action.opensScreen ? "Sim" : "Nao"}</dd></div>
+                      <div><dt>Ligado a</dt><dd>{relatedNodes.length > 0 ? relatedNodes.map((node) => node.title).join(", ") : "Nenhum outro quadro"}</dd></div>
+                      <div><dt>Condicao</dt><dd>{action.condition || "Nenhuma condicao especial"}</dd></div>
+                      <div><dt>Permissao</dt><dd>{action.permission || "Permissao padrao da tela"}</dd></div>
+                      <div><dt>Comportamento offline</dt><dd>{action.offlineBehavior || "Nao se aplica"}</dd></div>
+                    </dl>
+                  </div>
+                )}
+              </article>
+            );
+          })}
+        </section>
       )}
 
       {editMode ? (
