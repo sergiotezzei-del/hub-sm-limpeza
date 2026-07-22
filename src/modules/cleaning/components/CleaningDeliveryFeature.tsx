@@ -77,7 +77,7 @@ function readSessionUser(): SessionUser {
     const currentUser = raw ? String(JSON.parse(raw)?.currentUser ?? "") : "";
     return {
       id: currentUser || "neia",
-      name: userNames[currentUser] ?? currentUser || "Néia",
+      name: userNames[currentUser] ?? (currentUser || "Néia"),
       isSupervisor: currentUser === SUPERVISOR_ID,
     };
   } catch {
