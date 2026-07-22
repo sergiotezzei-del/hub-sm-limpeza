@@ -101,7 +101,7 @@ function friendlyError(error: unknown) {
   if (!(error instanceof Error)) return "Não foi possível registrar a entrega.";
   if (error.message.includes("exige conexão")) return error.message;
   if (error.message.includes("duplicate") || error.message.includes("unique")) return "Esta conferência já foi registrada.";
-  const match = error.message.match(/message[\\\"': ]+([^\"}]+)/i);
+  const match = error.message.match(/message[\\"': ]+([^"}]+)/i);
   return (match?.[1] ?? error.message).slice(0, 260);
 }
 
@@ -124,6 +124,8 @@ export function CleaningDeliveryFeature() {
 
   const selectedOrder = useMemo(() => orders.find((order) => order.id === selectedOrderId) ?? null, [orders, selectedOrderId]);
   const recentDeliveries = useMemo(() => deliveries.slice(0, 10), [deliveries]);
+  const unmatchedItems = useMemo(() => items.filter((item) => !item.productSlug), [items]);
+  const currentStep = !selectedOrder ? 1 : !countLocked ? 2 : 3;
 
   useEffect(() => {
     const rootElement = document.getElementById("root");
@@ -156,7 +158,11 @@ export function CleaningDeliveryFeature() {
       const [loadedOrders, loadedInventory, loadedDeliveries] = await Promise.all([
         getOrders(), getInventoryProducts(), loadCleaningDeliveries(),
       ]);
-      setOrders(loadedOrders.filter((order) => order.status === "Pedido feito" && !order.deletedAt));
+      const pendingOrders = loadedOrders.filter((order) => {
+        if (order.status !== "Pedido feito" || order.deletedAt) return false;
+        return buildDraft(order, loadedInventory, loadedDeliveries).some((item) => item.pendingQuantity > 0);
+      });
+      setOrders(pendingOrders);
       setInventory(loadedInventory);
       setDeliveries(loadedDeliveries);
     } catch (loadError) {
@@ -187,7 +193,7 @@ export function CleaningDeliveryFeature() {
 
   function validateMappings() {
     if (items.some((item) => !item.productSlug)) {
-      setError("Selecione o produto correto do estoque para todos os itens.");
+      setError("Selecione o produto correto do estoque para os itens destacados.");
       return false;
     }
     const slugs = items.map((item) => item.productSlug);
@@ -198,27 +204,54 @@ export function CleaningDeliveryFeature() {
     return true;
   }
 
+  function startCount() {
+    setError("");
+    if (!validateMappings()) return;
+    setSeparated(true);
+  }
+
   function lockCount() {
     setError("");
-    if (!separated) return setError("Confirme que a mercadoria recebida foi separada da contagem anterior.");
-    if (!validateMappings()) return;
-    if (items.some((item) => parseQuantity(item.preStockQuantity) === null)) return setError("Informe a contagem física anterior de todos os produtos.");
+    if (!separated || !validateMappings()) return;
+    if (items.some((item) => parseQuantity(item.preStockQuantity) === null)) {
+      setError("Informe quanto havia no estoque antes da entrega em todos os produtos.");
+      return;
+    }
     setCountLocked(true);
-    setNotice("Contagem anterior concluída. Agora confira somente a mercadoria recebida.");
+    setNotice("");
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   async function submit() {
     setError("");
     setNotice("");
-    if (!selectedOrder || !countLocked || !validateMappings()) return setError("Conclua a seleção do pedido e a contagem anterior antes da entrada.");
+    if (!selectedOrder || !countLocked || !validateMappings()) {
+      setError("Conclua a contagem anterior antes de confirmar a entrada.");
+      return;
+    }
     const parsed = items.map((item) => ({ item, pre: parseQuantity(item.preStockQuantity), received: parseQuantity(item.receivedQuantity) }));
-    if (parsed.some(({ pre, received }) => pre === null || received === null)) return setError("Revise as quantidades informadas.");
-    if (!parsed.some(({ received }) => Number(received) > 0)) return setError("Informe ao menos uma quantidade recebida maior que zero.");
+    if (parsed.some(({ pre, received }) => pre === null || received === null)) {
+      setError("Revise as quantidades informadas.");
+      return;
+    }
+    if (!parsed.some(({ received }) => Number(received) > 0)) {
+      setError("Informe ao menos uma quantidade recebida maior que zero.");
+      return;
+    }
     const receiver = receivers.find((entry) => entry.id === receiverId);
-    if (!receiver) return setError("Informe quem recebeu a mercadoria.");
+    if (!receiver) {
+      setError("Informe quem recebeu a mercadoria.");
+      return;
+    }
 
     const divergences = parsed.filter(({ item, received }) => Number(received) !== item.pendingQuantity).length;
-    if (!window.confirm(`Confirmar a entrada deste pedido?\n\n${divergences ? `${divergences} item(ns) têm diferença entre o pendente e o recebido.\n\n` : ""}O estoque será corrigido pela contagem física anterior e depois receberá a entrada.`)) return;
+    const totalReceived = parsed.reduce((total, { received }) => total + Number(received), 0);
+    const confirmation = [
+      `Confirmar a entrada de ${formatQuantity(totalReceived)} unidade(s) de controle?`,
+      divergences ? `${divergences} item(ns) têm diferença entre o esperado e o recebido.` : "As quantidades recebidas conferem com o pedido.",
+      "O estoque final será calculado usando a contagem feita antes da entrega.",
+    ].join("\n\n");
+    if (!window.confirm(confirmation)) return;
 
     setSaving(true);
     try {
@@ -242,7 +275,7 @@ export function CleaningDeliveryFeature() {
       setDeliveries(nextDeliveries);
       resetDraft();
       setNotes("");
-      setNotice("Entrega conferida e entrada registrada no estoque.");
+      setNotice("Entrega conferida e estoque atualizado.");
     } catch (submitError) {
       setError(friendlyError(submitError));
     } finally {
@@ -253,7 +286,7 @@ export function CleaningDeliveryFeature() {
   const card = dashboardTarget ? createPortal(
     <button className="admin-card module-card with-icon has-access action-card cleaning-control-card cleaning-delivery-card" type="button" onClick={() => setOpen(true)}>
       <span className="module-icon-circle" aria-hidden="true"><AppIcon name="stock" size="lg" className="module-icon" /></span>
-      <span className="module-card-copy"><span className="module-card-title">Conferência de Entrega</span><strong>Receber, conferir e dar entrada no estoque</strong></span>
+      <span className="module-card-copy"><span className="module-card-title">Conferência de Entrega</span><strong>Receber pedido e atualizar o estoque</strong></span>
     </button>,
     dashboardTarget,
   ) : null;
@@ -263,63 +296,131 @@ export function CleaningDeliveryFeature() {
       <main className="cleaning-delivery-shell">
         <section className="screen cleaning-delivery-screen">
           <header className="cleaning-delivery-header">
-            <div><p className="eyebrow">Gestão de Limpeza</p><h1>Conferência de Entrega</h1><p>Receba o pedido, registre a contagem anterior e dê entrada correta no estoque.</p></div>
+            <div><p className="eyebrow">Gestão de Limpeza</p><h1>Conferência de Entrega</h1><p>Siga uma etapa por vez. O sistema cuida dos cálculos.</p></div>
             <button className="logout-button" type="button" disabled={saving} onClick={() => setOpen(false)}>Fechar</button>
           </header>
-          <button className="ghost-button cleaning-delivery-back" type="button" disabled={saving} onClick={() => setOpen(false)}><AppIcon name="back" size="sm" className="action-icon" />Voltar para Limpeza</button>
 
-          {!isCleaningDeliveryCloudEnabled() && <section className="cleaning-delivery-warning danger"><AppIcon name="warning" size="md" /><div><strong>Conexão online obrigatória</strong><p>A entrada altera o estoque e não pode ficar pendente offline.</p></div></section>}
-          <section className="cleaning-delivery-warning"><AppIcon name="warning" size="md" /><div><strong>Antes de lançar a entrega</strong><p>Separe o que acabou de chegar. Conte somente o estoque que já estava guardado, sem incluir a nova mercadoria.</p></div></section>
+          <div className="cleaning-delivery-progress" aria-label={`Etapa ${currentStep} de 3`}>
+            <span className={currentStep >= 1 ? "active" : ""}>1. Pedido</span>
+            <span className={currentStep >= 2 ? "active" : ""}>2. Estoque antigo</span>
+            <span className={currentStep >= 3 ? "active" : ""}>3. O que chegou</span>
+          </div>
+
+          {!isCleaningDeliveryCloudEnabled() && <section className="cleaning-delivery-warning danger"><AppIcon name="warning" size="md" /><div><strong>Sem conexão</strong><p>Conecte o aparelho à internet para registrar a entrada com segurança.</p></div></section>}
           {error && <p className="error-message cleaning-delivery-message">{error}</p>}
           {notice && <p className="success-message cleaning-delivery-message">{notice}</p>}
 
-          <section className="cleaning-delivery-section">
-            <div className="cleaning-delivery-section-title"><span>1</span><div><h2>Selecione o pedido recebido</h2><p>Aparecem pedidos marcados como “Pedido feito”.</p></div></div>
-            <label className="cleaning-delivery-field">Pedido<select value={selectedOrderId} disabled={loading || saving || countLocked} onChange={(event) => resetDraft(event.target.value)}><option value="">Selecione o pedido que chegou</option>{orders.map((order) => <option key={order.id} value={order.id}>{order.data} às {order.hora} — {order.itens.length} item(ns)</option>)}</select></label>
-            {loading && <p className="cleaning-delivery-empty">Carregando pedidos e estoque...</p>}
-            {!loading && orders.length === 0 && <p className="cleaning-delivery-empty">Nenhum pedido marcado como “Pedido feito” foi encontrado.</p>}
-          </section>
+          {!selectedOrder && <section className="cleaning-delivery-section cleaning-delivery-current-step">
+            <div className="cleaning-delivery-section-title"><span>1</span><div><h2>Qual pedido chegou?</h2><p>Escolha o pedido recebido.</p></div></div>
+            <label className="cleaning-delivery-field">Pedido
+              <select value={selectedOrderId} disabled={loading || saving} onChange={(event) => resetDraft(event.target.value)}>
+                <option value="">Selecione o pedido</option>
+                {orders.map((order) => <option key={order.id} value={order.id}>{order.data} às {order.hora} — {order.itens.length} item(ns)</option>)}
+              </select>
+            </label>
+            {loading && <p className="cleaning-delivery-empty">Carregando pedidos...</p>}
+            {!loading && orders.length === 0 && <p className="cleaning-delivery-empty">Não há pedido pendente de entrega.</p>}
+          </section>}
 
-          {selectedOrder && <>
-            <section className="cleaning-delivery-section">
-              <div className="cleaning-delivery-section-title"><span>2</span><div><h2>Conte o estoque anterior</h2><p>Esta será a base real antes da entrada.</p></div></div>
-              <label className="cleaning-delivery-confirmation"><input type="checkbox" checked={separated} disabled={saving || countLocked} onChange={(event) => setSeparated(event.target.checked)} /><span>Separei a mercadoria recebida e ela não foi incluída na contagem do estoque anterior.</span></label>
-              <div className="cleaning-delivery-items">{items.map((item) => <article className="cleaning-delivery-item" key={item.orderItemId}>
-                <div className="cleaning-delivery-item-head"><div><small>ITEM DO PEDIDO</small><h3>{item.orderProductName}</h3></div><span>Pedido: {formatQuantity(item.orderedQuantity)} {item.unit}</span></div>
-                <div className="cleaning-delivery-grid">
-                  <label>Produto no estoque<select value={item.productSlug} disabled={saving || countLocked} onChange={(event) => selectProduct(item.orderItemId, event.target.value)}><option value="">Selecione o produto</option>{inventory.map((product) => <option key={product.id} value={product.id}>{product.name} — {product.unit}</option>)}</select></label>
-                  <label>Já recebido<input readOnly value={`${formatQuantity(item.previouslyReceived)} ${item.unit}`} /></label>
-                  <label>Saldo pendente<input readOnly value={`${formatQuantity(item.pendingQuantity)} ${item.unit}`} /></label>
-                  <label>Estoque físico antes da entrega<input type="number" inputMode="decimal" min="0" step="any" placeholder="Sem incluir o que chegou" value={item.preStockQuantity} disabled={!separated || countLocked || saving} onChange={(event) => updateItem(item.orderItemId, { preStockQuantity: event.target.value })} /></label>
-                </div>
-              </article>)}</div>
-              {!countLocked ? <button className="primary-button wide-button" type="button" disabled={!separated || saving} onClick={lockCount}>Concluir contagem anterior</button> : <div className="cleaning-delivery-count-locked"><strong>Contagem anterior concluída.</strong><button className="ghost-button" type="button" disabled={saving} onClick={() => setCountLocked(false)}>Corrigir contagem</button></div>}
+          {selectedOrder && !separated && <section className="cleaning-delivery-section cleaning-delivery-current-step">
+            <div className="cleaning-delivery-section-title"><span>2</span><div><h2>Separe o que acabou de chegar</h2><p>Deixe a nova mercadoria fora do estoque por enquanto.</p></div></div>
+            <div className="cleaning-delivery-simple-instruction">
+              <strong>Por que fazer isso?</strong>
+              <p>Primeiro vamos contar somente o que já estava guardado. Depois o sistema soma o que chegou.</p>
+            </div>
+
+            {unmatchedItems.length > 0 && <div className="cleaning-delivery-mapping-alert">
+              <strong>Confirme {unmatchedItems.length === 1 ? "este produto" : "estes produtos"} antes de continuar</strong>
+              {unmatchedItems.map((item) => <label key={item.orderItemId}>{item.orderProductName}
+                <select value={item.productSlug} disabled={saving} onChange={(event) => selectProduct(item.orderItemId, event.target.value)}>
+                  <option value="">Selecione o produto do estoque</option>
+                  {inventory.map((product) => <option key={product.id} value={product.id}>{product.name} — {product.unit}</option>)}
+                </select>
+              </label>)}
+            </div>}
+
+            <button className="primary-button wide-button cleaning-delivery-start-button" type="button" disabled={saving || unmatchedItems.length > 0} onClick={startCount}>
+              Já deixei separado. Começar contagem
+            </button>
+            <button className="ghost-button cleaning-delivery-change-order" type="button" disabled={saving} onClick={() => resetDraft()}>Escolher outro pedido</button>
+          </section>}
+
+          {selectedOrder && separated && !countLocked && <section className="cleaning-delivery-section cleaning-delivery-current-step">
+            <div className="cleaning-delivery-section-title"><span>2</span><div><h2>Quanto havia antes da entrega?</h2><p>Conte somente os produtos que já estavam guardados.</p></div></div>
+            <div className="cleaning-delivery-count-list">
+              {items.map((item) => <article className="cleaning-delivery-count-card" key={item.orderItemId}>
+                <div><h3>{item.productName}</h3><p>Pedido recebido: {formatQuantity(item.pendingQuantity)} {item.unit}</p></div>
+                <label>Quantidade que já estava no estoque
+                  <input type="number" inputMode="decimal" min="0" step="any" autoComplete="off" placeholder="Digite a quantidade" value={item.preStockQuantity} disabled={saving} onChange={(event) => updateItem(item.orderItemId, { preStockQuantity: event.target.value })} />
+                </label>
+              </article>)}
+            </div>
+            <button className="primary-button wide-button" type="button" disabled={saving} onClick={lockCount}>Continuar para conferir o que chegou</button>
+            <button className="ghost-button cleaning-delivery-change-order" type="button" disabled={saving} onClick={() => setSeparated(false)}>Voltar</button>
+          </section>}
+
+          {selectedOrder && countLocked && <>
+            <section className="cleaning-delivery-completed-step">
+              <div><strong>Estoque antigo contado</strong><p>{items.length} produto(s) registrado(s) antes da entrega.</p></div>
+              <button className="ghost-button" type="button" disabled={saving} onClick={() => setCountLocked(false)}>Corrigir</button>
             </section>
 
-            <section className={`cleaning-delivery-section ${countLocked ? "" : "disabled-section"}`}>
-              <div className="cleaning-delivery-section-title"><span>3</span><div><h2>Confira o que chegou</h2><p>Informe a quantidade efetivamente recebida.</p></div></div>
-              <div className="cleaning-delivery-items">{items.map((item) => {
-                const pre = parseQuantity(item.preStockQuantity) ?? 0;
-                const received = parseQuantity(item.receivedQuantity) ?? 0;
-                const difference = received - item.pendingQuantity;
-                return <article className="cleaning-delivery-item" key={`delivery-${item.orderItemId}`}>
-                  <div className="cleaning-delivery-item-head"><div><small>CONFERÊNCIA DA ENTREGA</small><h3>{item.productName}</h3></div><span className={difference === 0 ? "delivery-ok" : "delivery-difference"}>{difference === 0 ? "Confere" : `Diferença: ${difference > 0 ? "+" : ""}${formatQuantity(difference)}`}</span></div>
-                  <div className="cleaning-delivery-grid received-grid"><label>Quantidade recebida<input type="number" inputMode="decimal" min="0" step="any" value={item.receivedQuantity} disabled={!countLocked || saving} onChange={(event) => updateItem(item.orderItemId, { receivedQuantity: event.target.value })} /></label><label>Estoque após entrada<input readOnly value={`${formatQuantity(pre + received)} ${item.unit}`} /></label><label className="delivery-observation">Observação<textarea rows={2} placeholder="Falta, sobra, avaria ou troca..." value={item.observation} disabled={!countLocked || saving} onChange={(event) => updateItem(item.orderItemId, { observation: event.target.value })} /></label></div>
-                </article>;
-              })}</div>
-            </section>
+            <section className="cleaning-delivery-section cleaning-delivery-current-step">
+              <div className="cleaning-delivery-section-title"><span>3</span><div><h2>Quanto chegou agora?</h2><p>Confira a mercadoria recebida e confirme a entrada.</p></div></div>
+              <div className="cleaning-delivery-received-list">
+                {items.map((item) => {
+                  const pre = parseQuantity(item.preStockQuantity) ?? 0;
+                  const received = parseQuantity(item.receivedQuantity) ?? 0;
+                  const difference = received - item.pendingQuantity;
+                  return <article className="cleaning-delivery-received-card" key={item.orderItemId}>
+                    <div className="cleaning-delivery-received-head">
+                      <div><h3>{item.productName}</h3><p>Esperado: {formatQuantity(item.pendingQuantity)} {item.unit}{item.previouslyReceived > 0 ? ` • Já recebido antes: ${formatQuantity(item.previouslyReceived)}` : ""}</p></div>
+                      <span className={difference === 0 ? "delivery-ok" : "delivery-difference"}>{difference === 0 ? "Confere" : `Diferença ${difference > 0 ? "+" : ""}${formatQuantity(difference)}`}</span>
+                    </div>
+                    <label className="cleaning-delivery-main-input">Quantidade recebida agora
+                      <input type="number" inputMode="decimal" min="0" step="any" value={item.receivedQuantity} disabled={saving} onChange={(event) => updateItem(item.orderItemId, { receivedQuantity: event.target.value })} />
+                    </label>
+                    <p className="cleaning-delivery-result">Estoque final: <strong>{formatQuantity(pre)} + {formatQuantity(received)} = {formatQuantity(pre + received)} {item.unit}</strong></p>
+                    <details className="cleaning-delivery-details">
+                      <summary>Observação ou corrigir produto</summary>
+                      <label>Produto no estoque
+                        <select value={item.productSlug} disabled={saving} onChange={(event) => selectProduct(item.orderItemId, event.target.value)}>
+                          <option value="">Selecione o produto</option>
+                          {inventory.map((product) => <option key={product.id} value={product.id}>{product.name} — {product.unit}</option>)}
+                        </select>
+                      </label>
+                      <label>Observação do item
+                        <textarea rows={2} placeholder="Falta, sobra, avaria ou troca..." value={item.observation} disabled={saving} onChange={(event) => updateItem(item.orderItemId, { observation: event.target.value })} />
+                      </label>
+                    </details>
+                  </article>;
+                })}
+              </div>
 
-            <section className={`cleaning-delivery-section ${countLocked ? "" : "disabled-section"}`}>
-              <div className="cleaning-delivery-section-title"><span>4</span><div><h2>Confirme o recebimento</h2><p>O sistema registra o ajuste e depois a entrada.</p></div></div>
-              <div className="cleaning-delivery-grid final-grid"><label>Recebido e conferido por<select value={receiverId} disabled={!countLocked || saving} onChange={(event) => setReceiverId(event.target.value)}>{receivers.map((receiver) => <option key={receiver.id} value={receiver.id}>{receiver.name}</option>)}</select></label><label>Observação geral<textarea rows={3} placeholder="Fornecedor, nota fiscal ou condição da entrega." value={notes} disabled={!countLocked || saving} onChange={(event) => setNotes(event.target.value)} /></label></div>
-              <button className="primary-button wide-button sticky-action" type="button" disabled={!countLocked || saving || !isCleaningDeliveryCloudEnabled()} onClick={() => void submit()}><AppIcon name="save" size="sm" className="action-icon" />{saving ? "Registrando entrada..." : "Confirmar entrega e dar entrada no estoque"}</button>
+              <div className="cleaning-delivery-final-box">
+                <label>Conferido por
+                  <select value={receiverId} disabled={saving} onChange={(event) => setReceiverId(event.target.value)}>{receivers.map((receiver) => <option key={receiver.id} value={receiver.id}>{receiver.name}</option>)}</select>
+                </label>
+                <details className="cleaning-delivery-details cleaning-delivery-general-note">
+                  <summary>Adicionar observação geral</summary>
+                  <label>Observação
+                    <textarea rows={3} placeholder="Fornecedor, nota fiscal ou condição da entrega." value={notes} disabled={saving} onChange={(event) => setNotes(event.target.value)} />
+                  </label>
+                </details>
+              </div>
+
+              <button className="primary-button wide-button sticky-action" type="button" disabled={saving || !isCleaningDeliveryCloudEnabled()} onClick={() => void submit()}>
+                <AppIcon name="save" size="sm" className="action-icon" />{saving ? "Atualizando estoque..." : "Confirmar entrada no estoque"}
+              </button>
             </section>
           </>}
 
-          <section className="cleaning-delivery-section delivery-history-section">
-            <div className="cleaning-delivery-section-title"><span>H</span><div><h2>Últimas entregas conferidas</h2><p>Histórico do recebimento e da entrada.</p></div></div>
+          <details className="cleaning-delivery-history-disclosure">
+            <summary>Ver últimas entregas conferidas</summary>
             {recentDeliveries.length === 0 ? <p className="cleaning-delivery-empty">Nenhuma entrega registrada ainda.</p> : <div className="cleaning-delivery-history-list">{recentDeliveries.map((delivery) => <article className="cleaning-delivery-history-card" key={delivery.id}><div><small>{formatDateTime(delivery.receivedAt)}</small><h3>{delivery.receivedByName}</h3><p>{delivery.items.length} item(ns) conferido(s)</p></div><div className="delivery-history-quantities"><span>Entrada<strong>{formatQuantity(delivery.items.reduce((sum, item) => sum + item.receivedQuantity, 0))}</strong></span><span>Ajustes<strong>{delivery.items.filter((item) => item.adjustmentQuantity !== 0).length}</strong></span></div>{delivery.notes && <p className="delivery-history-notes">{delivery.notes}</p>}</article>)}</div>}
-          </section>
+          </details>
+
+          <button className="ghost-button cleaning-delivery-back" type="button" disabled={saving} onClick={() => setOpen(false)}><AppIcon name="back" size="sm" className="action-icon" />Voltar para Limpeza</button>
         </section>
       </main>
     </div>,
