@@ -896,25 +896,34 @@ function App() {
   async function sendStockCheck() {
     if (cleaningSubmitLocks.current.stockCheck) return;
 
-    const items = inventoryProducts
-      .map((product) => {
-        const quantity = Number(stockQuantities[product.id]);
-        const observation = stockObservations[product.id]?.trim();
-        if ((!Number.isFinite(quantity) || quantity <= 0) && !observation) return null;
-        return {
-          id: product.id,
-          productName: product.name,
-          unit: product.unit,
-          quantity: Number.isFinite(quantity) && quantity > 0 ? quantity : 0,
-          observation: observation || undefined,
-        };
-      })
-      .filter((item): item is StockCheckItem => Boolean(item));
-
-    if (items.length === 0) {
-      setNotice("Informe pelo menos um item para conferir o estoque.");
+    if (inventoryProducts.length === 0) {
+      setNotice("Nenhum produto de limpeza cadastrado para conferir.");
       return;
     }
+
+    const missingProducts = inventoryProducts.filter((product) => {
+      const value = stockQuantities[product.id]?.trim();
+      if (value === undefined || value === "") return true;
+      const quantity = Number(value.replace(",", "."));
+      return !Number.isFinite(quantity) || quantity < 0;
+    });
+
+    if (missingProducts.length > 0) {
+      setNotice("Informe a quantidade de todos os produtos. Use 0 quando nao houver estoque fisico.");
+      return;
+    }
+
+    const items: StockCheckItem[] = inventoryProducts.map((product) => {
+      const quantity = Number((stockQuantities[product.id] ?? "0").replace(",", "."));
+      const observation = stockObservations[product.id]?.trim();
+      return {
+        id: product.id,
+        productName: product.name,
+        unit: product.unit,
+        quantity,
+        observation: observation || undefined,
+      };
+    });
 
     cleaningSubmitLocks.current.stockCheck = true;
     setStockCheckSubmitting(true);
@@ -926,6 +935,7 @@ function App() {
       hora: now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }),
       conferente: "Neia",
       itens: items,
+      createdAt: now.toISOString(),
     };
 
     try {
@@ -2118,7 +2128,7 @@ function OrderFormScreen({ products, quantities, manualOpen, manualDraft, manual
 
 function StockCheckScreen({ products, quantities, observations, notice, sending, onBack, onLogout, onQuantityChange, onObservationChange, onSendStockCheck }: { products: InventoryProduct[]; quantities: Record<string, string>; observations: Record<string, string>; notice: string; sending: boolean; onBack: () => void; onLogout: () => void; onQuantityChange: (productId: string, value: string) => void; onObservationChange: (productId: string, value: string) => void; onSendStockCheck: () => void }) {
   return (
-    <section className="screen"><TopBar title="Conferência de Estoque" subtitle="Solicitante: Neia" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}>Voltar</button>{notice && <p className="notice-message">{notice}</p>}<section className="product-list">{products.map((product) => <label className="product-row stock-row" key={product.id}><span><strong>{product.name}</strong><small>{product.unit}</small></span><input type="number" inputMode="decimal" min="0" placeholder="Qtd" value={quantities[product.id] ?? ""} onChange={(event) => onQuantityChange(product.id, event.target.value)} /><input type="text" placeholder="Obs." value={observations[product.id] ?? ""} onChange={(event) => onObservationChange(product.id, event.target.value)} /></label>)}</section><button className="primary-button wide-button sticky-action" type="button" disabled={sending} onClick={onSendStockCheck}>{sending ? "Salvando..." : "Enviar Conferência"}</button></section>
+    <section className="screen"><TopBar title="Conferência de Estoque" subtitle="Solicitante: Neia" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}>Voltar</button>{notice && <p className="notice-message">{notice}</p>}<p className="notice-message">Conte todos os produtos antes de receber a mercadoria nova. Use 0 quando o produto estiver zerado.</p><section className="product-list">{products.map((product) => <label className="product-row stock-row" key={product.id}><span><strong>{product.name}</strong><small>{product.unit}</small></span><input type="number" inputMode="decimal" min="0" placeholder="0" value={quantities[product.id] ?? ""} onChange={(event) => onQuantityChange(product.id, event.target.value)} /><input type="text" placeholder="Obs." value={observations[product.id] ?? ""} onChange={(event) => onObservationChange(product.id, event.target.value)} /></label>)}</section><button className="primary-button wide-button sticky-action" type="button" disabled={sending} onClick={onSendStockCheck}>{sending ? "Salvando..." : "Enviar Conferência"}</button></section>
   );
 }
 

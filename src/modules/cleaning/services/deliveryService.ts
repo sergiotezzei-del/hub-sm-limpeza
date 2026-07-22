@@ -77,6 +77,16 @@ export type CleaningDeliveryApproval = {
   items: CleaningDeliveryApprovalItem[];
 };
 
+export type CleaningDeliveryStockCheckValidation = {
+  ok: boolean;
+  stockCheckId?: string;
+  data?: string;
+  hora?: string;
+  createdAt?: string;
+  message: string;
+  missingProducts: string[];
+};
+
 export type CleaningDeliveryApprovalInput = {
   id: string;
   orderId: string;
@@ -221,19 +231,14 @@ export async function loadCleaningDeliveryApprovals(filters: {
 } = {}): Promise<CleaningDeliveryApproval[]> {
   if (!isCleaningDeliveryCloudEnabled()) return [];
 
-  const params = new URLSearchParams({
-    select: "id,order_id,stock_check_id,requested_by_id,requested_by_name,supervisor_id,status,requested_at,decided_at,decided_by_name,decision_note,items",
-    order: "requested_at.desc",
-  });
-  if (filters.requesterId) params.set("requested_by_id", `eq.${filters.requesterId}`);
-  if (filters.pendingSupervisorId) {
-    params.set("supervisor_id", `eq.${filters.pendingSupervisorId}`);
-    params.set("status", "eq.pending");
-  }
-  if (filters.orderId) params.set("order_id", `eq.${filters.orderId}`);
-
-  const response = await fetch(`${CLOUD_URL}/rest/v1/cleaning_delivery_approvals?${params.toString()}`, {
-    headers: apiHeaders(),
+  const response = await fetch(`${CLOUD_URL}/rest/v1/rpc/list_cleaning_delivery_approvals`, {
+    method: "POST",
+    headers: filters.pendingSupervisorId ? authenticatedHeaders() : apiHeaders(),
+    body: JSON.stringify({
+      p_requester_id: filters.requesterId ?? null,
+      p_pending_supervisor_id: filters.pendingSupervisorId ?? null,
+      p_order_id: filters.orderId ?? null,
+    }),
   });
   if (!response.ok) {
     const details = await response.text();
@@ -242,6 +247,46 @@ export async function loadCleaningDeliveryApprovals(filters: {
 
   const rows = await response.json() as CleaningDeliveryApprovalRow[];
   return rows.map(mapApprovalRow);
+}
+
+export async function validateCleaningDeliveryStockCheck(stockCheckId?: string | null): Promise<CleaningDeliveryStockCheckValidation> {
+  if (!isCleaningDeliveryCloudEnabled()) {
+    return {
+      ok: false,
+      message: "A Conferencia de Entrega exige conexao com o sistema online.",
+      missingProducts: [],
+    };
+  }
+
+  const response = await fetch(`${CLOUD_URL}/rest/v1/rpc/validate_cleaning_delivery_stock_check`, {
+    method: "POST",
+    headers: apiHeaders(),
+    body: JSON.stringify({ p_stock_check_id: stockCheckId ?? null }),
+  });
+  if (!response.ok) {
+    const details = await response.text();
+    throw new Error(details || "Nao foi possivel validar a conferencia de estoque.");
+  }
+
+  const result = await response.json() as {
+    ok?: boolean;
+    stock_check_id?: string | null;
+    data?: string | null;
+    hora?: string | null;
+    created_at?: string | null;
+    message?: string | null;
+    missing_products?: string[] | null;
+  };
+
+  return {
+    ok: Boolean(result.ok),
+    stockCheckId: result.stock_check_id ?? undefined,
+    data: result.data ?? undefined,
+    hora: result.hora ?? undefined,
+    createdAt: result.created_at ?? undefined,
+    message: result.message ?? "Conferencia de estoque nao esta pronta para recebimento.",
+    missingProducts: Array.isArray(result.missing_products) ? result.missing_products : [],
+  };
 }
 
 export async function requestCleaningDeliveryApproval(input: CleaningDeliveryApprovalInput) {

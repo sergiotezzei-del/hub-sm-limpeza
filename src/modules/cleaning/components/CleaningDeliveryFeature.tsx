@@ -10,15 +10,16 @@ import {
   loadCleaningDeliveryApprovals,
   registerCleaningDelivery,
   requestCleaningDeliveryApproval,
+  validateCleaningDeliveryStockCheck,
   type CleaningDeliveryApproval,
   type CleaningDeliveryRecord,
+  type CleaningDeliveryStockCheckValidation,
 } from "../services/deliveryService";
 import "./cleaningDelivery.css";
 
 const SESSION_KEY = "hub-sm-active-session";
 const RETURN_TO_DELIVERY_KEY = "hub-sm-return-to-delivery";
 const SUPERVISOR_ID = "tezzei";
-const STOCK_CHECK_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 const userNames: Record<string, string> = {
   tezzei: "Sergio Tezzei",
@@ -39,6 +40,7 @@ type DraftItem = {
   receivedQuantity: string;
   stockBefore: number;
   observation: string;
+  stockCheckMissing: boolean;
 };
 
 type SessionUser = {
@@ -85,24 +87,6 @@ function readSessionUser(): SessionUser {
   }
 }
 
-function parseStockCheckDate(check: StockCheck) {
-  const dateMatch = check.data.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-  const timeMatch = check.hora.match(/^(\d{2}):(\d{2})/);
-  if (!dateMatch || !timeMatch) return null;
-  const [, day, month, year] = dateMatch;
-  const [, hour, minute] = timeMatch;
-  const date = new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute));
-  return Number.isFinite(date.getTime()) ? date : null;
-}
-
-function isRecentStockCheck(check: StockCheck | null) {
-  if (!check) return false;
-  const date = parseStockCheckDate(check);
-  if (!date) return false;
-  const age = Date.now() - date.getTime();
-  return age >= 0 && age <= STOCK_CHECK_MAX_AGE_MS;
-}
-
 function buildReceivedTotals(deliveries: CleaningDeliveryRecord[]) {
   const totals = new Map<string, number>();
   deliveries.forEach((delivery) => delivery.items.forEach((item) => {
@@ -125,7 +109,7 @@ function buildDraft(
     const product = inventoryByName.get(normalizeText(item.productName));
     const previouslyReceived = receivedTotals.get(item.id) ?? 0;
     const expectedQuantity = Math.max(0, item.quantity - previouslyReceived);
-    const stockBefore = product ? stockByName.get(normalizeText(product.name)) ?? 0 : 0;
+    const stockQuantity = product ? stockByName.get(normalizeText(product.name)) : undefined;
     return {
       orderItemId: item.id,
       orderProductName: item.productName,
@@ -136,8 +120,9 @@ function buildDraft(
       previouslyReceived,
       expectedQuantity,
       receivedQuantity: String(expectedQuantity),
-      stockBefore,
+      stockBefore: stockQuantity ?? 0,
       observation: item.observation ?? "",
+      stockCheckMissing: Boolean(product && stockQuantity === undefined),
     };
   });
 }
@@ -149,6 +134,7 @@ function approvalMatchesItems(approval: CleaningDeliveryApproval, items: DraftIt
     return approval.items.some((approvedItem) => (
       approvedItem.orderItemId === item.orderItemId
       && approvedItem.productSlug === item.productSlug
+      && approvedItem.expectedQuantity === item.expectedQuantity
       && approvedItem.receivedQuantity === received
     ));
   });
@@ -167,6 +153,7 @@ export function CleaningDeliveryFeature() {
   const [sessionUser, setSessionUser] = useState<SessionUser>(readSessionUser);
   const [preflightOpen, setPreflightOpen] = useState(false);
   const [preflightError, setPreflightError] = useState("");
+  const [preflightChecking, setPreflightChecking] = useState(false);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -176,6 +163,7 @@ export function CleaningDeliveryFeature() {
   const [inventory, setInventory] = useState<InventoryProduct[]>([]);
   const [deliveries, setDeliveries] = useState<CleaningDeliveryRecord[]>([]);
   const [latestStockCheck, setLatestStockCheck] = useState<StockCheck | null>(null);
+  const [stockCheckValidation, setStockCheckValidation] = useState<CleaningDeliveryStockCheckValidation | null>(null);
   const [selectedOrderId, setSelectedOrderId] = useState("");
   const [items, setItems] = useState<DraftItem[]>([]);
   const [notes, setNotes] = useState("");
@@ -188,7 +176,7 @@ export function CleaningDeliveryFeature() {
 
   const selectedOrder = useMemo(() => orders.find((order) => order.id === selectedOrderId) ?? null, [orders, selectedOrderId]);
   const recentDeliveries = useMemo(() => deliveries.slice(0, 10), [deliveries]);
-  const mappingError = useMemo(() => items.some((item) => !item.productSlug), [items]);
+  const mappingError = useMemo(() => items.some((item) => !item.productSlug || item.stockCheckMissing), [items]);
   const parsedItems = useMemo(() => items.map((item) => ({ ...item, received: parseQuantity(item.receivedQuantity) })), [items]);
   const hasInvalidQuantity = parsedItems.some((item) => item.received === null);
   const hasDivergence = parsedItems.some((item) => item.received !== null && item.received !== item.expectedQuantity);
@@ -201,6 +189,7 @@ export function CleaningDeliveryFeature() {
   const canConfirm = Boolean(
     selectedOrder
     && latestStockCheck
+    && stockCheckValidation?.ok === true
     && !mappingError
     && !hasInvalidQuantity
     && (!hasDivergence || approvedForCurrentValues)
@@ -265,6 +254,10 @@ export function CleaningDeliveryFeature() {
       getStockChecks(),
     ]);
     const stockCheck = loadedChecks[0] ?? null;
+    const validation = await validateCleaningDeliveryStockCheck(stockCheck?.id ?? null);
+    const validatedStockCheck = validation.stockCheckId
+      ? loadedChecks.find((check) => check.id === validation.stockCheckId) ?? stockCheck
+      : stockCheck;
     const pendingOrders = loadedOrders.filter((order) => {
       if (order.status !== "Pedido feito" || order.deletedAt) return false;
       const receivedTotals = buildReceivedTotals(loadedDeliveries);
@@ -273,8 +266,9 @@ export function CleaningDeliveryFeature() {
     setOrders(pendingOrders);
     setInventory(loadedInventory);
     setDeliveries(loadedDeliveries);
-    setLatestStockCheck(stockCheck);
-    return { stockCheck };
+    setLatestStockCheck(validatedStockCheck);
+    setStockCheckValidation(validation);
+    return { stockCheck: validatedStockCheck, validation };
   }
 
   async function beginDeliveryFlow() {
@@ -292,14 +286,27 @@ export function CleaningDeliveryFeature() {
     }
   }
 
-  function confirmStockCheckDone() {
-    if (!latestStockCheck || !isRecentStockCheck(latestStockCheck)) {
-      setPreflightError("Não encontrei uma conferência de estoque feita nas últimas 24 horas. Faça a contagem antes de receber o pedido.");
+  async function confirmStockCheckDone() {
+    if (!latestStockCheck) {
+      setPreflightError("Não encontrei uma conferência de estoque pronta para esta entrega. Faça a contagem antes de receber o pedido.");
       return;
     }
-    setPreflightError("");
-    setPreflightOpen(false);
-    setOpen(true);
+    setPreflightChecking(true);
+    try {
+      const validation = await validateCleaningDeliveryStockCheck(latestStockCheck.id);
+      setStockCheckValidation(validation);
+      if (!validation.ok) {
+        setPreflightError(validation.message);
+        return;
+      }
+      setPreflightError("");
+      setPreflightOpen(false);
+      setOpen(true);
+    } catch (validationError) {
+      setPreflightError(friendlyError(validationError));
+    } finally {
+      setPreflightChecking(false);
+    }
   }
 
   function goToStockCheck() {
@@ -396,7 +403,7 @@ export function CleaningDeliveryFeature() {
       });
       const approvals = await loadCleaningDeliveryApprovals({ requesterId: sessionUser.id, orderId: selectedOrder.id });
       setActiveApproval(approvals.find((approval) => approval.id === requestId) ?? approvals[0] ?? null);
-      setNotice("Divergência registrada. Ligue para seu encarregado ou gerente. A solicitação de liberação foi enviada ao Admin Tezzei.");
+      setNotice("Divergência registrada. Entre em contato com o encarregado ou gerente para solicitar a liberação. A pendência ficou visível para o Admin Tezzei dentro do HUB SM.");
     } catch (requestError) {
       setError(friendlyError(requestError));
     } finally {
@@ -482,13 +489,13 @@ export function CleaningDeliveryFeature() {
         <span className="cleaning-delivery-preflight-icon"><AppIcon name="warning" size="lg" /></span>
         <h2>Você conferiu o estoque atual?</h2>
         <p>A contagem deve ser feita <strong>sem incluir os produtos que acabaram de chegar</strong>.</p>
-        {latestStockCheck && isRecentStockCheck(latestStockCheck) && (
+        {latestStockCheck && (
           <small>Última conferência registrada: {latestStockCheck.data} às {latestStockCheck.hora}</small>
         )}
         {preflightError && <p className="error-message">{preflightError}</p>}
         <div className="cleaning-delivery-preflight-actions">
-          <button className="secondary-button" type="button" onClick={goToStockCheck}>Não, fazer a conferência</button>
-          <button className="primary-button" type="button" onClick={confirmStockCheckDone}>Sim, já conferi</button>
+          <button className="secondary-button" type="button" disabled={preflightChecking} onClick={goToStockCheck}>Não, fazer a conferência</button>
+          <button className="primary-button" type="button" disabled={preflightChecking} onClick={() => { void confirmStockCheckDone(); }}>{preflightChecking ? "Validando..." : "Sim, já conferi"}</button>
         </div>
         <button className="ghost-button" type="button" onClick={() => setPreflightOpen(false)}>Cancelar</button>
       </section>
@@ -528,7 +535,7 @@ export function CleaningDeliveryFeature() {
                 <span>{items.length} item(ns)</span>
               </div>
 
-              {mappingError && <p className="error-message">Um produto do pedido não corresponde a um produto cadastrado no estoque. Procure o supervisor para corrigir o cadastro.</p>}
+              {mappingError && <p className="error-message">Um produto do pedido está sem cadastro correspondente ou não apareceu na Conferência de Estoque. Procure o supervisor antes de continuar.</p>}
 
               <div className="cleaning-delivery-simple-list">
                 {items.map((item) => {
@@ -552,7 +559,7 @@ export function CleaningDeliveryFeature() {
 
               {activeApproval && approvalMatchesItems(activeApproval, items) && (
                 <section className={`cleaning-delivery-approval-status ${activeApproval.status}`}>
-                  {activeApproval.status === "pending" && <><strong>Aguardando liberação</strong><p>O Admin Tezzei recebeu a solicitação. Ligue para seu encarregado ou gerente.</p></>}
+                  {activeApproval.status === "pending" && <><strong>Aguardando liberação</strong><p>O Admin Tezzei recebeu a solicitação dentro do HUB SM. Entre em contato com o encarregado ou gerente.</p></>}
                   {activeApproval.status === "approved" && <><strong>Entrega liberada</strong><p>{activeApproval.decidedByName ?? "Supervisor"} autorizou a conclusão desta divergência.</p></>}
                   {activeApproval.status === "rejected" && <><strong>Liberação recusada</strong><p>{activeApproval.decisionNote ?? "Confira novamente com o fornecedor e o supervisor."}</p></>}
                 </section>

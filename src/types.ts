@@ -142,4 +142,5 @@ export type StockCheck = {
   hora: string;
   conferente: "Neia";
   itens: StockCheckItem[];
+  createdAt?: string;
 };
