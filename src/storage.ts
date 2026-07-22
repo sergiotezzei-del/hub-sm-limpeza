@@ -112,6 +112,7 @@ type EmployeeProfileRow = {
 
 type StockCheckRow = {
   id: string;
+  created_at?: string;
   data: string;
   hora: string;
   conferente: "Neia";
@@ -438,7 +439,7 @@ export async function getStockChecks(): Promise<StockCheck[]> {
 
   try {
     const response = await fetch(
-      `${CLOUD_URL}/rest/v1/stock_checks?select=id,data,hora,conferente,stock_check_items(id,product_name,unit,quantity,observation)&order=created_at.desc`,
+      `${CLOUD_URL}/rest/v1/stock_checks?select=id,created_at,data,hora,conferente,stock_check_items(id,product_name,unit,quantity,observation)&order=created_at.desc`,
       { headers: apiHeaders() },
     );
 
@@ -1073,6 +1074,7 @@ function mapStockCheckRow(row: StockCheckRow): StockCheck {
     data: row.data,
     hora: row.hora,
     conferente: row.conferente,
+    createdAt: row.created_at,
     itens: (row.stock_check_items ?? []).map(mapStockCheckItemRow),
   };
 }
