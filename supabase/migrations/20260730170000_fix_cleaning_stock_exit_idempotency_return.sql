@@ -18,7 +18,9 @@ as $function$
 declare
   selected_product public.products%rowtype;
   existing_product_slug text;
-  existing_current_stock numeric;
+  existing_quantity numeric;
+  existing_user_id text;
+  existing_movement_type text;
   inserted_movement_id uuid;
   updated_stock numeric;
   safe_movement_id uuid;
@@ -34,20 +36,35 @@ begin
 
   safe_movement_id := coalesce(p_movement_id, gen_random_uuid());
 
-  select stock_movements.product_slug
-    into existing_product_slug
-    from public.stock_movements
-   where stock_movements.id = safe_movement_id;
+  select
+    stock_movements.product_slug,
+    stock_movements.quantity,
+    stock_movements.user_id,
+    stock_movements.movement_type
+  into
+    existing_product_slug,
+    existing_quantity,
+    existing_user_id,
+    existing_movement_type
+  from public.stock_movements
+  where stock_movements.id = safe_movement_id;
 
   if found then
+    if existing_movement_type <> 'saida'
+      or existing_product_slug <> p_product_slug
+      or existing_quantity <> p_quantity
+      or existing_user_id <> p_user_id then
+      raise exception 'Identificador de operacao ja utilizado com dados diferentes';
+    end if;
+
     select coalesce(products.current_stock, 0)
-      into existing_current_stock
+      into current_stock
       from public.products
      where products.slug = existing_product_slug;
 
     movement_id := safe_movement_id;
     product_slug := existing_product_slug;
-    current_stock := coalesce(existing_current_stock, 0);
+    current_stock := coalesce(current_stock, 0);
     return next;
     return;
   end if;
@@ -100,8 +117,28 @@ begin
   returning id into inserted_movement_id;
 
   if inserted_movement_id is null then
+    select
+      stock_movements.product_slug,
+      stock_movements.quantity,
+      stock_movements.user_id,
+      stock_movements.movement_type
+    into
+      existing_product_slug,
+      existing_quantity,
+      existing_user_id,
+      existing_movement_type
+    from public.stock_movements
+    where stock_movements.id = safe_movement_id;
+
+    if existing_movement_type <> 'saida'
+      or existing_product_slug <> p_product_slug
+      or existing_quantity <> p_quantity
+      or existing_user_id <> p_user_id then
+      raise exception 'Identificador de operacao ja utilizado com dados diferentes';
+    end if;
+
     movement_id := safe_movement_id;
-    product_slug := selected_product.slug;
+    product_slug := existing_product_slug;
     current_stock := selected_product.current_stock;
     return next;
     return;
