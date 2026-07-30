@@ -31,6 +31,7 @@ import {
   getNeiaOrderHistory,
   getOrderHistory,
   getOrders,
+  getStockExitErrorMessage,
   getStockMovements as getStoredStockMovements,
   InventoryStorageTooLargeError,
   isCloudStorageEnabled,
@@ -1009,6 +1010,11 @@ function App() {
       return;
     }
 
+    if (quantity > selectedExitProduct.currentStock) {
+      setStockExitMessage(`Estoque insuficiente. Disponível: ${formatStockQuantity(selectedExitProduct.currentStock, selectedExitProduct.unit)}.`);
+      return;
+    }
+
     cleaningSubmitLocks.current.stockExit = true;
     setStockExitSubmitting(true);
 
@@ -1021,10 +1027,10 @@ function App() {
       setStockExitQuantity("1");
       setStockExitObservation("");
       setStockExitMessage(result.synced ? "Saída registrada com sucesso." : "Saída salva neste aparelho. Pendente de sincronização.");
-    } catch {
+    } catch (error) {
       await Promise.all([refreshInventory(), refreshStockMovements()]);
       refreshOfflinePendingCount();
-      setStockExitMessage("Saída salva neste aparelho. Pendente de sincronização.");
+      setStockExitMessage(getStockExitErrorMessage(error));
     } finally {
       cleaningSubmitLocks.current.stockExit = false;
       setStockExitSubmitting(false);
@@ -1771,8 +1777,10 @@ function App() {
       {view === "stock-exit" && (
         <StockExitScreen
           inventoryProducts={inventoryProducts}
+          movements={stockMovements}
           selectedProduct={selectedExitProduct}
           userId={stockExitUserId}
+          userName={getStockExitUserName(stockExitUserId, managedUsers)}
           barcode={stockExitBarcode}
           quantity={stockExitQuantity}
           observation={stockExitObservation}
@@ -2132,10 +2140,227 @@ function StockCheckScreen({ products, quantities, observations, notice, sending,
   );
 }
 
-function StockExitScreen({ inventoryProducts, selectedProduct, userId, barcode, quantity, observation, message, saving, adminMode, onBack, onLogout, onUserChange, onBarcodeChange, onFileChange, onProductChange, onQuantityChange, onObservationChange, onConfirm }: { inventoryProducts: InventoryProduct[]; selectedProduct: InventoryProduct | null; userId: StockExitUserId; barcode: string; quantity: string; observation: string; message: string; saving: boolean; adminMode: boolean; onBack: () => void; onLogout: () => void; onUserChange: (userId: StockExitUserId) => void; onBarcodeChange: (barcode: string) => void; onFileChange: (file: File | null) => void; onProductChange: (productId: string) => void; onQuantityChange: (quantity: string) => void; onObservationChange: (observation: string) => void; onConfirm: () => void }) {
+const STOCK_EXIT_QUICK_PRODUCTS = [
+  "Água Sanitária",
+  "Detergente",
+  "Papel Higiênico",
+  "Papel Toalha",
+  "Saco de Lixo 100L",
+  "Saco de Lixo 60L",
+  "Saco de Lixo 20L",
+  "Rajalim",
+  "Querosene",
+  "Sabonete Líquido",
+];
+
+function StockExitScreen({ inventoryProducts, movements, selectedProduct, userId, userName, barcode, quantity, observation, message, saving, adminMode, onBack, onLogout, onUserChange, onBarcodeChange, onFileChange, onProductChange, onQuantityChange, onObservationChange, onConfirm }: { inventoryProducts: InventoryProduct[]; movements: StockMovement[]; selectedProduct: InventoryProduct | null; userId: StockExitUserId; userName: string; barcode: string; quantity: string; observation: string; message: string; saving: boolean; adminMode: boolean; onBack: () => void; onLogout: () => void; onUserChange: (userId: StockExitUserId) => void; onBarcodeChange: (barcode: string) => void; onFileChange: (file: File | null) => void; onProductChange: (productId: string) => void; onQuantityChange: (quantity: string) => void; onObservationChange: (observation: string) => void; onConfirm: () => void }) {
+  const [additionalOpen, setAdditionalOpen] = useState(false);
+  const quantityValue = parseProductQuantity(quantity);
+  const validQuantity = quantityValue !== null && quantityValue > 0;
+  const availableStock = selectedProduct?.currentStock ?? 0;
+  const hasZeroStock = Boolean(selectedProduct && availableStock <= 0);
+  const exceedsStock = Boolean(selectedProduct && validQuantity && quantityValue > availableStock);
+  const canConfirm = Boolean(selectedProduct && validQuantity && !hasZeroStock && !exceedsStock && !saving);
+  const balanceAfter = selectedProduct && validQuantity ? Math.max(0, availableStock - quantityValue) : availableStock;
+
+  const quickProducts = useMemo(() => {
+    const usedIds = new Set<string>();
+    return STOCK_EXIT_QUICK_PRODUCTS
+      .map((name) => inventoryProducts.find((product) => normalizeOperationalText(product.name) === normalizeOperationalText(name)))
+      .filter((product): product is InventoryProduct => {
+        if (!product || usedIds.has(product.id)) return false;
+        usedIds.add(product.id);
+        return true;
+      });
+  }, [inventoryProducts]);
+
+  const recentMovements = useMemo(() => getTodayStockExitMovements(movements), [movements]);
+
+  function handleQuantityChange(value: string) {
+    onQuantityChange(value.replace(",", "."));
+  }
+
+  function decreaseQuantity() {
+    const currentQuantity = quantityValue ?? 1;
+    onQuantityChange(String(Math.max(1, currentQuantity - 1)));
+  }
+
+  function increaseQuantity() {
+    const currentQuantity = quantityValue ?? 0;
+    if (selectedProduct && availableStock <= 0) {
+      onQuantityChange("1");
+      return;
+    }
+    const nextQuantity = Math.max(1, currentQuantity + 1);
+    onQuantityChange(String(selectedProduct ? Math.min(availableStock, nextQuantity) : nextQuantity));
+  }
+
   return (
-    <section className="screen"><TopBar title="Saída de Produto" subtitle="Bipe o código de barras e confirme a retirada" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}><AppIcon name="back" size="sm" className="action-icon" />Voltar</button>{message && <p className="notice-message">{message}</p>}<section className="manual-form inventory-form">{adminMode && <label>Quem retirou<select value={userId} onChange={(event) => onUserChange(event.target.value as StockExitUserId)}>{employeeIds.map((employeeId) => <option key={employeeId} value={employeeId}>{employees[employeeId].name}</option>)}<option value="Sergio Tezzei">Sergio Tezzei</option></select></label>}<label className="scan-button"><AppIcon name="camera" size="sm" className="action-icon" />Abrir câmera / bipar código<input type="file" accept="image/*" capture="environment" onChange={(event) => { onFileChange(event.target.files?.[0] ?? null); event.target.value = ""; }} /></label><label>Código de barras<input type="text" inputMode="numeric" value={barcode} placeholder="Bipe ou digite o código" onChange={(event) => onBarcodeChange(event.target.value)} /></label><label>Produto encontrado / ajuste manual<select value={selectedProduct?.id ?? ""} onChange={(event) => onProductChange(event.target.value)}><option value="">Selecione o produto</option>{inventoryProducts.map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}</select></label>{selectedProduct && <article className="inventory-found-card"><span>Produto</span><strong>{selectedProduct.name}</strong><small>Estoque atual: {formatStockQuantity(selectedProduct.currentStock, selectedProduct.unit)}</small></article>}<label>Quantidade retirada<input type="number" inputMode="decimal" min="0" value={quantity} onChange={(event) => onQuantityChange(event.target.value)} /></label><label>Observação opcional<textarea rows={3} value={observation} onChange={(event) => onObservationChange(event.target.value)} /></label><button className="primary-button wide-button" type="button" disabled={saving} onClick={onConfirm}><AppIcon name="save" size="sm" className="action-icon" />{saving ? "Salvando..." : "Confirmar saída"}</button></section></section>
+    <section className="screen stock-exit-quick-screen">
+      <TopBar title="Retirar Produto" subtitle="Escolha o produto, informe a quantidade e confirme." onLogout={onLogout} />
+      <button className="ghost-button" type="button" onClick={onBack}><AppIcon name="back" size="sm" className="action-icon" />Voltar</button>
+      {message && <p className={getStockExitNoticeClass(message)}>{message}</p>}
+      <section className="manual-form inventory-form stock-exit-quick-form">
+        {adminMode ? (
+          <label className="stock-exit-user-label">
+            Retirada por
+            <select value={userId} disabled={saving} onChange={(event) => onUserChange(event.target.value as StockExitUserId)}>
+              {employeeIds.map((employeeId) => <option key={employeeId} value={employeeId}>{employees[employeeId].name}</option>)}
+              <option value="Sergio Tezzei">Sergio Tezzei</option>
+            </select>
+          </label>
+        ) : (
+          <article className="stock-exit-user-card" aria-label="Responsável pela retirada">
+            <span>Retirada por</span>
+            <strong>{userName}</strong>
+          </article>
+        )}
+
+        <p className="stock-exit-step-title">1. Escolha o produto</p>
+        {quickProducts.length > 0 && (
+          <div className="stock-exit-quick-grid" aria-label="Produtos frequentes">
+            {quickProducts.map((product) => (
+              <button
+                className={`stock-exit-quick-product${selectedProduct?.id === product.id ? " is-selected" : ""}`}
+                type="button"
+                key={product.id}
+                disabled={saving}
+                onClick={() => onProductChange(product.id)}
+              >
+                {product.name}
+              </button>
+            ))}
+          </div>
+        )}
+
+        <label className="stock-exit-product-label">
+          Ou selecione outro produto
+          <select value={selectedProduct?.id ?? ""} disabled={saving} onChange={(event) => onProductChange(event.target.value)}>
+            <option value="">Selecione o produto</option>
+            {inventoryProducts.map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}
+          </select>
+        </label>
+
+        {selectedProduct && (
+          <article className="inventory-found-card stock-exit-product-card">
+            <span>Produto</span>
+            <strong>{selectedProduct.name}</strong>
+            <small>Estoque atual: {formatStockQuantity(selectedProduct.currentStock, selectedProduct.unit)}</small>
+          </article>
+        )}
+
+        <p className="stock-exit-step-title">2. Informe a quantidade</p>
+        <label className="stock-exit-quantity-label">
+          Quantidade
+          <div className="stock-exit-stepper">
+            <button type="button" aria-label="Diminuir quantidade" disabled={saving || !validQuantity || (quantityValue ?? 0) <= 1} onClick={decreaseQuantity}>−</button>
+            <input type="number" inputMode="decimal" min="1" max={selectedProduct ? Math.max(0, selectedProduct.currentStock) : undefined} value={quantity} disabled={saving} onChange={(event) => handleQuantityChange(event.target.value)} />
+            <button type="button" aria-label="Aumentar quantidade" disabled={saving || Boolean(selectedProduct && quantityValue !== null && quantityValue >= selectedProduct.currentStock)} onClick={increaseQuantity}>+</button>
+          </div>
+        </label>
+
+        <button className="stock-exit-more-toggle" type="button" aria-expanded={additionalOpen} onClick={() => setAdditionalOpen((open) => !open)}>
+          {additionalOpen ? "Ocultar opções adicionais" : "Usar código de barras ou adicionar observação"}
+        </button>
+
+        {additionalOpen && (
+          <section className="stock-exit-additional-options" aria-label="Opções adicionais">
+            <label className="scan-button">
+              <AppIcon name="camera" size="sm" className="action-icon" />Abrir câmera / bipar código
+              <input type="file" accept="image/*" capture="environment" disabled={saving} onChange={(event) => { onFileChange(event.target.files?.[0] ?? null); event.target.value = ""; }} />
+            </label>
+            <label>
+              Código de barras
+              <input type="text" inputMode="numeric" value={barcode} placeholder="Bipe ou digite o código" disabled={saving} onChange={(event) => onBarcodeChange(event.target.value)} />
+            </label>
+            <label>
+              Observação opcional
+              <textarea rows={3} value={observation} disabled={saving} onChange={(event) => onObservationChange(event.target.value)} />
+            </label>
+          </section>
+        )}
+
+        <StockExitSummary selectedProduct={selectedProduct} validQuantity={validQuantity} quantity={quantityValue ?? 0} balanceAfter={balanceAfter} exceedsStock={exceedsStock} hasZeroStock={hasZeroStock} />
+
+        <button className="success-button wide-button sticky-action stock-exit-confirm-button" type="button" disabled={!canConfirm} onClick={onConfirm}>
+          <AppIcon name="save" size="sm" className="action-icon" />{saving ? "Salvando..." : "Confirmar retirada"}
+        </button>
+      </section>
+
+      <section className="section-block stock-exit-recent">
+        <h2>Últimas 3 retiradas de hoje</h2>
+        {recentMovements.length === 0 ? (
+          <p className="empty-copy">Nenhuma retirada registrada hoje.</p>
+        ) : (
+          <div className="activity-list">
+            {recentMovements.map((movement) => (
+              <article className="activity-card stock-exit-recent-card" key={movement.id}>
+                <div>
+                  <p className="card-kicker">{formatTime(movement.createdAt)}</p>
+                  <h3>{movement.productName}</h3>
+                  <small>{movement.userName}</small>
+                </div>
+                <strong>{formatStockQuantity(movement.quantity, movement.unit)}</strong>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
+    </section>
   );
+}
+
+function StockExitSummary({ selectedProduct, validQuantity, quantity, balanceAfter, exceedsStock, hasZeroStock }: { selectedProduct: InventoryProduct | null; validQuantity: boolean; quantity: number; balanceAfter: number; exceedsStock: boolean; hasZeroStock: boolean }) {
+  if (!selectedProduct) {
+    return <article className="stock-exit-summary"><strong>Escolha um produto</strong><span>A confirmação será liberada depois da seleção.</span></article>;
+  }
+
+  if (hasZeroStock) {
+    return <p className="stock-exit-warning">Este produto está sem estoque. Faça uma conferência ou entrada antes de retirar.</p>;
+  }
+
+  if (!validQuantity) {
+    return <p className="stock-exit-warning">Informe uma quantidade maior que zero.</p>;
+  }
+
+  if (exceedsStock) {
+    return <p className="stock-exit-warning">Quantidade maior que o estoque disponível ({formatStockQuantity(selectedProduct.currentStock, selectedProduct.unit)}).</p>;
+  }
+
+  return (
+    <article className="stock-exit-summary">
+      <strong>Retirar {formatStockQuantity(quantity, selectedProduct.unit)} de {selectedProduct.name}</strong>
+      <span>Saldo após a retirada: {formatStockQuantity(balanceAfter, selectedProduct.unit)}</span>
+    </article>
+  );
+}
+
+function getStockExitNoticeClass(message: string) {
+  const normalized = normalizeOperationalText(message);
+  if (normalized.includes("SUCESSO")) return "success-message";
+  if (normalized.includes("INSUFICIENTE") || normalized.includes("NAO FOI POSSIVEL") || normalized.includes("NÃO FOI POSSÍVEL") || normalized.includes("SEM PERMISSAO") || normalized.includes("SEM PERMISSÃO")) return "error-message";
+  return "notice-message";
+}
+
+function getTodayStockExitMovements(movements: StockMovement[]) {
+  const today = new Date();
+  return movements
+    .filter((movement) => movement.movementType === "saida" && isSameLocalDate(new Date(movement.createdAt), today))
+    .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())
+    .slice(0, 3);
+}
+
+function isSameLocalDate(left: Date, right: Date) {
+  if (Number.isNaN(left.getTime()) || Number.isNaN(right.getTime())) return false;
+  return left.getFullYear() === right.getFullYear() && left.getMonth() === right.getMonth() && left.getDate() === right.getDate();
+}
+
+function formatTime(value: string) {
+  try {
+    return new Date(value).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  } catch {
+    return value;
+  }
 }
 
 function ProductRegisterScreen({ inventoryProducts, selectedProduct, mode, productId, productName, unit, currentStock, minStock, barcode, photoData, message, saving, unitOptions, backLabel, onBack, onLogout, onCreateNew, onCancelCreate, onProductChange, onProductNameChange, onUnitChange, onCurrentStockChange, onMinStockChange, onBarcodeChange, onBarcodeFileChange, onPhotoFileChange, onRemovePhoto, onSave }: { inventoryProducts: InventoryProduct[]; selectedProduct: InventoryProduct | null; mode: ProductRegisterMode; productId: string; productName: string; unit: string; currentStock: string; minStock: string; barcode: string; photoData: string; message: string; saving: boolean; unitOptions: string[]; backLabel: string; onBack: () => void; onLogout: () => void; onCreateNew: () => void; onCancelCreate: () => void; onProductChange: (productId: string) => void; onProductNameChange: (name: string) => void; onUnitChange: (unit: string) => void; onCurrentStockChange: (stock: string) => void; onMinStockChange: (stock: string) => void; onBarcodeChange: (barcode: string) => void; onBarcodeFileChange: (file: File | null) => void; onPhotoFileChange: (file: File | null) => void; onRemovePhoto: () => void; onSave: () => void | Promise<void> }) {
