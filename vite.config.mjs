@@ -35,6 +35,8 @@ const tiptapStarterKitDir = packageDir("@tiptap/starter-kit");
 const tiptapExtensionLinkDir = packageDir("@tiptap/extension-link");
 const tiptapPmDir = packageRoot(require.resolve("@tiptap/pm/state"));
 const tiptapReactDir = packageDir("@tiptap/react");
+const supabaseJsDir = packageDir("@supabase/supabase-js");
+const xyflowReactDir = packageDir("@xyflow/react");
 const tiptapDependencyAliases = [
   "@tiptap/extension-blockquote",
   "@tiptap/extension-bold",
@@ -81,6 +83,25 @@ const prosemirrorDependencyAliases = [
   find: packageName,
   replacement: packageDir(packageName, tiptapPmDir),
 }));
+const supabaseDependencyAliases = [
+  "@supabase/auth-js",
+  "@supabase/functions-js",
+  "@supabase/postgrest-js",
+  "@supabase/realtime-js",
+  "@supabase/storage-js",
+].map((packageName) => ({
+  find: packageName,
+  replacement: packageDir(packageName, supabaseJsDir),
+}));
+const xyflowDependencyAliases = [
+  "@xyflow/system",
+  "classcat",
+  "zustand",
+  "zustand/shallow",
+].map((packageName) => ({
+  find: packageName,
+  replacement: packageDir(packageName, xyflowReactDir),
+}));
 
 export default defineConfig({
   resolve: {
@@ -93,6 +114,8 @@ export default defineConfig({
       { find: /^scheduler$/, replacement: join(schedulerDir, "index.js") },
       { find: /^fast-equals$/, replacement: packageDir("fast-equals", tiptapReactDir) },
       { find: /^linkifyjs$/, replacement: packageDir("linkifyjs", tiptapExtensionLinkDir) },
+      ...supabaseDependencyAliases,
+      ...xyflowDependencyAliases,
       ...tiptapDependencyAliases,
       ...prosemirrorDependencyAliases,
     ],

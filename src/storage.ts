@@ -34,6 +34,18 @@ export class InventoryStorageTooLargeError extends Error {
   }
 }
 
+export class CleaningRemoteRequestError extends Error {
+  status?: number;
+  details?: string;
+
+  constructor(message: string, status?: number, details?: string) {
+    super(message);
+    this.name = "CleaningRemoteRequestError";
+    this.status = status;
+    this.details = details;
+  }
+}
+
 export type InventoryProductSaveInput = {
   mode: "edit" | "new";
   product: InventoryProduct;
@@ -659,6 +671,7 @@ export async function registerStockExit(input: StockExitInput): Promise<Cleaning
     return { synced: true, queued: false };
   } catch (error) {
     console.error(error);
+    if (!isTransientCleaningError(error)) throw error;
     enqueueCleaningOfflineItem("stock-exit", operationId, payload);
     return { synced: false, queued: true };
   }
@@ -867,6 +880,48 @@ function getErrorMessage(error: unknown) {
   return "Falha ao sincronizar";
 }
 
+function isTransientCleaningError(error: unknown) {
+  if (error instanceof CleaningRemoteRequestError) {
+    if (error.status === 408 || error.status === 429) return true;
+    if (typeof error.status === "number" && error.status >= 500) return true;
+    return false;
+  }
+
+  if (error instanceof DOMException && error.name === "AbortError") return true;
+  if (error instanceof TypeError) return true;
+  return false;
+}
+
+export function getStockExitErrorMessage(error: unknown) {
+  const message = getErrorMessage(error);
+  const normalizedMessage = normalizeSearchText(message);
+
+  if (normalizedMessage.includes("estoque insuficiente")) {
+    const available = extractAvailableStockFromError(message);
+    return available ? `Estoque insuficiente. Disponível: ${available}.` : "Estoque insuficiente para esta retirada.";
+  }
+
+  if (normalizedMessage.includes("quantidade invalida")) return "Informe uma quantidade maior que zero.";
+  if (normalizedMessage.includes("produto de limpeza nao encontrado") || normalizedMessage.includes("produto invalido")) return "Produto não encontrado ou inativo.";
+
+  if (error instanceof CleaningRemoteRequestError) {
+    if (error.status === 401 || error.status === 403) return "Sem permissão para registrar esta saída.";
+    if (error.status === 404) return "Produto ou serviço de estoque não encontrado.";
+    if (error.status === 409) return message || "Não foi possível registrar por conflito no estoque. Atualize e tente novamente.";
+    if (!isTransientCleaningError(error)) return message || "Não foi possível registrar esta saída.";
+  }
+
+  return "Não foi possível registrar a saída agora. Tente novamente.";
+}
+
+function extractAvailableStockFromError(message: string) {
+  const match = message.match(/Dispon[ií]vel:\s*([\d.,]+)\s*([^."}\n\r]*)/i) ?? message.match(/Disponivel:\s*([\d.,]+)\s*([^."}\n\r]*)/i);
+  if (!match) return "";
+  const quantity = match[1];
+  const unit = match[2].trim();
+  return [quantity, unit].filter(Boolean).join(" ");
+}
+
 async function getRemoteCleaningProducts(): Promise<ProductRow[]> {
   const query = [
     "select=slug,name,category_slug,unit,active,barcode,current_stock,min_stock,photo_data",
@@ -1031,17 +1086,45 @@ function normalizeSearchText(value: string) {
 }
 
 async function request(url: string, init: RequestInit = {}) {
-  const response = await fetch(url, {
-    ...init,
-    headers: apiHeaders(init.headers as Record<string, string> | undefined),
-  });
+  const controller = init.signal ? null : new AbortController();
+  const timeout = controller ? window.setTimeout(() => controller.abort(), 20000) : null;
+  let response: Response;
+
+  try {
+    response = await fetch(url, {
+      ...init,
+      signal: init.signal ?? controller?.signal,
+      headers: apiHeaders(init.headers as Record<string, string> | undefined),
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new CleaningRemoteRequestError("Tempo esgotado ao conectar com o Supabase", 408);
+    }
+    throw error;
+  } finally {
+    if (timeout) window.clearTimeout(timeout);
+  }
 
   if (!response.ok) {
     const details = await response.text();
-    throw new Error(details || `Erro online: ${response.status}`);
+    throw new CleaningRemoteRequestError(parseRemoteErrorMessage(details) || `Erro online: ${response.status}`, response.status, details);
   }
 
   return response;
+}
+
+function parseRemoteErrorMessage(details: string) {
+  if (!details) return "";
+
+  try {
+    const parsed = JSON.parse(details) as { message?: unknown; details?: unknown; hint?: unknown; code?: unknown };
+    const message = typeof parsed.message === "string" ? parsed.message : "";
+    const extraDetails = typeof parsed.details === "string" ? parsed.details : "";
+    const hint = typeof parsed.hint === "string" ? parsed.hint : "";
+    return [message, extraDetails, hint].filter(Boolean).join(" ");
+  } catch {
+    return details;
+  }
 }
 
 function mapOrderRow(row: OrderRow): CleaningOrder {
