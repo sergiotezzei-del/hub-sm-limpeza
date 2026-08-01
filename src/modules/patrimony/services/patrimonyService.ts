@@ -20,6 +20,7 @@ import type {
 } from "../types/patrimony.types";
 
 const REQUEST_TIMEOUT_MS = 12000;
+const RETURN_OPERATION_STORAGE_PREFIX = "hub-sm-patrimony-return:";
 
 type PersonRow = {
   id: string;
@@ -289,25 +290,37 @@ export async function assignPatrimonyItem(input: {
 }
 
 export async function returnPatrimonyAssignment(input: {
+  operationId?: string;
   assignmentId: string;
   quantity: number;
   condition: PatrimonyReturnCondition;
   actorName: string;
   notes?: string;
 }) {
-  return requestJson<Array<{ assignment_id: string; item_status: string; available_quantity: number | string }>>(
-    "rpc/return_patrimony_assignment",
-    {
-      method: "POST",
-      body: JSON.stringify({
-        p_assignment_id: input.assignmentId,
-        p_quantity: input.quantity,
-        p_condition: input.condition,
-        p_actor_name: input.actorName,
-        p_notes: cleanOptional(input.notes),
-      }),
-    },
-  );
+  const operationKey = buildReturnOperationKey(input);
+  const operationId = input.operationId ?? getOrCreateReturnOperationId(operationKey);
+
+  try {
+    const result = await requestJson<Array<{ assignment_id: string; item_status: string; available_quantity: number | string }>>(
+      "rpc/return_patrimony_assignment",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          p_return_movement_id: operationId,
+          p_assignment_id: input.assignmentId,
+          p_quantity: input.quantity,
+          p_condition: input.condition,
+          p_actor_name: input.actorName,
+          p_notes: cleanOptional(input.notes),
+        }),
+      },
+    );
+    clearReturnOperationId(operationKey);
+    return result;
+  } catch (error) {
+    if (!isTransientPatrimonyError(error)) clearReturnOperationId(operationKey);
+    throw error;
+  }
 }
 
 export async function assignPatrimonySpace(input: {
@@ -362,6 +375,7 @@ export function getPatrimonyErrorMessage(error: unknown) {
   if (normalized.includes("PESSOA NAO ENCONTRADA")) return "A pessoa não existe ou está inativa.";
   if (normalized.includes("ESPACO JA OCUPADO")) return "Este espaço já está ocupado.";
   if (normalized.includes("ESPACO NAO DISPONIVEL")) return "Este espaço não está disponível.";
+  if (normalized.includes("IDENTIFICADOR DE DEVOLUCAO REUTILIZADO")) return "Esta devolução foi alterada durante uma tentativa anterior. Atualize os dados e tente novamente.";
   if (normalized.includes("DUPLICATE") || normalized.includes("UNIQUE")) return "Já existe um cadastro com este código ou número de série.";
   if (error instanceof PatrimonyRemoteError && (error.status === 401 || error.status === 403)) {
     return "A sessão de administrador expirou. Entre novamente.";
@@ -412,6 +426,48 @@ async function requestJson<T>(path: string, init: RequestInit = {}): Promise<T> 
 
 function ensureReady() {
   if (!supabaseConfigured) throw new PatrimonyRemoteError(0, "Supabase não configurado.");
+}
+
+function buildReturnOperationKey(input: {
+  assignmentId: string;
+  quantity: number;
+  condition: PatrimonyReturnCondition;
+  actorName: string;
+  notes?: string;
+}) {
+  return [
+    input.assignmentId,
+    String(input.quantity),
+    input.condition,
+    input.actorName.trim(),
+    input.notes?.trim() ?? "",
+  ].join("|");
+}
+
+function getOrCreateReturnOperationId(operationKey: string) {
+  const storageKey = `${RETURN_OPERATION_STORAGE_PREFIX}${operationKey}`;
+  try {
+    const existing = window.sessionStorage.getItem(storageKey);
+    if (existing) return existing;
+    const created = crypto.randomUUID();
+    window.sessionStorage.setItem(storageKey, created);
+    return created;
+  } catch {
+    return crypto.randomUUID();
+  }
+}
+
+function clearReturnOperationId(operationKey: string) {
+  try {
+    window.sessionStorage.removeItem(`${RETURN_OPERATION_STORAGE_PREFIX}${operationKey}`);
+  } catch {
+    // A operação já foi protegida no banco; falha local de limpeza não bloqueia o fluxo.
+  }
+}
+
+function isTransientPatrimonyError(error: unknown) {
+  return error instanceof PatrimonyRemoteError
+    && (error.status === 0 || error.status === 408 || error.status >= 500);
 }
 
 function cleanOptional(value?: string) {
