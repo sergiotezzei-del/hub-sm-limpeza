@@ -60,6 +60,7 @@ import type {
 } from "./types";
 
 const MasterMapScreen = lazy(() => import("./features/master-map/MasterMapScreen").then((module) => ({ default: module.MasterMapScreen })));
+const PatrimonyScreen = lazy(() => import("./modules/patrimony/PatrimonyScreen").then((module) => ({ default: module.PatrimonyScreen })));
 
 type View =
   | "login"
@@ -1359,7 +1360,7 @@ function App() {
   }
 
   function openPatrimonyMenu() {
-    if (!hasAnyCurrentPermission(["patrimonio", "chaves"])) {
+    if (!hasCurrentPermission("patrimonio")) {
       setNotice("Sem permissão para acessar Patrimônio.");
       return;
     }
@@ -1860,7 +1861,20 @@ function App() {
 
       {view === "general-stock-menu" && <GeneralStockMenuScreen permissions={getManagedUserPermissions(currentUser, managedUsers)} onBack={() => setView(getCurrentHomeView())} onLogout={goToLogin} />}
 
-      {view === "patrimony-menu" && <PatrimonyMenuScreen permissions={getManagedUserPermissions(currentUser, managedUsers)} onBack={() => setView(getCurrentHomeView())} onLogout={goToLogin} />}
+      {view === "patrimony-menu" && (
+        hasCurrentPermission("patrimonio") ? (
+          <Suspense fallback={<section className="screen"><TopBar title="Patrimônio" subtitle="Carregando itens, pessoas e alocações." onLogout={goToLogin} /><section className="empty-state"><h2>Carregando Patrimônio...</h2></section></section>}>
+            <PatrimonyScreen
+              actorName={currentManagedUser?.name ?? "Admin Tezzei"}
+              permissions={getManagedUserPermissions(currentUser, managedUsers)}
+              onBack={() => setView(getCurrentHomeView())}
+              onLogout={goToLogin}
+            />
+          </Suspense>
+        ) : (
+          <AccessDeniedScreen onBack={() => setView(getCurrentHomeView())} onLogout={goToLogin} />
+        )
+      )}
 
       {view === "reports-menu" && <ReportsMenuScreen permissions={getManagedUserPermissions(currentUser, managedUsers)} onBack={() => setView(getCurrentHomeView())} onLogout={goToLogin} />}
 
@@ -2692,7 +2706,7 @@ function UserSectorHomeScreen({ user, permissions, notice, onLogout, onOpenClean
     { key: "seguranca", title: "Segurança", detail: "Guardas, rondas, monitoramento, estacionamento e fechamento dos serviços.", enabled: permissions.includes("seguranca") || permissions.includes("guardas") || permissions.includes("estacionamento-consulta") || permissions.includes("estacionamento-cadastro"), onClick: onOpenSecurity, className: "security-card", icon: "security" },
     { key: "manutencao", title: "Manutenção", detail: "Chamados, obras, fornecedores e pendências prediais.", enabled: permissions.includes("manutencao"), onClick: onOpenMaintenance, icon: "settings" },
     { key: "estoque-geral", title: "Estoque Geral", detail: "Materiais diversos, ferramentas, informática e itens de apoio.", enabled: permissions.includes("estoque"), onClick: onOpenGeneralStock, icon: "stock" },
-    { key: "patrimonio", title: "Patrimônio", detail: "Equipamentos, móveis, rede, câmeras, chaves e inventário.", enabled: permissions.includes("patrimonio") || permissions.includes("chaves"), onClick: onOpenPatrimony, icon: "stock" },
+    { key: "patrimonio", title: "Patrimônio", detail: "Equipamentos, móveis, rede, câmeras, chaves e inventário.", enabled: permissions.includes("patrimonio"), onClick: onOpenPatrimony, icon: "stock" },
     { key: "relatorios", title: "Relatórios", detail: "Consultas e relatórios por área operacional.", enabled: permissions.includes("relatorios"), onClick: onOpenReports, icon: "reports" },
   ];
   const visibleCards = cards.filter((card) => card.enabled);
@@ -2717,7 +2731,7 @@ function AdminSectorHomeScreen({ newOrdersCount, onlineEnabled, permissions, onL
     { key: "seguranca", title: "Segurança", detail: "Guardas, rondas, monitoramento, estacionamento e fechamento dos serviços.", enabled: permissions.includes("seguranca"), onClick: onOpenSecurity, className: "security-card", icon: "security" },
     { key: "manutencao", title: "Manutenção", detail: "Chamados, obras, fornecedores e pendências prediais.", enabled: permissions.includes("manutencao"), onClick: onOpenMaintenance, icon: "settings" },
     { key: "estoque-geral", title: "Estoque Geral", detail: "Materiais diversos, ferramentas, informática e itens de apoio.", enabled: permissions.includes("estoque"), onClick: onOpenGeneralStock, icon: "stock" },
-    { key: "patrimonio", title: "Patrimônio", detail: "Equipamentos, móveis, rede, câmeras, chaves e inventário.", enabled: permissions.includes("patrimonio") || permissions.includes("chaves"), onClick: onOpenPatrimony, icon: "stock" },
+    { key: "patrimonio", title: "Patrimônio", detail: "Equipamentos, móveis, rede, câmeras, chaves e inventário.", enabled: permissions.includes("patrimonio"), onClick: onOpenPatrimony, icon: "stock" },
     { key: "relatorios", title: "Relatórios", detail: "Consultas e relatórios por área operacional.", enabled: permissions.includes("relatorios"), onClick: onOpenReports, icon: "reports" },
     { key: "usuarios-permissoes", title: "Usuários & Permissões", detail: "Cadastro de usuários, acessos e permissões do sistema.", enabled: permissions.includes("painel-admin"), onClick: onOpenUsersPermissions, className: "users-card", icon: "users" },
     { key: "status-sistema", title: "Status do Sistema", detail: "Visão rápida dos módulos principais do HUB SM.", enabled: permissions.includes("painel-admin"), onClick: onOpenSystemStatus, className: "users-card", icon: "reports" },
@@ -2918,21 +2932,6 @@ function GeneralStockMenuScreen({ permissions, onBack, onLogout }: { permissions
     { key: "construction", title: "Material de obra", detail: "Materiais de obra e apoio a pequenos reparos.", enabled: canStock, icon: "stock" },
   ];
   return <OperationalSectorScreen title="Estoque Geral" subtitle="Materiais diversos, ferramentas, informática e itens de apoio" cards={cards} onBack={onBack} onLogout={onLogout} />;
-}
-
-function PatrimonyMenuScreen({ permissions, onBack, onLogout }: { permissions: UserPermission[]; onBack: () => void; onLogout: () => void }) {
-  const canPatrimony = permissions.includes("patrimonio");
-  const canKeys = permissions.includes("chaves");
-  const cards: SectorModuleCard[] = [
-    { key: "equipment", title: "Equipamentos", detail: "Equipamentos controlados pelo patrimônio.", enabled: canPatrimony, icon: "stock" },
-    { key: "furniture", title: "Móveis", detail: "Móveis e itens físicos das áreas comuns.", enabled: canPatrimony, icon: "stock" },
-    { key: "printers", title: "Impressoras", detail: "Impressoras, suprimentos e controle patrimonial.", enabled: canPatrimony, icon: "reports" },
-    { key: "cameras", title: "Câmeras", detail: "Câmeras e equipamentos de segurança patrimonial.", enabled: canPatrimony, icon: "camera" },
-    { key: "network", title: "Rede / Wi-Fi", detail: "Rede, Wi-Fi e equipamentos de conectividade.", enabled: canPatrimony, icon: "settings" },
-    { key: "keys", title: "Chaves", detail: "Controle de chaves e acessos físicos.", enabled: canKeys, icon: "security" },
-    { key: "inventory", title: "Inventário patrimonial", detail: "Inventário de bens, locais e responsáveis.", enabled: canPatrimony, icon: "reports" },
-  ];
-  return <OperationalSectorScreen title="Patrimônio" subtitle="Equipamentos, móveis, rede, câmeras, chaves e inventário" cards={cards} onBack={onBack} onLogout={onLogout} />;
 }
 
 function ReportsMenuScreen({ permissions, onBack, onLogout }: { permissions: UserPermission[]; onBack: () => void; onLogout: () => void }) {
