@@ -2934,21 +2934,6 @@ function GeneralStockMenuScreen({ permissions, onBack, onLogout }: { permissions
   return <OperationalSectorScreen title="Estoque Geral" subtitle="Materiais diversos, ferramentas, informática e itens de apoio" cards={cards} onBack={onBack} onLogout={onLogout} />;
 }
 
-function PatrimonyMenuScreen({ permissions, onBack, onLogout }: { permissions: UserPermission[]; onBack: () => void; onLogout: () => void }) {
-  const canPatrimony = permissions.includes("patrimonio");
-  const canKeys = permissions.includes("patrimonio");
-  const cards: SectorModuleCard[] = [
-    { key: "equipment", title: "Equipamentos", detail: "Equipamentos controlados pelo patrimônio.", enabled: canPatrimony, icon: "stock" },
-    { key: "furniture", title: "Móveis", detail: "Móveis e itens físicos das áreas comuns.", enabled: canPatrimony, icon: "stock" },
-    { key: "printers", title: "Impressoras", detail: "Impressoras, suprimentos e controle patrimonial.", enabled: canPatrimony, icon: "reports" },
-    { key: "cameras", title: "Câmeras", detail: "Câmeras e equipamentos de segurança patrimonial.", enabled: canPatrimony, icon: "camera" },
-    { key: "network", title: "Rede / Wi-Fi", detail: "Rede, Wi-Fi e equipamentos de conectividade.", enabled: canPatrimony, icon: "settings" },
-    { key: "keys", title: "Chaves", detail: "Controle de chaves e acessos físicos.", enabled: canKeys, icon: "security" },
-    { key: "inventory", title: "Inventário patrimonial", detail: "Inventário de bens, locais e responsáveis.", enabled: canPatrimony, icon: "reports" },
-  ];
-  return <OperationalSectorScreen title="Patrimônio" subtitle="Equipamentos, móveis, rede, câmeras, chaves e inventário" cards={cards} onBack={onBack} onLogout={onLogout} />;
-}
-
 function ReportsMenuScreen({ permissions, onBack, onLogout }: { permissions: UserPermission[]; onBack: () => void; onLogout: () => void }) {
   const canReports = permissions.includes("relatorios");
   const cards: SectorModuleCard[] = [
