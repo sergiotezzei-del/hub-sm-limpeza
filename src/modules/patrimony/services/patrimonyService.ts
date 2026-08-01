@@ -160,13 +160,19 @@ export async function loadPatrimonyDataset(): Promise<PatrimonyDataset> {
 }
 
 export async function saveOrganizationPerson(draft: OrganizationPersonDraft) {
+  const name = draft.name.trim();
+  const department = draft.department.trim();
+  if (!name) throw new PatrimonyRemoteError(400, "Informe o nome da pessoa.");
+  if (!draft.personType) throw new PatrimonyRemoteError(400, "Informe o tipo da pessoa.");
+  if (!department) throw new PatrimonyRemoteError(400, "Informe o setor da pessoa.");
+
   const id = draft.id ?? crypto.randomUUID();
   const rows = await requestJson<PersonRow[]>("organization_people?on_conflict=id", {
     method: "POST",
     headers: { Prefer: "resolution=merge-duplicates,return=representation" },
     body: JSON.stringify([{
       id,
-      name: draft.name.trim(),
+      name,
       person_type: draft.personType,
       department: draft.department.trim() || "Não informado",
       job_title: cleanOptional(draft.jobTitle),
@@ -181,8 +187,18 @@ export async function saveOrganizationPerson(draft: OrganizationPersonDraft) {
 }
 
 export async function savePatrimonyItem(draft: PatrimonyItemDraft) {
+  const code = draft.code.trim().toUpperCase();
+  const name = draft.name.trim();
+  const category = draft.category.trim();
+  if (!code) throw new PatrimonyRemoteError(400, "Informe o código do item.");
+  if (!name) throw new PatrimonyRemoteError(400, "Informe o nome do item.");
+  if (!category) throw new PatrimonyRemoteError(400, "Informe a categoria do item.");
+
   const id = draft.id ?? crypto.randomUUID();
   const quantity = draft.trackingMode === "individual" ? 1 : Math.max(0, Number(draft.totalQuantity));
+  if (!Number.isFinite(quantity) || quantity <= 0) {
+    throw new PatrimonyRemoteError(400, "Informe uma quantidade total maior que zero.");
+  }
   const current = draft.id
     ? await requestJson<ItemRow[]>(`patrimony_items?id=eq.${encodeURIComponent(draft.id)}&select=*`)
     : [];
@@ -190,6 +206,9 @@ export async function savePatrimonyItem(draft: PatrimonyItemDraft) {
   const usedQuantity = existing
     ? Number(existing.total_quantity) - Number(existing.available_quantity)
     : 0;
+  if (existing && quantity < usedQuantity) {
+    throw new PatrimonyRemoteError(400, `A quantidade total não pode ficar abaixo de ${usedQuantity}. Já existem unidades entregues, em manutenção ou perdidas.`);
+  }
   const availableQuantity = Math.max(0, quantity - usedQuantity);
 
   const rows = await requestJson<ItemRow[]>("patrimony_items?on_conflict=id", {
@@ -197,9 +216,9 @@ export async function savePatrimonyItem(draft: PatrimonyItemDraft) {
     headers: { Prefer: "resolution=merge-duplicates,return=representation" },
     body: JSON.stringify([{
       id,
-      code: draft.code.trim().toUpperCase(),
-      name: draft.name.trim(),
-      category: draft.category.trim(),
+      code,
+      name,
+      category,
       tracking_mode: draft.trackingMode,
       brand: cleanOptional(draft.brand),
       model: cleanOptional(draft.model),
@@ -334,6 +353,8 @@ export async function releasePatrimonySpace(input: {
 export function getPatrimonyErrorMessage(error: unknown) {
   const message = error instanceof Error ? error.message : "Falha desconhecida.";
   const normalized = normalize(message);
+  if (normalized.includes("INFORME ")) return message;
+  if (normalized.includes("QUANTIDADE TOTAL NAO PODE")) return message;
 
   if (normalized.includes("SEM PERMISSAO")) return "A sessão de administrador não está válida. Entre novamente.";
   if (normalized.includes("QUANTIDADE INDISPONIVEL")) return message.replace("Disponivel", "Disponível");
