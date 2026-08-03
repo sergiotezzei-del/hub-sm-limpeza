@@ -6310,3 +6310,220 @@ button:focus-visible,
     width: 100%;
   }
 }
+
+
+/* Perfil acionado pela foto, câmera real, relógio e instalação PWA */
+.profile-avatar-menu {
+  position: relative;
+  width: fit-content;
+  z-index: 45;
+}
+
+.profile-avatar-menu > summary {
+  list-style: none;
+}
+
+.profile-avatar-menu > summary::-webkit-details-marker {
+  display: none;
+}
+
+.profile-avatar-menu-trigger {
+  position: relative;
+  display: block;
+  padding: 0;
+  border: 0;
+  border-radius: 16px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.profile-avatar-menu-trigger:focus-visible {
+  outline: 3px solid rgba(249, 115, 22, 0.34);
+  outline-offset: 4px;
+}
+
+.profile-avatar-menu-trigger .profile-avatar {
+  transition: transform 160ms ease, box-shadow 160ms ease;
+}
+
+.profile-avatar-menu-trigger:hover .profile-avatar,
+.profile-avatar-menu[open] .profile-avatar {
+  transform: translateY(-1px);
+  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.22), var(--shadow-card);
+}
+
+.profile-avatar-camera-badge {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 2px solid #ffffff;
+  border-radius: 999px;
+  color: #ffffff;
+  background: var(--orange);
+  font-size: 1rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.profile-avatar-menu-popover {
+  position: absolute;
+  top: calc(100% + 10px);
+  left: 0;
+  z-index: 90;
+  display: grid;
+  width: min(270px, calc(100vw - 32px));
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 18px 45px rgba(31, 41, 51, 0.22);
+}
+
+.profile-avatar-menu-popover button {
+  min-height: 42px;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 8px;
+  color: var(--ink);
+  background: #ffffff;
+  font-weight: 800;
+  text-align: left;
+}
+
+.profile-avatar-menu-popover button:hover {
+  background: var(--orange-soft);
+}
+
+.profile-avatar-menu-popover .profile-avatar-logout {
+  color: var(--red);
+  border-top: 1px solid var(--line);
+  border-radius: 0 0 8px 8px;
+}
+
+.profile-avatar-file-input {
+  position: fixed;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.profile-camera-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 250;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(15, 23, 42, 0.78);
+}
+
+.profile-camera-dialog {
+  display: grid;
+  width: min(100%, 640px);
+  max-height: calc(100vh - 32px);
+  gap: 12px;
+  overflow: auto;
+  padding: 16px;
+  border-radius: 14px;
+  background: #ffffff;
+}
+
+.profile-camera-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.profile-camera-head div {
+  display: grid;
+  gap: 2px;
+}
+
+.profile-camera-head span,
+.profile-camera-dialog > p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.profile-camera-head > button {
+  width: 42px;
+  height: 42px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--neutral-soft);
+  font-size: 1.4rem;
+}
+
+.profile-camera-video-frame {
+  overflow: hidden;
+  aspect-ratio: 4 / 3;
+  border-radius: 12px;
+  background: #0f172a;
+}
+
+.profile-camera-video-frame video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1);
+}
+
+.profile-camera-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.home-menu-meta {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 9px;
+  min-height: 24px;
+  margin: -6px 2px 12px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 750;
+  text-transform: capitalize;
+}
+
+.home-menu-meta button {
+  min-height: 28px;
+  padding: 5px 9px;
+  border: 1px solid #fed7aa;
+  border-radius: 999px;
+  color: var(--orange-dark);
+  background: var(--orange-soft);
+  font-size: 0.7rem;
+  font-weight: 900;
+}
+
+.guard-profile-shortcut,
+.profile-photo-action {
+  display: none !important;
+}
+
+@media (max-width: 720px) {
+  .profile-avatar-menu-popover {
+    left: 50%;
+    transform: translateX(-18%);
+  }
+
+  .profile-camera-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .home-menu-meta {
+    justify-content: center;
+    margin-top: 0;
+  }
+}
