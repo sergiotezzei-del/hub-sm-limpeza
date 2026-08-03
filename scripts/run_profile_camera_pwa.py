@@ -15,4 +15,15 @@ if updater.SERVICE_WORKER.count(old_cache_fallback) != 1:
     raise RuntimeError("Não foi possível ajustar o fallback do service worker")
 updater.SERVICE_WORKER = updater.SERVICE_WORKER.replace(old_cache_fallback, new_cache_fallback, 1)
 
+original_replace_once = updater.replace_once
+
+
+def replace_with_current_html(text: str, old: str, new: str, label: str) -> str:
+    if label == "status bar do PWA" and text.count(old) == 0:
+        current = '    <meta name="apple-mobile-app-capable" content="yes" />\n'
+        return original_replace_once(text, current, new, label)
+    return original_replace_once(text, old, new, label)
+
+
+updater.replace_once = replace_with_current_html
 updater.main()
