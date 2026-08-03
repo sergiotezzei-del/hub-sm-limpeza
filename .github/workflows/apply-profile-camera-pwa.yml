@@ -1,0 +1,67 @@
+name: Perfil, câmera e PWA
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+    paths:
+      - scripts/apply_profile_camera_pwa.py
+      - scripts/run_profile_camera_pwa.py
+      - .github/workflows/apply-profile-camera-pwa.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply-build-and-clean:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout da branch
+        uses: actions/checkout@v4
+        with:
+          ref: chatgpt/perfil-camera-pwa
+          fetch-depth: 0
+
+      - name: Configurar Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Configurar pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Aplicar alterações
+        run: python scripts/run_profile_camera_pwa.py
+
+      - name: Validar manifesto, ícones e service worker
+        run: |
+          python -m json.tool public/manifest.webmanifest > /dev/null
+          test -s public/icons/icon-192.png
+          test -s public/icons/icon-512.png
+          test -s public/icons/apple-touch-icon.png
+          grep -q 'navigator.serviceWorker.register("/sw.js")' src/main.tsx
+          grep -q 'const CACHE_NAME' public/sw.js
+          grep -q 'beforeinstallprompt' src/pwaInstall.ts
+
+      - name: Instalar dependências
+        run: pnpm install --frozen-lockfile
+
+      - name: Validar build
+        run: pnpm run build
+
+      - name: Remover automação temporária
+        run: rm -f scripts/apply_profile_camera_pwa.py scripts/run_profile_camera_pwa.py .github/workflows/apply-profile-camera-pwa.yml
+
+      - name: Publicar alterações reais na branch
+        run: |
+          git config user.name "Sergio Tezzei"
+          git config user.email "sergiotezzei@gmail.com"
+          git add src/App.tsx src/styles.css src/main.tsx src/components/ProfileAvatarMenu.tsx src/components/HomeMenuMeta.tsx src/pwaInstall.ts index.html public/manifest.webmanifest public/sw.js public/icons/icon.svg public/icons/icon-192.png public/icons/icon-512.png public/icons/apple-touch-icon.png scripts/apply_profile_camera_pwa.py scripts/run_profile_camera_pwa.py .github/workflows/apply-profile-camera-pwa.yml
+          git commit -m "Ajusta perfil, câmera, relógio e instalação PWA"
+          git push origin HEAD:chatgpt/perfil-camera-pwa
