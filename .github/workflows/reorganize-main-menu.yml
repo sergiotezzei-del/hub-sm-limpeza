@@ -1,9 +1,13 @@
 name: Reorganizar menu principal
 
 on:
-  push:
+  pull_request:
     branches:
-      - chatgpt/reorganizar-menu-principal
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
     paths:
       - scripts/reorganize_main_menu.py
       - .github/workflows/reorganize-main-menu.yml
@@ -13,7 +17,6 @@ permissions:
 
 jobs:
   reorganize:
-    if: ${{ !contains(github.event.head_commit.message, '[menu-auto]') }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout da branch
