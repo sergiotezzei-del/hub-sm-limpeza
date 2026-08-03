@@ -728,6 +728,16 @@ function App() {
     }
   }
 
+  function goToMainMenu() {
+    setNotice("");
+    setPreviewEmployeeId(null);
+    setEditingOrderId(null);
+    setEditDraft([]);
+    setDeleteTarget(null);
+    setCleaningPrepOpen(false);
+    setView(getCurrentHomeView());
+  }
+
   function goToLogin() {
     void signOutSupabaseAuth();
     window.sessionStorage.removeItem(SESSION_KEY);
@@ -1695,6 +1705,18 @@ function App() {
     }
   }
 
+  async function handleCurrentUserPhoto(file: File | null) {
+    if (!file || !currentManagedUser) return;
+    try {
+      setNotice("Salvando foto de perfil...");
+      const photoData = await imageFileToDataUrl(file);
+      const saved = await saveManagedUser({ ...currentManagedUser, photoData, updatedAt: new Date().toISOString() });
+      if (saved) setNotice("Foto de perfil salva.");
+    } catch {
+      setNotice("Não foi possível salvar a foto de perfil.");
+    }
+  }
+
   async function handlePhotoChange(employeeId: EmployeeId, file: File | null) {
     if (!file) return;
     try {
@@ -1713,7 +1735,15 @@ function App() {
       {view === "login" && <LoginScreen password={password} loginError={loginError} onPasswordChange={setPassword} onSubmit={handleLogin} />}
 
       {view === "guard" && currentUser && isGuardId(currentUser) && (
-        <GuardUserScreen guardLocalId={currentUser} guardName={guardUserMap[currentUser]} permissions={getManagedUserPermissions(currentUser, managedUsers)} onOpenParking={openSecurityParking} onLogout={goToLogin} />
+        <>
+          <GuardUserScreen guardLocalId={currentUser} guardName={guardUserMap[currentUser]} permissions={getManagedUserPermissions(currentUser, managedUsers)} onOpenParking={openSecurityParking} onLogout={goToLogin} />
+          {currentManagedUser && (
+            <aside className="guard-profile-shortcut" aria-label="Foto de perfil">
+              <ProfileAvatar name={currentManagedUser.name} photoData={currentManagedUser.photoData} />
+              <ProfilePhotoAction onFileChange={handleCurrentUserPhoto} compact />
+            </aside>
+          )}
+        </>
       )}
 
       {view === "user-home" && currentManagedUser && (
@@ -1729,6 +1759,7 @@ function App() {
           onOpenAssetsMaterials={openAssetsMaterialsMenu}
           onOpenHubAdministration={openHubAdministrationMenu}
           onOpenSecurity={openSecurityMenu}
+          onProfilePhotoChange={handleCurrentUserPhoto}
         />
       )}
 
@@ -1861,10 +1892,13 @@ function App() {
 
       {view === "admin" && (
         <AdminSectorHomeScreen
+          user={currentManagedUser ?? defaultManagedUsers[0]}
+          notice={notice}
           newOrdersCount={newOrders.length}
           onlineEnabled={onlineEnabled}
           permissions={getManagedUserPermissions(currentUser, managedUsers)}
           onLogout={goToLogin}
+          onProfilePhotoChange={handleCurrentUserPhoto}
           onOpenCleaningDashboard={openCleaningDashboard}
           onOpenCopaCafe={openCopaCafeMenu}
           onOpenSecurity={openSecurityMenu}
@@ -2084,6 +2118,13 @@ function App() {
         />
       )}
 
+      {currentUser && view !== "login" && view !== getCurrentHomeView() && (
+        <button className="global-main-menu-button" type="button" onClick={goToMainMenu} aria-label="Voltar ao menu principal" title="Voltar ao menu principal">
+          <span className="global-main-menu-icon" aria-hidden="true">☰</span>
+          <span>Menu principal</span>
+        </button>
+      )}
+
       {deleteTarget && <DeleteDialog order={deleteTarget} onCancel={() => setDeleteTarget(null)} onConfirm={confirmDeleteOrder} />}
       {cleaningPrepOpen && <CleaningPrepDialog running={cleaningPrepRunning} onCancel={() => setCleaningPrepOpen(false)} onConfirm={confirmCleaningPreparation} />}
 
@@ -2164,7 +2205,7 @@ function EmployeeHeader({ employeeId, profile, adminPreview, onLogout, onBackToP
       actions={(
         <>
           {adminPreview && <button className="ghost-button" type="button" onClick={onBackToProfiles}>Voltar</button>}
-          <label className="photo-button">Cadastrar / alterar foto<input type="file" accept="image/*" capture="environment" onChange={handleFileChange} /></label>
+          <ProfilePhotoAction onFileChange={(file) => onProfilePhotoChange(employeeId, file)} />
           <button className="logout-button" type="button" onClick={onLogout}>Sair</button>
         </>
       )}
@@ -2674,6 +2715,16 @@ function ProfileAvatar({ name, photoData, large = false }: { name: string; photo
   return <div className={large ? "user-avatar profile-avatar large" : "user-avatar profile-avatar"}>{photoData ? <img src={photoData} alt={`Foto de ${name}`} /> : <span>{getInitials(name)}</span>}</div>;
 }
 
+function ProfilePhotoAction({ onFileChange, compact = false }: { onFileChange: (file: File | null) => void | Promise<void>; compact?: boolean }) {
+  return (
+    <label className={compact ? "photo-button profile-photo-action compact" : "photo-button profile-photo-action"}>
+      <AppIcon name="camera" size="sm" className="action-icon" />
+      <span>{compact ? "Foto" : "Cadastrar / alterar foto"}</span>
+      <input type="file" accept="image/*" capture="environment" onChange={(event) => { void onFileChange(event.target.files?.[0] ?? null); event.target.value = ""; }} />
+    </label>
+  );
+}
+
 function ProfileHero({ name, role, department, subtitle, photoData, actions }: { name: string; role: string; department: string; subtitle?: string; photoData?: string; actions?: ReactNode }) {
   return (
     <header className="profile-hero">
@@ -2738,10 +2789,10 @@ function AccessDeniedScreen({ onBack, onLogout }: { onBack: () => void; onLogout
   );
 }
 
-function UserSectorHomeScreen({ user, permissions, notice, onLogout, onOpenCleaningDashboard, onOpenStockExit, onOpenCopaCafe, onOpenMaintenance, onOpenAssetsMaterials, onOpenHubAdministration, onOpenSecurity }: { user: ManagedUser; permissions: UserPermission[]; notice: string; onLogout: () => void; onOpenCleaningDashboard: () => void; onOpenStockExit: () => void; onOpenCopaCafe: () => void; onOpenMaintenance: () => void; onOpenAssetsMaterials: () => void; onOpenHubAdministration: () => void; onOpenSecurity: () => void }) {
+function UserSectorHomeScreen({ user, permissions, notice, onLogout, onOpenCleaningDashboard, onOpenStockExit, onOpenCopaCafe, onOpenMaintenance, onOpenAssetsMaterials, onOpenHubAdministration, onOpenSecurity, onProfilePhotoChange }: { user: ManagedUser; permissions: UserPermission[]; notice: string; onLogout: () => void; onOpenCleaningDashboard: () => void; onOpenStockExit: () => void; onOpenCopaCafe: () => void; onOpenMaintenance: () => void; onOpenAssetsMaterials: () => void; onOpenHubAdministration: () => void; onOpenSecurity: () => void; onProfilePhotoChange: (file: File | null) => void | Promise<void> }) {
   const canCleaning = permissions.includes("limpeza") || permissions.includes("saida-estoque");
   const operationCards: SectorModuleCard[] = [
-    { key: "limpeza", title: "Limpeza", detail: "Rotinas, produtos, pedidos e histórico da equipe.", enabled: canCleaning, onClick: permissions.includes("limpeza") ? onOpenCleaningDashboard : onOpenStockExit, className: "cleaning-card", icon: "cleaning" },
+    { key: "limpeza", title: "Limpeza", detail: "Rotinas, produtos, pedidos e histórico da equipe.", enabled: canCleaning, onClick: permissions.includes("limpeza") ? onOpenCleaningDashboard : onOpenStockExit, icon: "cleaning" },
     { key: "copa-cafe", title: "Copa & Café", detail: "Café, água, bebidas e insumos da copa.", enabled: permissions.includes("cafe") || permissions.includes("agua"), onClick: onOpenCopaCafe, icon: "coffee" },
     { key: "seguranca", title: "Segurança", detail: "Guardas, rondas, estacionamento e monitoramento.", enabled: permissions.includes("seguranca") || permissions.includes("guardas") || permissions.includes("estacionamento-consulta") || permissions.includes("estacionamento-cadastro"), onClick: onOpenSecurity, className: "security-card", icon: "security" },
     { key: "manutencao", title: "Manutenção", detail: "Chamados, obras, fornecedores e pendências prediais.", enabled: permissions.includes("manutencao"), onClick: onOpenMaintenance, icon: "settings" },
@@ -2756,7 +2807,14 @@ function UserSectorHomeScreen({ user, permissions, notice, onLogout, onOpenClean
 
   return (
     <section className="screen">
-      <ProfileHero name={user.name} role={user.jobTitle} department={user.department} photoData={user.photoData} subtitle={user.userType} actions={<button className="logout-button" type="button" onClick={onLogout}>Sair</button>} />
+      <ProfileHero
+        name={user.name}
+        role={user.jobTitle}
+        department={user.department}
+        photoData={user.photoData}
+        subtitle={user.userType}
+        actions={<><ProfilePhotoAction onFileChange={onProfilePhotoChange} /><button className="logout-button" type="button" onClick={onLogout}>Sair</button></>}
+      />
       {notice && <p className="notice-message">{notice}</p>}
       {visibleOperationCards.length > 0 && (
         <section className="section-block hub-home-section">
@@ -2779,9 +2837,9 @@ function UserSectorHomeScreen({ user, permissions, notice, onLogout, onOpenClean
   );
 }
 
-function AdminSectorHomeScreen({ newOrdersCount, onlineEnabled, permissions, onLogout, onOpenCleaningDashboard, onOpenCopaCafe, onOpenSecurity, onOpenMaintenance, onOpenAssetsMaterials, onOpenHubAdministration }: { newOrdersCount: number; onlineEnabled: boolean; permissions: UserPermission[]; onLogout: () => void; onOpenCleaningDashboard: () => void; onOpenCopaCafe: () => void; onOpenSecurity: () => void; onOpenMaintenance: () => void; onOpenAssetsMaterials: () => void; onOpenHubAdministration: () => void }) {
+function AdminSectorHomeScreen({ user, notice, newOrdersCount, onlineEnabled, permissions, onLogout, onProfilePhotoChange, onOpenCleaningDashboard, onOpenCopaCafe, onOpenSecurity, onOpenMaintenance, onOpenAssetsMaterials, onOpenHubAdministration }: { user: ManagedUser; notice: string; newOrdersCount: number; onlineEnabled: boolean; permissions: UserPermission[]; onLogout: () => void; onProfilePhotoChange: (file: File | null) => void | Promise<void>; onOpenCleaningDashboard: () => void; onOpenCopaCafe: () => void; onOpenSecurity: () => void; onOpenMaintenance: () => void; onOpenAssetsMaterials: () => void; onOpenHubAdministration: () => void }) {
   const operationCards: SectorModuleCard[] = [
-    { key: "limpeza", title: "Limpeza", detail: "Rotinas, produtos, pedidos e histórico da equipe.", enabled: permissions.includes("limpeza"), onClick: onOpenCleaningDashboard, className: "cleaning-card", attention: newOrdersCount > 0 ? `${newOrdersCount} pedido(s) pendente(s)` : undefined, icon: "cleaning" },
+    { key: "limpeza", title: "Limpeza", detail: "Rotinas, produtos, pedidos e histórico da equipe.", enabled: permissions.includes("limpeza"), onClick: onOpenCleaningDashboard, icon: "cleaning" },
     { key: "copa-cafe", title: "Copa & Café", detail: "Café, água, bebidas e insumos da copa.", enabled: permissions.includes("cafe") || permissions.includes("agua"), onClick: onOpenCopaCafe, icon: "coffee" },
     { key: "seguranca", title: "Segurança", detail: "Guardas, rondas, estacionamento e monitoramento.", enabled: permissions.includes("seguranca") || permissions.includes("guardas") || permissions.includes("estacionamento-consulta") || permissions.includes("estacionamento-cadastro"), onClick: onOpenSecurity, className: "security-card", icon: "security" },
     { key: "manutencao", title: "Manutenção", detail: "Chamados, obras, fornecedores e pendências prediais.", enabled: permissions.includes("manutencao"), onClick: onOpenMaintenance, icon: "settings" },
@@ -2795,7 +2853,15 @@ function AdminSectorHomeScreen({ newOrdersCount, onlineEnabled, permissions, onL
 
   return (
     <section className="screen">
-      <TopBar title="Painel Tezzei" subtitle={onlineEnabled ? "Central Operacional HUB SM — online" : "Central Operacional HUB SM — local"} onLogout={onLogout} />
+      <ProfileHero
+        name={user.name}
+        role={user.jobTitle}
+        department={user.department}
+        photoData={user.photoData}
+        subtitle={onlineEnabled ? "Central Operacional HUB SM — online" : "Central Operacional HUB SM — local"}
+        actions={<><ProfilePhotoAction onFileChange={onProfilePhotoChange} /><button className="logout-button" type="button" onClick={onLogout}>Sair</button></>}
+      />
+      {notice && <p className="notice-message">{notice}</p>}
       {visibleOperationCards.length > 0 && (
         <section className="section-block hub-home-section">
           <h2>Operação</h2>
