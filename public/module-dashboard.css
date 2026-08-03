@@ -54,11 +54,15 @@
   line-height: 1.2 !important;
 }
 
-.cleaning-card,
 .cleaning-control-card:first-child {
   grid-column: 1 / -1 !important;
   min-height: 118px !important;
   border-left-color: #f97316 !important;
+}
+
+.cleaning-card {
+  grid-column: auto !important;
+  min-height: 104px !important;
 }
 
 .needs-attention {
