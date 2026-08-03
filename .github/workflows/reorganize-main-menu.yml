@@ -1,0 +1,53 @@
+name: Reorganizar menu principal
+
+on:
+  push:
+    branches:
+      - chatgpt/reorganizar-menu-principal
+    paths:
+      - scripts/reorganize_main_menu.py
+      - .github/workflows/reorganize-main-menu.yml
+
+permissions:
+  contents: write
+
+jobs:
+  reorganize:
+    if: ${{ !contains(github.event.head_commit.message, '[menu-auto]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout da branch
+        uses: actions/checkout@v4
+        with:
+          ref: chatgpt/reorganizar-menu-principal
+          fetch-depth: 0
+
+      - name: Configurar Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Configurar pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Aplicar arquitetura do menu
+        run: python scripts/reorganize_main_menu.py
+
+      - name: Instalar dependências
+        run: pnpm install --frozen-lockfile
+
+      - name: Validar build
+        run: pnpm run build
+
+      - name: Remover automação temporária
+        run: rm -f scripts/reorganize_main_menu.py .github/workflows/reorganize-main-menu.yml
+
+      - name: Publicar alterações na branch
+        run: |
+          git config user.name "Sergio Tezzei"
+          git config user.email "sergiotezzei@gmail.com"
+          git add src/App.tsx scripts/reorganize_main_menu.py .github/workflows/reorganize-main-menu.yml
+          git commit -m "Reorganiza menu principal do HUB [menu-auto]"
+          git push origin HEAD:chatgpt/reorganizar-menu-principal
