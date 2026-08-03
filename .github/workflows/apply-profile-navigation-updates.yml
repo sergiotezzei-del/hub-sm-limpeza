@@ -10,6 +10,7 @@ on:
       - reopened
     paths:
       - scripts/apply_profile_navigation_updates.py
+      - scripts/run_profile_navigation_updates.py
       - .github/workflows/apply-profile-navigation-updates.yml
 
 permissions:
@@ -36,7 +37,7 @@ jobs:
           version: 10
 
       - name: Aplicar alterações
-        run: python scripts/apply_profile_navigation_updates.py
+        run: python scripts/run_profile_navigation_updates.py
 
       - name: Instalar dependências
         run: pnpm install --frozen-lockfile
@@ -45,12 +46,12 @@ jobs:
         run: pnpm run build
 
       - name: Remover automação temporária
-        run: rm -f scripts/apply_profile_navigation_updates.py .github/workflows/apply-profile-navigation-updates.yml
+        run: rm -f scripts/apply_profile_navigation_updates.py scripts/run_profile_navigation_updates.py .github/workflows/apply-profile-navigation-updates.yml
 
       - name: Publicar alterações na branch
         run: |
           git config user.name "Sergio Tezzei"
           git config user.email "sergiotezzei@gmail.com"
-          git add src/App.tsx src/styles.css public/module-dashboard.css scripts/apply_profile_navigation_updates.py .github/workflows/apply-profile-navigation-updates.yml
+          git add src/App.tsx src/styles.css public/module-dashboard.css scripts/apply_profile_navigation_updates.py scripts/run_profile_navigation_updates.py .github/workflows/apply-profile-navigation-updates.yml
           git commit -m "Padroniza cards, foto de perfil e atalho do menu [profile-nav-auto]"
           git push origin HEAD:chatgpt/padroniza-menu-perfil
