@@ -10,6 +10,7 @@ on:
       - reopened
     paths:
       - scripts/reorganize_main_menu.py
+      - scripts/run_reorganize_main_menu.py
       - .github/workflows/reorganize-main-menu.yml
 
 permissions:
@@ -36,7 +37,7 @@ jobs:
           version: 10
 
       - name: Aplicar arquitetura do menu
-        run: python scripts/reorganize_main_menu.py
+        run: python scripts/run_reorganize_main_menu.py
 
       - name: Instalar dependências
         run: pnpm install --frozen-lockfile
@@ -45,12 +46,12 @@ jobs:
         run: pnpm run build
 
       - name: Remover automação temporária
-        run: rm -f scripts/reorganize_main_menu.py .github/workflows/reorganize-main-menu.yml
+        run: rm -f scripts/reorganize_main_menu.py scripts/run_reorganize_main_menu.py .github/workflows/reorganize-main-menu.yml
 
       - name: Publicar alterações na branch
         run: |
           git config user.name "Sergio Tezzei"
           git config user.email "sergiotezzei@gmail.com"
-          git add src/App.tsx scripts/reorganize_main_menu.py .github/workflows/reorganize-main-menu.yml
+          git add src/App.tsx scripts/reorganize_main_menu.py scripts/run_reorganize_main_menu.py .github/workflows/reorganize-main-menu.yml
           git commit -m "Reorganiza menu principal do HUB [menu-auto]"
           git push origin HEAD:chatgpt/reorganizar-menu-principal
