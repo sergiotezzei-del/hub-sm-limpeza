@@ -1,20 +1,41 @@
 {
+  "id": "/",
   "name": "HUB Santa Maria",
-  "short_name": "HUB Santa Maria",
+  "short_name": "HUB SM",
   "description": "Central Operacional HUB Santa Maria",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "orientation": "portrait",
+  "display_override": [
+    "standalone",
+    "minimal-ui"
+  ],
+  "orientation": "any",
   "background_color": "#fff7ed",
   "theme_color": "#f97316",
-  "categories": ["business", "productivity"],
+  "categories": [
+    "business",
+    "productivity"
+  ],
+  "prefer_related_applications": false,
   "icons": [
     {
-      "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAMAAAADACAYAAABS3GwHAAABxUlEQVR42u3VsQ3CMBRF0e+YGZwZmIKGgoZB6JCcJhVMTEfhNGYHlCbyOQNEypOvfmq19IBBTSZAACAAEAAIAAQAAgABgABAACAAEAAIAAQAAgABgABAACAAEAAIAAQAAgABgABAACAAEAAIAAQAAgABgABAACAAEAAIAAQAAgABgABAACAAEAAIAAQAAgABgABAACAACAAEAACgHGdRv3xfFsjX59eQERsy+wCgABAACAAEAAIAAQAAgABgABAACAAEAAcVWq1dDPsL9/fkS+PXb61vc4R349RXQAQAAgABAACAAGAAEAAIAAQAAgABAACAAGAAEAAIAAEAAIAAYAAQAAgABAACAAEAAIAAYAAQAAgABAACAAEAAIAAYAAQAAgABAACAAEAAIAAYAAQAAgABAACAD+lVot3Qy4ACAAEAAIAAQAAgABgABAACAAEAAIAAQAAgABgABAACAAEAAIAAQAAgABgABAACAAEAAIAAQAAgABgABAACAAEAAIAAQAAgABgABAACAAEAAIAAQAAgABgABAACAABAACAAGAAEAAIAAQAAgABAACAAGAAEAAIAAQABzSDxetEQOD+QaRAAAAAElFTkSuQmCC",
+      "src": "/icons/icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
   ]
 }

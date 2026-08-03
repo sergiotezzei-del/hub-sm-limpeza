@@ -1,6 +1,8 @@
 import { ChangeEvent, FormEvent, lazy, ReactNode, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { AppIcon, type AppIconName } from "./components/AppIcon";
+import { HomeMenuMeta } from "./components/HomeMenuMeta";
+import { ProfileAvatarMenu } from "./components/ProfileAvatarMenu";
 import { activities, employees } from "./data";
 import type { MasterMapTargetScreen } from "./features/master-map/masterMapTypes";
 import { GuardShiftPanel, GuardSyncDiagnosticPanel } from "./modules/security/components/GuardShift";
@@ -1735,15 +1737,15 @@ function App() {
       {view === "login" && <LoginScreen password={password} loginError={loginError} onPasswordChange={setPassword} onSubmit={handleLogin} />}
 
       {view === "guard" && currentUser && isGuardId(currentUser) && (
-        <>
-          <GuardUserScreen guardLocalId={currentUser} guardName={guardUserMap[currentUser]} permissions={getManagedUserPermissions(currentUser, managedUsers)} onOpenParking={openSecurityParking} onLogout={goToLogin} />
-          {currentManagedUser && (
-            <aside className="guard-profile-shortcut" aria-label="Foto de perfil">
-              <ProfileAvatar name={currentManagedUser.name} photoData={currentManagedUser.photoData} />
-              <ProfilePhotoAction onFileChange={handleCurrentUserPhoto} compact />
-            </aside>
-          )}
-        </>
+        <GuardUserScreen
+          guardLocalId={currentUser}
+          guardName={guardUserMap[currentUser]}
+          permissions={getManagedUserPermissions(currentUser, managedUsers)}
+          photoData={currentManagedUser?.photoData}
+          onProfilePhotoChange={handleCurrentUserPhoto}
+          onOpenParking={openSecurityParking}
+          onLogout={goToLogin}
+        />
       )}
 
       {view === "user-home" && currentManagedUser && (
@@ -2157,6 +2159,7 @@ function EmployeeScreen({ employeeId, profile, notice, offlinePendingCount, offl
   return (
     <section className="screen">
       <EmployeeHeader employeeId={employeeId} profile={profile} adminPreview={adminPreview} onLogout={onLogout} onBackToProfiles={onBackToProfiles} onProfilePhotoChange={onProfilePhotoChange} />
+      <HomeMenuMeta />
       {notice && <p className="success-message">{notice}</p>}
       <OfflinePendingNotice count={offlinePendingCount} syncing={offlineSyncing} onSync={onSyncOffline} />
       <section className="info-grid work-schedule-card" aria-label="Horários">
@@ -2191,10 +2194,6 @@ function EmployeeScreen({ employeeId, profile, notice, offlinePendingCount, offl
 
 function EmployeeHeader({ employeeId, profile, adminPreview, onLogout, onBackToProfiles, onProfilePhotoChange }: { employeeId: EmployeeId; profile: EmployeeProfile; adminPreview: boolean; onLogout: () => void; onBackToProfiles: () => void; onProfilePhotoChange: (employeeId: EmployeeId, file: File | null) => void }) {
   const employee = employees[employeeId];
-  function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
-    onProfilePhotoChange(employeeId, event.target.files?.[0] ?? null);
-    event.target.value = "";
-  }
   return (
     <ProfileHero
       name={employee.name}
@@ -2202,13 +2201,9 @@ function EmployeeHeader({ employeeId, profile, adminPreview, onLogout, onBackToP
       department="Limpeza"
       subtitle={adminPreview ? "Visualização pelo Painel Tezzei" : employee.schedule}
       photoData={profile?.photoData}
-      actions={(
-        <>
-          {adminPreview && <button className="ghost-button" type="button" onClick={onBackToProfiles}>Voltar</button>}
-          <ProfilePhotoAction onFileChange={(file) => onProfilePhotoChange(employeeId, file)} />
-          <button className="logout-button" type="button" onClick={onLogout}>Sair</button>
-        </>
-      )}
+      onProfilePhotoChange={(file) => onProfilePhotoChange(employeeId, file)}
+      onLogout={onLogout}
+      actions={adminPreview ? <button className="ghost-button" type="button" onClick={onBackToProfiles}>Voltar</button> : undefined}
     />
   );
 }
@@ -2715,20 +2710,15 @@ function ProfileAvatar({ name, photoData, large = false }: { name: string; photo
   return <div className={large ? "user-avatar profile-avatar large" : "user-avatar profile-avatar"}>{photoData ? <img src={photoData} alt={`Foto de ${name}`} /> : <span>{getInitials(name)}</span>}</div>;
 }
 
-function ProfilePhotoAction({ onFileChange, compact = false }: { onFileChange: (file: File | null) => void | Promise<void>; compact?: boolean }) {
-  return (
-    <label className={compact ? "photo-button profile-photo-action compact" : "photo-button profile-photo-action"}>
-      <AppIcon name="camera" size="sm" className="action-icon" />
-      <span>{compact ? "Foto" : "Cadastrar / alterar foto"}</span>
-      <input type="file" accept="image/*" capture="environment" onChange={(event) => { void onFileChange(event.target.files?.[0] ?? null); event.target.value = ""; }} />
-    </label>
-  );
-}
-
-function ProfileHero({ name, role, department, subtitle, photoData, actions }: { name: string; role: string; department: string; subtitle?: string; photoData?: string; actions?: ReactNode }) {
+function ProfileHero({ name, role, department, subtitle, photoData, actions, onProfilePhotoChange, onLogout }: { name: string; role: string; department: string; subtitle?: string; photoData?: string; actions?: ReactNode; onProfilePhotoChange?: (file: File | null) => void | Promise<void>; onLogout?: () => void }) {
+  const interactiveAvatar = onProfilePhotoChange && onLogout;
   return (
     <header className="profile-hero">
-      <ProfileAvatar name={name} photoData={photoData} large />
+      {interactiveAvatar ? (
+        <ProfileAvatarMenu name={name} photoData={photoData} large onPhotoChange={onProfilePhotoChange} onLogout={onLogout} />
+      ) : (
+        <ProfileAvatar name={name} photoData={photoData} large />
+      )}
       <div className="profile-hero-copy">
         <p className="eyebrow">{department}</p>
         <h1>{name}</h1>
@@ -2813,8 +2803,10 @@ function UserSectorHomeScreen({ user, permissions, notice, onLogout, onOpenClean
         department={user.department}
         photoData={user.photoData}
         subtitle={user.userType}
-        actions={<><ProfilePhotoAction onFileChange={onProfilePhotoChange} /><button className="logout-button" type="button" onClick={onLogout}>Sair</button></>}
+        onProfilePhotoChange={onProfilePhotoChange}
+        onLogout={onLogout}
       />
+      <HomeMenuMeta />
       {notice && <p className="notice-message">{notice}</p>}
       {visibleOperationCards.length > 0 && (
         <section className="section-block hub-home-section">
@@ -2859,8 +2851,10 @@ function AdminSectorHomeScreen({ user, notice, newOrdersCount, onlineEnabled, pe
         department={user.department}
         photoData={user.photoData}
         subtitle={onlineEnabled ? "Central Operacional HUB SM — online" : "Central Operacional HUB SM — local"}
-        actions={<><ProfilePhotoAction onFileChange={onProfilePhotoChange} /><button className="logout-button" type="button" onClick={onLogout}>Sair</button></>}
+        onProfilePhotoChange={onProfilePhotoChange}
+        onLogout={onLogout}
       />
+      <HomeMenuMeta />
       {notice && <p className="notice-message">{notice}</p>}
       {visibleOperationCards.length > 0 && (
         <section className="section-block hub-home-section">
@@ -5753,14 +5747,29 @@ function SecurityGuardDetailScreen({ guardLocalId, guardName, onBack, onLogout }
   return <section className="screen"><ProfileHero name={guardName} role="Guarda Santa Maria" department="Segurança" subtitle="Escala de horário" actions={<><button className="ghost-button" type="button" onClick={onBack}>Voltar para Guardas</button><button className="logout-button" type="button" onClick={onLogout}>Sair</button></>} /><GuardShiftPanel guardLocalId={guardLocalId} guardName={guardName} todayShift={todayShift} nextShift={nextShift} canManage={false} showTechnicalSync /><section className="shift-section">{summary ? <ShiftCard shift={summary.shift} label={summary.label} featured /> : <article className="shift-card featured"><span>ESCALA</span><strong>Sem próximo plantão lançado</strong><p>Atualize a escala do mês.</p></article>}<h2>Próximos plantões</h2><div className="shift-list">{upcomingShifts.length > 0 ? upcomingShifts.map((shift) => <ShiftCard key={`${shift.startDate}-${shift.startTime}-${shift.endDate}-${shift.endTime}`} shift={shift} />) : <article className="shift-card"><strong>Sem próximos plantões</strong><p>Atualize a escala do mês.</p></article>}</div></section></section>;
 }
 
-function GuardUserScreen({ guardLocalId, guardName, permissions, onOpenParking, onLogout }: { guardLocalId: GuardId; guardName: GuardName; permissions: UserPermission[]; onOpenParking: () => void; onLogout: () => void }) {
+function GuardUserScreen({ guardLocalId, guardName, permissions, photoData, onProfilePhotoChange, onOpenParking, onLogout }: { guardLocalId: GuardId; guardName: GuardName; permissions: UserPermission[]; photoData?: string; onProfilePhotoChange: (file: File | null) => void | Promise<void>; onOpenParking: () => void; onLogout: () => void }) {
   const summary = getGuardSummaryShift(guardName);
   const upcomingShifts = getUpcomingGuardShifts(guardName);
   const todayShift = getGuardTodayShift(guardName);
   const nextShift = getNextGuardFutureShift(guardName);
   const canParkingSearch = permissions.includes("estacionamento-consulta") || permissions.includes("estacionamento-cadastro") || permissions.includes("painel-admin");
 
-  return <section className="screen"><ProfileHero name={guardName} role="Guarda Santa Maria" department="Segurança" subtitle="Escala de horário" actions={<button className="logout-button" type="button" onClick={onLogout}>Sair</button>} /><GuardShiftPanel guardLocalId={guardLocalId} guardName={guardName} todayShift={todayShift} nextShift={nextShift} canManage /><section className="admin-grid security-grid guard-access-grid" aria-label="Acessos do guarda"><ModuleCard title="Rondas / QR Code" detail="Registrar pontos durante o serviço ativo" enabled className="security-card" icon="qr" />{canParkingSearch && <ModuleCard title="Estacionamento" detail="Pesquisar veículo no pátio" enabled onClick={onOpenParking} className="security-card" icon="parking" />}</section><section className="shift-section">{summary ? <ShiftCard shift={summary.shift} label={summary.label} featured /> : <article className="shift-card featured"><span>ESCALA</span><strong>Sem próximo plantão lançado</strong><p>Atualize a escala do mês.</p></article>}<h2>Próximos plantões</h2><div className="shift-list">{upcomingShifts.length > 0 ? upcomingShifts.map((shift) => <ShiftCard key={`${shift.startDate}-${shift.startTime}-${shift.endDate}-${shift.endTime}`} shift={shift} />) : <article className="shift-card"><strong>Sem próximos plantões</strong><p>Atualize a escala do mês.</p></article>}</div></section></section>;
+  return (
+    <section className="screen">
+      <ProfileHero name={guardName} role="Guarda Santa Maria" department="Segurança" subtitle="Escala de horário" photoData={photoData} onProfilePhotoChange={onProfilePhotoChange} onLogout={onLogout} />
+      <HomeMenuMeta />
+      <GuardShiftPanel guardLocalId={guardLocalId} guardName={guardName} todayShift={todayShift} nextShift={nextShift} canManage />
+      <section className="admin-grid security-grid guard-access-grid" aria-label="Acessos do guarda">
+        <ModuleCard title="Rondas / QR Code" detail="Registrar pontos durante o serviço ativo" enabled className="security-card" icon="qr" />
+        {canParkingSearch && <ModuleCard title="Estacionamento" detail="Pesquisar veículo no pátio" enabled onClick={onOpenParking} className="security-card" icon="parking" />}
+      </section>
+      <section className="shift-section">
+        {summary ? <ShiftCard shift={summary.shift} label={summary.label} featured /> : <article className="shift-card featured"><span>ESCALA</span><strong>Sem próximo plantão lançado</strong><p>Atualize a escala do mês.</p></article>}
+        <h2>Próximos plantões</h2>
+        <div className="shift-list">{upcomingShifts.length > 0 ? upcomingShifts.map((shift) => <ShiftCard key={`${shift.startDate}-${shift.startTime}-${shift.endDate}-${shift.endTime}`} shift={shift} />) : <article className="shift-card"><strong>Sem próximos plantões</strong><p>Atualize a escala do mês.</p></article>}</div>
+      </section>
+    </section>
+  );
 }
 
 function TodayDutyCard() {
