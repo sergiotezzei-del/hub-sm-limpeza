@@ -1,0 +1,56 @@
+name: Padronizar perfil e navegação
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+    paths:
+      - scripts/apply_profile_navigation_updates.py
+      - .github/workflows/apply-profile-navigation-updates.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout da branch
+        uses: actions/checkout@v4
+        with:
+          ref: chatgpt/padroniza-menu-perfil
+          fetch-depth: 0
+
+      - name: Configurar Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Configurar pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Aplicar alterações
+        run: python scripts/apply_profile_navigation_updates.py
+
+      - name: Instalar dependências
+        run: pnpm install --frozen-lockfile
+
+      - name: Validar build
+        run: pnpm run build
+
+      - name: Remover automação temporária
+        run: rm -f scripts/apply_profile_navigation_updates.py .github/workflows/apply-profile-navigation-updates.yml
+
+      - name: Publicar alterações na branch
+        run: |
+          git config user.name "Sergio Tezzei"
+          git config user.email "sergiotezzei@gmail.com"
+          git add src/App.tsx src/styles.css public/module-dashboard.css scripts/apply_profile_navigation_updates.py .github/workflows/apply-profile-navigation-updates.yml
+          git commit -m "Padroniza cards, foto de perfil e atalho do menu [profile-nav-auto]"
+          git push origin HEAD:chatgpt/padroniza-menu-perfil
