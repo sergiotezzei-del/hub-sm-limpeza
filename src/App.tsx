@@ -1215,6 +1215,17 @@ function App() {
     }
   }
 
+  async function downloadOrderWord(order: CleaningOrder) {
+    try {
+      const { downloadCleaningOrderWord } = await import("./modules/cleaning/services/cleaningOrderDocument");
+      await downloadCleaningOrderWord(order, inventoryProducts);
+      setNotice("Documento Word pronto para enviar à Thelma.");
+    } catch (error) {
+      console.error("Erro ao gerar pedido em Word:", error);
+      setNotice("Não foi possível gerar o documento Word agora.");
+    }
+  }
+
   function startEdit(order: CleaningOrder) {
     setEditingOrderId(order.id);
     setEditDraft(order.itens.map((item) => ({ ...item })));
@@ -2096,6 +2107,8 @@ function App() {
           }}
           onLogout={goToLogin}
           onCopyOrder={copyOrder}
+          onDownloadWord={downloadOrderWord}
+          canDownloadWord={hasCurrentPermission("painel-admin")}
           onStartEdit={startEdit}
           onCancelEdit={() => {
             setEditingOrderId(null);
@@ -2117,6 +2130,8 @@ function App() {
           onBack={() => setView("cleaning-dashboard")}
           onLogout={goToLogin}
           onCopyOrder={copyOrder}
+          onDownloadWord={downloadOrderWord}
+          canDownloadWord={hasCurrentPermission("painel-admin")}
         />
       )}
 
@@ -5811,12 +5826,12 @@ function ProfilesScreen({ profiles, notice, onBack, onLogout, onPreviewEmployee,
   return <section className="screen"><TopBar title="Perfis da Equipe de Limpeza" subtitle="Visualizar telas sem digitar senha" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}>Voltar para Limpeza</button>{notice && <p className="success-message">{notice}</p>}<section className="profile-grid">{employeeIds.map((employeeId) => { const employee = employees[employeeId]; const profile = profiles[employeeId]; return <article className="profile-card" key={employeeId}><ProfileAvatar name={employee.name} photoData={profile?.photoData} large /><div className="profile-card-copy"><p className="card-kicker">Limpeza</p><h2>{employee.name}</h2><p>Limpeza — {employee.schedule}</p></div><div className="profile-card-actions"><label className="photo-button">Cadastrar / alterar foto<input type="file" accept="image/*" capture="environment" onChange={(event) => { onProfilePhotoChange(employeeId, event.target.files?.[0] ?? null); event.target.value = ""; }} /></label><button className="primary-button" type="button" onClick={() => onPreviewEmployee(employeeId)}>Ver tela da usuária</button></div></article>; })}</section></section>;
 }
 
-function OrdersScreen({ orders, notice, editingOrderId, editDraft, onBack, onLogout, onCopyOrder, onStartEdit, onCancelEdit, onUpdateDraftItem, onRemoveDraftItem, onSaveEdit, onMarkDone, onRequestDelete }: { orders: CleaningOrder[]; notice: string; editingOrderId: string | null; editDraft: OrderItem[]; onBack: () => void; onLogout: () => void; onCopyOrder: (order: CleaningOrder) => void; onStartEdit: (order: CleaningOrder) => void; onCancelEdit: () => void; onUpdateDraftItem: (itemId: string, field: keyof OrderItem, value: string) => void; onRemoveDraftItem: (itemId: string) => void; onSaveEdit: (order: CleaningOrder) => void; onMarkDone: (order: CleaningOrder) => void; onRequestDelete: (order: CleaningOrder) => void }) {
-  return <section className="screen"><TopBar title="Limpeza — Pedidos Sinval" subtitle="Pedidos feitos pela Neia" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}>Voltar para Limpeza</button>{notice && <p className="notice-message">{notice}</p>}{orders.length === 0 ? <section className="empty-state"><h2>Nenhum pedido salvo</h2><p>Quando a Neia enviar um pedido, ele aparecerá aqui.</p></section> : <section className="orders-list">{orders.map((order) => { const editing = editingOrderId === order.id; return <article className="order-card" key={order.id}><OrderHeader order={order} />{editing ? <EditOrderItems items={editDraft} onUpdateDraftItem={onUpdateDraftItem} onRemoveDraftItem={onRemoveDraftItem} /> : <OrderItems order={order} />}<div className="button-grid">{editing ? <><button className="primary-button" type="button" onClick={() => onSaveEdit(order)}>Salvar</button><button className="ghost-button" type="button" onClick={onCancelEdit}>Cancelar</button></> : <><button className="secondary-button" type="button" onClick={() => onCopyOrder(order)}>Copiar Pedido</button><button className="ghost-button" type="button" onClick={() => onStartEdit(order)}>Editar Pedido</button><button className="success-button" type="button" onClick={() => onMarkDone(order)}>Marcar como Pedido Feito</button><button className="danger-button" type="button" onClick={() => onRequestDelete(order)}>Excluir Pedido</button></>}</div></article>; })}</section>}</section>;
+function OrdersScreen({ orders, notice, editingOrderId, editDraft, onBack, onLogout, onCopyOrder, onDownloadWord, canDownloadWord, onStartEdit, onCancelEdit, onUpdateDraftItem, onRemoveDraftItem, onSaveEdit, onMarkDone, onRequestDelete }: { orders: CleaningOrder[]; notice: string; editingOrderId: string | null; editDraft: OrderItem[]; onBack: () => void; onLogout: () => void; onCopyOrder: (order: CleaningOrder) => void; onDownloadWord: (order: CleaningOrder) => void; canDownloadWord: boolean; onStartEdit: (order: CleaningOrder) => void; onCancelEdit: () => void; onUpdateDraftItem: (itemId: string, field: keyof OrderItem, value: string) => void; onRemoveDraftItem: (itemId: string) => void; onSaveEdit: (order: CleaningOrder) => void; onMarkDone: (order: CleaningOrder) => void; onRequestDelete: (order: CleaningOrder) => void }) {
+  return <section className="screen"><TopBar title="Limpeza — Pedidos Sinval" subtitle="Pedidos feitos pela Neia" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}>Voltar para Limpeza</button>{notice && <p className="notice-message">{notice}</p>}{orders.length === 0 ? <section className="empty-state"><h2>Nenhum pedido salvo</h2><p>Quando a Neia enviar um pedido, ele aparecerá aqui.</p></section> : <section className="orders-list">{orders.map((order) => { const editing = editingOrderId === order.id; return <article className="order-card" key={order.id}><OrderHeader order={order} />{editing ? <EditOrderItems items={editDraft} onUpdateDraftItem={onUpdateDraftItem} onRemoveDraftItem={onRemoveDraftItem} /> : <OrderItems order={order} />}<div className="button-grid">{editing ? <><button className="primary-button" type="button" onClick={() => onSaveEdit(order)}>Salvar</button><button className="ghost-button" type="button" onClick={onCancelEdit}>Cancelar</button></> : <><button className="secondary-button" type="button" onClick={() => onCopyOrder(order)}>Copiar Pedido</button>{canDownloadWord && <button className="primary-button" type="button" onClick={() => onDownloadWord(order)}>Baixar Word para Thelma</button>}<button className="ghost-button" type="button" onClick={() => onStartEdit(order)}>Editar Pedido</button><button className="success-button" type="button" onClick={() => onMarkDone(order)}>Marcar como Pedido Feito</button><button className="danger-button" type="button" onClick={() => onRequestDelete(order)}>Excluir Pedido</button></>}</div></article>; })}</section>}</section>;
 }
 
-function HistoryScreen({ title, subtitle, orders, onBack, onLogout, onCopyOrder }: { title: string; subtitle: string; orders: CleaningOrder[]; onBack: () => void; onLogout: () => void; onCopyOrder: (order: CleaningOrder) => void }) {
-  return <section className="screen"><TopBar title={title} subtitle={subtitle} onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}>Voltar para Limpeza</button>{orders.length === 0 ? <section className="empty-state"><h2>Nenhum histórico encontrado</h2><p>Os pedidos concluídos ou excluídos aparecerão aqui.</p></section> : <section className="orders-list">{orders.map((order) => <article className="order-card" key={order.id}><OrderHeader order={order} /><OrderItems order={order} /><div className="button-grid"><button className="secondary-button" type="button" onClick={() => onCopyOrder(order)}>Copiar Pedido</button></div></article>)}</section>}</section>;
+function HistoryScreen({ title, subtitle, orders, onBack, onLogout, onCopyOrder, onDownloadWord, canDownloadWord }: { title: string; subtitle: string; orders: CleaningOrder[]; onBack: () => void; onLogout: () => void; onCopyOrder: (order: CleaningOrder) => void; onDownloadWord: (order: CleaningOrder) => void; canDownloadWord: boolean }) {
+  return <section className="screen"><TopBar title={title} subtitle={subtitle} onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}>Voltar para Limpeza</button>{orders.length === 0 ? <section className="empty-state"><h2>Nenhum histórico encontrado</h2><p>Os pedidos concluídos ou excluídos aparecerão aqui.</p></section> : <section className="orders-list">{orders.map((order) => <article className="order-card" key={order.id}><OrderHeader order={order} /><OrderItems order={order} /><div className="button-grid"><button className="secondary-button" type="button" onClick={() => onCopyOrder(order)}>Copiar Pedido</button>{canDownloadWord && <button className="primary-button" type="button" onClick={() => onDownloadWord(order)}>Baixar Word para Thelma</button>}</div></article>)}</section>}</section>;
 }
 
 function EditOrderItems({ items, onUpdateDraftItem, onRemoveDraftItem }: { items: OrderItem[]; onUpdateDraftItem: (itemId: string, field: keyof OrderItem, value: string) => void; onRemoveDraftItem: (itemId: string) => void }) {
