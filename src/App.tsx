@@ -3,7 +3,6 @@ import { QRCodeSVG } from "qrcode.react";
 import { AppIcon, type AppIconName } from "./components/AppIcon";
 import { HomeMenuMeta } from "./components/HomeMenuMeta";
 import { ProfileAvatarMenu } from "./components/ProfileAvatarMenu";
-import { downloadCleaningOrderWord } from "./modules/cleaning/services/cleaningOrderDocument";
 import { activities, employees } from "./data";
 import type { MasterMapTargetScreen } from "./features/master-map/masterMapTypes";
 import { GuardShiftPanel, GuardSyncDiagnosticPanel } from "./modules/security/components/GuardShift";
@@ -1218,6 +1217,7 @@ function App() {
 
   async function downloadOrderWord(order: CleaningOrder) {
     try {
+      const { downloadCleaningOrderWord } = await import("./modules/cleaning/services/cleaningOrderDocument");
       await downloadCleaningOrderWord(order, inventoryProducts);
       setNotice("Documento Word pronto para enviar à Thelma.");
     } catch (error) {
