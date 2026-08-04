@@ -25,13 +25,20 @@ const BODY_FONT_SIZE = 17;
 const HEADER_FONT_SIZE = 17;
 const TITLE_FONT_SIZE = 30;
 
+const BORDER = { style: BorderStyle.SINGLE, size: 5, color: "000000" };
 const TABLE_BORDERS = {
-  top: { style: BorderStyle.SINGLE, size: 5, color: "000000" },
-  bottom: { style: BorderStyle.SINGLE, size: 5, color: "000000" },
-  left: { style: BorderStyle.SINGLE, size: 5, color: "000000" },
-  right: { style: BorderStyle.SINGLE, size: 5, color: "000000" },
-  insideHorizontal: { style: BorderStyle.SINGLE, size: 5, color: "000000" },
-  insideVertical: { style: BorderStyle.SINGLE, size: 5, color: "000000" },
+  top: BORDER,
+  bottom: BORDER,
+  left: BORDER,
+  right: BORDER,
+  insideHorizontal: BORDER,
+  insideVertical: BORDER,
+};
+const CELL_BORDERS = {
+  top: BORDER,
+  bottom: BORDER,
+  left: BORDER,
+  right: BORDER,
 };
 
 type CleaningOrderDocumentRow = {
@@ -186,23 +193,20 @@ function createCell(
     alignment?: (typeof AlignmentType)[keyof typeof AlignmentType];
   } = {},
 ) {
-  const lines = text.split("\n");
-  const children = lines.flatMap((line, index) => [
-    new TextRun({
-      text: line,
-      bold: options.bold,
-      font: "Arial",
-      size: options.fontSize ?? BODY_FONT_SIZE,
-      break: index === 0 ? undefined : 1,
-    }),
-  ]);
+  const children = text.split("\n").map((line, index) => new TextRun({
+    text: line,
+    bold: options.bold,
+    font: "Arial",
+    size: options.fontSize ?? BODY_FONT_SIZE,
+    break: index === 0 ? undefined : 1,
+  }));
 
   return new TableCell({
     width: { size: width, type: WidthType.DXA },
     columnSpan: options.columnSpan,
     verticalAlign: VerticalAlign.CENTER,
     margins: { top: 20, right: 35, bottom: 20, left: 35 },
-    borders: TABLE_BORDERS,
+    borders: CELL_BORDERS,
     children: [
       new Paragraph({
         alignment: options.alignment ?? AlignmentType.CENTER,
