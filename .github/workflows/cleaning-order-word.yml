@@ -1,0 +1,71 @@
+name: Pedido Sinval em Word
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+    paths:
+      - src/modules/cleaning/services/cleaningOrderDocument.ts
+      - scripts/apply_cleaning_order_word.py
+      - scripts/generate_cleaning_order_word_sample.mjs
+      - .github/workflows/cleaning-order-word.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply-build-and-sample:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout da branch
+        uses: actions/checkout@v4
+        with:
+          ref: chatgpt/pedido-word-thelma
+          fetch-depth: 0
+
+      - name: Configurar Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Configurar pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Instalar dependência do Word
+        run: pnpm add docx@9.7.1 --save-exact
+
+      - name: Integrar o botão ao HUB
+        run: python scripts/apply_cleaning_order_word.py
+
+      - name: Validar build
+        run: pnpm run build
+
+      - name: Compilar gerador para validação
+        run: pnpm exec tsc src/modules/cleaning/services/cleaningOrderDocument.ts --outDir .tmp-order-doc --rootDir src --module ESNext --moduleResolution Bundler --target ES2022 --skipLibCheck
+
+      - name: Gerar amostra real em DOCX
+        run: node scripts/generate_cleaning_order_word_sample.mjs
+
+      - name: Publicar amostra para inspeção visual
+        uses: actions/upload-artifact@v4
+        with:
+          name: pedido-sinval-word-amostra
+          path: artifacts/Pedido Sinval - Exemplo.docx
+          if-no-files-found: error
+
+      - name: Remover arquivos temporários
+        run: rm -rf scripts/apply_cleaning_order_word.py scripts/generate_cleaning_order_word_sample.mjs .github/workflows/cleaning-order-word.yml .tmp-order-doc artifacts
+
+      - name: Publicar alterações reais na branch
+        run: |
+          git config user.name "Sergio Tezzei"
+          git config user.email "sergiotezzei@gmail.com"
+          git add -A
+          git commit -m "Gera pedido Sinval em Word para Thelma"
+          git push origin HEAD:chatgpt/pedido-word-thelma
