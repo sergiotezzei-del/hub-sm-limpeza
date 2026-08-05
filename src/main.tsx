@@ -2,12 +2,22 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
 import { CleaningDeliveryFeature } from "./modules/cleaning/components/CleaningDeliveryFeature";
+import { PublicServiceRequestPage } from "./modules/service-requests/PublicServiceRequestPage";
 import "./styles.css";
+
+const normalizedPath = window.location.pathname.replace(/\/+$/, "") || "/";
+const isPublicServiceRequestPage = normalizedPath === "/chamados";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <App />
-    <CleaningDeliveryFeature />
+    {isPublicServiceRequestPage ? (
+      <PublicServiceRequestPage />
+    ) : (
+      <>
+        <App />
+        <CleaningDeliveryFeature />
+      </>
+    )}
   </StrictMode>,
 );
 
