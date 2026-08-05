@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 APP_PATH = Path("src/App.tsx")
+TASK_BOARD_PATH = Path("src/modules/tasks/TaskBoardScreen.tsx")
 
 
 def replace_once(text: str, old: str, new: str, label: str) -> str:
@@ -112,6 +113,16 @@ def main() -> None:
     )
 
     APP_PATH.write_text(text, encoding="utf-8")
+
+    task_text = TASK_BOARD_PATH.read_text(encoding="utf-8")
+    task_text = replace_once(
+        task_text,
+        '''        if (assigneeFilter !== "all" && task.assigneeUserId !== assigneeFilter) return false;''',
+        '''        if (assigneeFilter === "unassigned" && task.assigneeUserId) return false;
+        if (assigneeFilter !== "all" && assigneeFilter !== "unassigned" && task.assigneeUserId !== assigneeFilter) return false;''',
+        "filtro de tarefas sem responsável",
+    )
+    TASK_BOARD_PATH.write_text(task_text, encoding="utf-8")
 
 
 if __name__ == "__main__":
