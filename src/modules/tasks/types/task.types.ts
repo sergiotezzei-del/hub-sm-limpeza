@@ -42,7 +42,6 @@ export type HubTaskDraft = {
   department: string;
   assigneeUserId: string;
   dueDate: string;
-  sourceModule: string;
 };
 
 export type HubTaskDataset = {
