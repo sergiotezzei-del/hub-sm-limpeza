@@ -1,4 +1,15 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import {
+  DndContext,
+  PointerSensor,
+  useDraggable,
+  useDroppable,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import { CSS } from "@dnd-kit/utilities";
+import { useEffect, useMemo, useState } from "react";
+import type { CSSProperties, FormEvent } from "react";
 import { AppIcon } from "../../components/AppIcon";
 import type { ManagedUser, UserPermission } from "../../types";
 import {
@@ -8,6 +19,7 @@ import {
   moveHubTask,
   saveHubTask,
 } from "./services/taskService";
+import { buildTaskSectorOptions } from "./taskSectors";
 import type {
   HubTask,
   HubTaskDataset,
@@ -51,10 +63,9 @@ function createDraft(currentUser: ManagedUser): HubTaskDraft {
     description: "",
     status: "a_fazer",
     priority: "media",
-    department: currentUser.department || "Geral",
+    department: "Geral",
     assigneeUserId: currentUser.id,
     dueDate: "",
-    sourceModule: "",
   };
 }
 
@@ -70,20 +81,18 @@ export function TaskBoardScreen({ permissions, currentUser, managedUsers, onBack
   const [assigneeFilter, setAssigneeFilter] = useState("all");
   const [departmentFilter, setDepartmentFilter] = useState("all");
   const [mobileStatus, setMobileStatus] = useState<HubTaskStatus>("a_fazer");
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 8 },
+    }),
+  );
 
   const activeUsers = useMemo(
     () => managedUsers.filter((user) => user.active).sort((a, b) => a.name.localeCompare(b.name, "pt-BR")),
     [managedUsers],
   );
   const userById = useMemo(() => new Map(managedUsers.map((user) => [user.id, user])), [managedUsers]);
-  const departments = useMemo(() => {
-    const values = [
-      ...managedUsers.map((user) => user.department),
-      ...dataset.tasks.map((task) => task.department),
-      "Geral",
-    ].filter(Boolean);
-    return Array.from(new Set(values)).sort((a, b) => a.localeCompare(b, "pt-BR"));
-  }, [dataset.tasks, managedUsers]);
+  const departments = useMemo(() => buildTaskSectorOptions(dataset.tasks.map((task) => task.department)), [dataset.tasks]);
 
   const filteredTasks = useMemo(() => {
     return dataset.tasks
@@ -137,7 +146,6 @@ export function TaskBoardScreen({ permissions, currentUser, managedUsers, onBack
       department: task.department,
       assigneeUserId: task.assigneeUserId || "",
       dueDate: task.dueDate || "",
-      sourceModule: task.sourceModule || "",
     });
     setEditorOpen(true);
     setNotice("");
@@ -163,21 +171,42 @@ export function TaskBoardScreen({ permissions, currentUser, managedUsers, onBack
     const currentIndex = statusOrder.indexOf(task.status);
     const nextStatus = statusOrder[currentIndex + direction];
     if (!nextStatus) return;
+    await moveTaskToStatus(task, nextStatus);
+  }
+
+  async function moveTaskToStatus(task: HubTask, nextStatus: HubTaskStatus) {
+    if (busyTaskId || task.status === nextStatus) return;
+    const previousTasks = dataset.tasks;
     setBusyTaskId(task.id);
     setNotice("");
+    setDataset((current) => ({
+      ...current,
+      tasks: current.tasks.map((item) => item.id === task.id ? { ...item, status: nextStatus, updatedAt: new Date().toISOString() } : item),
+    }));
+    setMobileStatus(nextStatus);
     try {
       const updated = await moveHubTask(task.id, nextStatus, currentUser.name);
       setDataset((current) => ({
         ...current,
         tasks: current.tasks.map((item) => item.id === updated.id ? updated : item),
       }));
-      setMobileStatus(nextStatus);
       void refreshEventsOnly();
     } catch (error) {
-      setNotice(getHubTaskErrorMessage(error));
+      setDataset((current) => ({ ...current, tasks: previousTasks }));
+      setMobileStatus(task.status);
+      setNotice(`Não foi possível mover a tarefa. ${getHubTaskErrorMessage(error)}`);
     } finally {
       setBusyTaskId("");
     }
+  }
+
+  function handleDragEnd(event: DragEndEvent) {
+    const taskId = String(event.active.id);
+    const nextStatus = event.over?.id as HubTaskStatus | undefined;
+    if (!nextStatus || !statusOrder.includes(nextStatus)) return;
+    const task = dataset.tasks.find((item) => item.id === taskId);
+    if (!task) return;
+    void moveTaskToStatus(task, nextStatus);
   }
 
   async function archiveTask(task: HubTask) {
@@ -285,21 +314,24 @@ export function TaskBoardScreen({ permissions, currentUser, managedUsers, onBack
       ) : loadState === "error" && dataset.tasks.length === 0 ? (
         <section className="empty-state"><h2>Não foi possível abrir o quadro</h2><button className="primary-button" type="button" onClick={() => void refresh()}>Tentar novamente</button></section>
       ) : (
-        <section className="task-board-columns">
-          {statusOrder.map((status) => (
-            <TaskColumn
-              key={status}
-              status={status}
-              tasks={filteredTasks.filter((task) => task.status === status)}
-              userById={userById}
-              busyTaskId={busyTaskId}
-              mobileVisible={mobileStatus === status}
-              onOpen={openTask}
-              onMove={moveTask}
-              onArchive={archiveTask}
-            />
-          ))}
-        </section>
+        <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+          <section className="task-board-columns">
+            {statusOrder.map((status) => (
+              <TaskColumn
+                key={status}
+                status={status}
+                tasks={filteredTasks.filter((task) => task.status === status)}
+                userById={userById}
+                busyTaskId={busyTaskId}
+                mobileVisible={mobileStatus === status}
+                onOpen={openTask}
+                onMove={moveTask}
+                onMoveToStatus={moveTaskToStatus}
+                onArchive={archiveTask}
+              />
+            ))}
+          </section>
+        </DndContext>
       )}
 
       {editorOpen && (
@@ -349,12 +381,9 @@ export function TaskBoardScreen({ permissions, currentUser, managedUsers, onBack
               </label>
               <label>
                 <span>Setor</span>
-                <input list="task-departments" value={draft.department} onChange={(event) => setDraft((current) => ({ ...current, department: event.target.value }))} maxLength={80} required />
-                <datalist id="task-departments">{departments.map((department) => <option key={department} value={department} />)}</datalist>
-              </label>
-              <label>
-                <span>Módulo relacionado</span>
-                <input value={draft.sourceModule} onChange={(event) => setDraft((current) => ({ ...current, sourceModule: event.target.value }))} placeholder="Ex.: Manutenção" maxLength={80} />
+                <select value={draft.department} onChange={(event) => setDraft((current) => ({ ...current, department: event.target.value }))} required>
+                  {departments.map((department) => <option key={department} value={department}>{department}</option>)}
+                </select>
               </label>
 
               {draft.id && (
@@ -398,6 +427,7 @@ function TaskColumn({
   mobileVisible,
   onOpen,
   onMove,
+  onMoveToStatus,
   onArchive,
 }: {
   status: HubTaskStatus;
@@ -407,11 +437,17 @@ function TaskColumn({
   mobileVisible: boolean;
   onOpen: (task: HubTask) => void;
   onMove: (task: HubTask, direction: -1 | 1) => void;
+  onMoveToStatus: (task: HubTask, status: HubTaskStatus) => void;
   onArchive: (task: HubTask) => void;
 }) {
   const statusIndex = statusOrder.indexOf(status);
+  const { setNodeRef, isOver } = useDroppable({
+    id: status,
+    disabled: Boolean(busyTaskId),
+  });
+
   return (
-    <article className={`task-column task-column-${status} ${mobileVisible ? "task-column-mobile-visible" : ""}`}>
+    <article ref={setNodeRef} className={`task-column task-column-${status} ${mobileVisible ? "task-column-mobile-visible" : ""} ${isOver ? "task-column-drop-active" : ""}`}>
       <header>
         <h2>{statusLabels[status]}</h2>
         <span>{tasks.length}</span>
@@ -419,34 +455,94 @@ function TaskColumn({
       <div className="task-column-list">
         {tasks.length === 0 ? (
           <p className="task-column-empty">Nenhuma tarefa nesta coluna.</p>
-        ) : tasks.map((task) => {
-          const assignee = task.assigneeUserId ? userById.get(task.assigneeUserId) : undefined;
-          const overdue = isTaskOverdue(task);
-          const busy = busyTaskId === task.id;
-          return (
-            <section key={task.id} className={`task-card priority-${task.priority} ${overdue ? "task-card-overdue" : ""}`}>
-              <button type="button" className="task-card-main" onClick={() => onOpen(task)} disabled={busy}>
-                <span className="task-card-priority">{priorityLabels[task.priority]}</span>
-                <strong>{task.title}</strong>
-                {task.description && <small>{task.description}</small>}
-                <span className="task-card-meta">{assignee?.name || "Sem responsável"}</span>
-                <span className="task-card-meta">{task.department}</span>
-                {task.dueDate && <span className={`task-card-date ${overdue ? "overdue" : ""}`}>{overdue ? "Atrasada: " : "Prazo: "}{formatDate(task.dueDate)}</span>}
-              </button>
-              <footer>
-                <button type="button" onClick={() => onMove(task, -1)} disabled={busy || statusIndex === 0} aria-label="Mover para a coluna anterior">←</button>
-                <button type="button" className="task-card-edit" onClick={() => onOpen(task)} disabled={busy}>Editar</button>
-                {status === "concluido" ? (
-                  <button type="button" onClick={() => onArchive(task)} disabled={busy}>Arquivar</button>
-                ) : (
-                  <button type="button" onClick={() => onMove(task, 1)} disabled={busy}>{statusIndex === statusOrder.length - 2 ? "Concluir" : "Avançar"} →</button>
-                )}
-              </footer>
-            </section>
-          );
-        })}
+        ) : tasks.map((task) => (
+          <TaskCard
+            key={task.id}
+            task={task}
+            assignee={task.assigneeUserId ? userById.get(task.assigneeUserId) : undefined}
+            busy={Boolean(busyTaskId)}
+            statusIndex={statusIndex}
+            onOpen={onOpen}
+            onMove={onMove}
+            onMoveToStatus={onMoveToStatus}
+            onArchive={onArchive}
+          />
+        ))}
       </div>
     </article>
+  );
+}
+
+function TaskCard({
+  task,
+  assignee,
+  busy,
+  statusIndex,
+  onOpen,
+  onMove,
+  onMoveToStatus,
+  onArchive,
+}: {
+  task: HubTask;
+  assignee?: ManagedUser;
+  busy: boolean;
+  statusIndex: number;
+  onOpen: (task: HubTask) => void;
+  onMove: (task: HubTask, direction: -1 | 1) => void;
+  onMoveToStatus: (task: HubTask, status: HubTaskStatus) => void;
+  onArchive: (task: HubTask) => void;
+}) {
+  const overdue = isTaskOverdue(task);
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: task.id,
+    data: { status: task.status },
+    disabled: busy,
+  });
+  const style: CSSProperties = {
+    transform: CSS.Translate.toString(transform),
+    zIndex: isDragging ? 30 : undefined,
+  };
+  const nextButtonLabel = task.status === "aguardando" ? "Concluir" : "Avançar";
+  const previousButtonLabel = task.status === "concluido" ? "Reabrir" : "Voltar";
+
+  return (
+    <section ref={setNodeRef} style={style} className={`task-card priority-${task.priority} ${overdue ? "task-card-overdue" : ""} ${isDragging ? "task-card-dragging" : ""}`}>
+      <div className="task-card-topline">
+        <span className="task-card-priority">{priorityLabels[task.priority]}</span>
+        <button
+          type="button"
+          className="task-drag-handle"
+          disabled={busy}
+          aria-label={`Arrastar tarefa ${task.title}`}
+          {...attributes}
+          {...listeners}
+        >
+          Arrastar
+        </button>
+      </div>
+      <button type="button" className="task-card-main" onClick={() => onOpen(task)} disabled={busy}>
+        <strong>{task.title}</strong>
+        {task.description && <small>{task.description}</small>}
+        <span className={`task-card-meta ${!assignee ? "task-card-meta-warning" : ""}`}>{assignee?.name || "Sem responsável"}</span>
+        <span className="task-card-meta">{task.department}</span>
+        {task.dueDate && <span className={`task-card-date ${overdue ? "overdue" : ""}`}>{overdue ? "Atrasada: " : "Prazo: "}{formatDate(task.dueDate)}</span>}
+      </button>
+      <footer>
+        <button type="button" onClick={() => onMove(task, -1)} disabled={busy || statusIndex === 0}>{previousButtonLabel}</button>
+        <button type="button" className="task-card-edit" onClick={() => onOpen(task)} disabled={busy}>Editar</button>
+        {task.status === "concluido" ? (
+          <button type="button" onClick={() => onArchive(task)} disabled={busy}>Arquivar</button>
+        ) : (
+          <button type="button" onClick={() => onMove(task, 1)} disabled={busy}>{nextButtonLabel}</button>
+        )}
+      </footer>
+      <label className="task-card-move-select">
+        <span>Mover para</span>
+        <select value={task.status} onChange={(event) => onMoveToStatus(task, event.target.value as HubTaskStatus)} disabled={busy}>
+          {statusOrder.map((status) => <option key={status} value={status}>{statusLabels[status]}</option>)}
+        </select>
+      </label>
+    </section>
   );
 }
 

@@ -92,7 +92,6 @@ export async function saveHubTask(
         department,
         assignee_user_id: draft.assigneeUserId || null,
         due_date: draft.dueDate || null,
-        source_module: cleanOptional(draft.sourceModule),
         last_actor_name: actor.name,
       }),
     });
@@ -113,7 +112,6 @@ export async function saveHubTask(
       assignee_user_id: draft.assigneeUserId || null,
       due_date: draft.dueDate || null,
       sort_order: 0,
-      source_module: cleanOptional(draft.sourceModule),
       created_by_user_id: actor.userId,
       created_by_name: actor.name,
       last_actor_name: actor.name,
