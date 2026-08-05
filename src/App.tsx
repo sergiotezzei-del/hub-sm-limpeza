@@ -63,6 +63,7 @@ import type {
 
 const MasterMapScreen = lazy(() => import("./features/master-map/MasterMapScreen").then((module) => ({ default: module.MasterMapScreen })));
 const PatrimonyScreen = lazy(() => import("./modules/patrimony/PatrimonyScreen").then((module) => ({ default: module.PatrimonyScreen })));
+const TaskBoardScreen = lazy(() => import("./modules/tasks/TaskBoardScreen").then((module) => ({ default: module.TaskBoardScreen })));
 
 type View =
   | "login"
@@ -72,6 +73,7 @@ type View =
   | "employee-preview"
   | "order-form"
   | "admin"
+  | "tasks-board"
   | "cleaning-dashboard"
   | "orders"
   | "profiles"
@@ -321,6 +323,7 @@ const permissionOptions: Array<{ id: UserPermission; label: string }> = [
   { id: "manutencao", label: "Manutenção" },
   { id: "chaves", label: "Chaves" },
   { id: "patrimonio", label: "Patrimônio" },
+  { id: "afazeres", label: "Afazeres" },
   { id: "relatorios", label: "Relatórios" },
 ];
 const allUserPermissions = permissionOptions.map((permission) => permission.id);
@@ -1373,6 +1376,17 @@ function App() {
     setView("maintenance-menu");
   }
 
+  function openTaskBoard() {
+    if (currentUser !== "tezzei" || !hasCurrentPermission("afazeres")) {
+      setNotice("Sem permissão para acessar Afazeres.");
+      return;
+    }
+
+    setNotice("");
+    setSelectedGuardName(null);
+    setView("tasks-board");
+  }
+
   function openAssetsMaterialsMenu() {
     if (!hasAnyCurrentPermission(["estoque", "patrimonio"])) {
       setNotice("Sem permissão para acessar Bens e Materiais.");
@@ -1916,9 +1930,26 @@ function App() {
           onOpenCopaCafe={openCopaCafeMenu}
           onOpenSecurity={openSecurityMenu}
           onOpenMaintenance={openMaintenanceMenu}
+          onOpenTasks={openTaskBoard}
           onOpenAssetsMaterials={openAssetsMaterialsMenu}
           onOpenHubAdministration={openHubAdministrationMenu}
         />
+      )}
+
+      {view === "tasks-board" && (
+        currentUser === "tezzei" && currentManagedUser && hasCurrentPermission("afazeres") ? (
+          <Suspense fallback={<section className="screen"><TopBar title="Afazeres" subtitle="Carregando seu quadro de trabalho." onLogout={goToLogin} /><section className="empty-state"><h2>Carregando Afazeres...</h2></section></section>}>
+            <TaskBoardScreen
+              currentUser={currentManagedUser}
+              managedUsers={managedUsers}
+              permissions={getManagedUserPermissions(currentUser, managedUsers)}
+              onBack={() => setView("admin")}
+              onLogout={goToLogin}
+            />
+          </Suspense>
+        ) : (
+          <AccessDeniedScreen onBack={() => setView(getCurrentHomeView())} onLogout={goToLogin} />
+        )
       )}
 
       {view === "copa-cafe-menu" && <CopaCafeMenuScreen permissions={getManagedUserPermissions(currentUser, managedUsers)} onBack={() => setView(getCurrentHomeView())} onLogout={goToLogin} />}
@@ -2844,7 +2875,7 @@ function UserSectorHomeScreen({ user, permissions, notice, onLogout, onOpenClean
   );
 }
 
-function AdminSectorHomeScreen({ user, notice, newOrdersCount, onlineEnabled, permissions, onLogout, onProfilePhotoChange, onOpenCleaningDashboard, onOpenCopaCafe, onOpenSecurity, onOpenMaintenance, onOpenAssetsMaterials, onOpenHubAdministration }: { user: ManagedUser; notice: string; newOrdersCount: number; onlineEnabled: boolean; permissions: UserPermission[]; onLogout: () => void; onProfilePhotoChange: (file: File | null) => void | Promise<void>; onOpenCleaningDashboard: () => void; onOpenCopaCafe: () => void; onOpenSecurity: () => void; onOpenMaintenance: () => void; onOpenAssetsMaterials: () => void; onOpenHubAdministration: () => void }) {
+function AdminSectorHomeScreen({ user, notice, newOrdersCount, onlineEnabled, permissions, onLogout, onProfilePhotoChange, onOpenCleaningDashboard, onOpenCopaCafe, onOpenSecurity, onOpenMaintenance, onOpenTasks, onOpenAssetsMaterials, onOpenHubAdministration }: { user: ManagedUser; notice: string; newOrdersCount: number; onlineEnabled: boolean; permissions: UserPermission[]; onLogout: () => void; onProfilePhotoChange: (file: File | null) => void | Promise<void>; onOpenCleaningDashboard: () => void; onOpenCopaCafe: () => void; onOpenSecurity: () => void; onOpenMaintenance: () => void; onOpenTasks: () => void; onOpenAssetsMaterials: () => void; onOpenHubAdministration: () => void }) {
   const operationCards: SectorModuleCard[] = [
     { key: "limpeza", title: "Limpeza", detail: "Rotinas, produtos, pedidos e histórico da equipe.", enabled: permissions.includes("limpeza"), onClick: onOpenCleaningDashboard, icon: "cleaning" },
     { key: "copa-cafe", title: "Copa & Café", detail: "Café, água, bebidas e insumos da copa.", enabled: permissions.includes("cafe") || permissions.includes("agua"), onClick: onOpenCopaCafe, icon: "coffee" },
@@ -2852,6 +2883,7 @@ function AdminSectorHomeScreen({ user, notice, newOrdersCount, onlineEnabled, pe
     { key: "manutencao", title: "Manutenção", detail: "Chamados, obras, fornecedores e pendências prediais.", enabled: permissions.includes("manutencao"), onClick: onOpenMaintenance, icon: "settings" },
   ];
   const managementCards: SectorModuleCard[] = [
+    { key: "afazeres", title: "Afazeres", detail: "Tarefas, prazos, prioridades e acompanhamento diário.", enabled: permissions.includes("afazeres"), onClick: onOpenTasks, icon: "reports" },
     { key: "bens-materiais", title: "Bens e Materiais", detail: "Patrimônio, alocações, ferramentas e suprimentos.", enabled: permissions.includes("estoque") || permissions.includes("patrimonio"), onClick: onOpenAssetsMaterials, icon: "stock" },
     { key: "administracao-hub", title: "Administração do HUB", detail: "Usuários, permissões, relatórios e status do sistema.", enabled: permissions.includes("painel-admin") || permissions.includes("relatorios"), onClick: onOpenHubAdministration, className: "users-card", icon: "users" },
   ];
@@ -2933,6 +2965,7 @@ function SystemStatusScreen({ permissions, users, onBack, onLogout }: { permissi
     createSystemStatusCard({ key: "rounds", title: "Rondas", icon: "guards", available: hasSecurity && hasGuards, note: "Relatório e registro de rondas disponíveis na área de segurança." }),
     createSystemStatusCard({ key: "qrcode", title: "QR Code", icon: "qr", available: hasGuards, note: "Leitura de QR Code disponível no fluxo operacional do guarda." }),
     createSystemStatusCard({ key: "payments", title: "Pagamentos", icon: "payment", available: hasAdmin, restricted: true, note: "Fechamento / Pagamento restrito ao Admin/Tezzei em Segurança > Guardas." }),
+    createSystemStatusCard({ key: "tasks", title: "Afazeres", icon: "reports", available: permissions.includes("afazeres"), restricted: true, note: "Quadro de tarefas e prazos disponível para o Admin Tezzei." }),
     createSystemStatusCard({ key: "users", title: "Usuários & Permissões", icon: "users", available: hasAdmin, note: "Cadastro e sincronização de usuários disponíveis somente para Admin." }),
     { key: "plate-ocr", title: "OCR de Placas", icon: "camera", status: "Atenção", tone: "attention", note: "OCR auxiliar. Requer validação com placa real." },
   ];
