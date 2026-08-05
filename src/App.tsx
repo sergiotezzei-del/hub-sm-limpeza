@@ -64,6 +64,7 @@ import type {
 const MasterMapScreen = lazy(() => import("./features/master-map/MasterMapScreen").then((module) => ({ default: module.MasterMapScreen })));
 const PatrimonyScreen = lazy(() => import("./modules/patrimony/PatrimonyScreen").then((module) => ({ default: module.PatrimonyScreen })));
 const TaskBoardScreen = lazy(() => import("./modules/tasks/TaskBoardScreen").then((module) => ({ default: module.TaskBoardScreen })));
+const ServiceRequestsScreen = lazy(() => import("./modules/service-requests/ServiceRequestsScreen").then((module) => ({ default: module.ServiceRequestsScreen })));
 
 type View =
   | "login"
@@ -74,6 +75,7 @@ type View =
   | "order-form"
   | "admin"
   | "tasks-board"
+  | "service-requests"
   | "cleaning-dashboard"
   | "orders"
   | "profiles"
@@ -324,6 +326,7 @@ const permissionOptions: Array<{ id: UserPermission; label: string }> = [
   { id: "chaves", label: "Chaves" },
   { id: "patrimonio", label: "Patrimônio" },
   { id: "afazeres", label: "Afazeres" },
+  { id: "chamados", label: "Chamados" },
   { id: "relatorios", label: "Relatórios" },
 ];
 const allUserPermissions = permissionOptions.map((permission) => permission.id);
@@ -1376,6 +1379,17 @@ function App() {
     setView("maintenance-menu");
   }
 
+  function openServiceRequests() {
+    if (currentUser !== "tezzei" || !hasCurrentPermission("chamados")) {
+      setNotice("Sem permissão para acessar Chamados.");
+      return;
+    }
+
+    setNotice("");
+    setSelectedGuardName(null);
+    setView("service-requests");
+  }
+
   function openTaskBoard() {
     if (currentUser !== "tezzei" || !hasCurrentPermission("afazeres")) {
       setNotice("Sem permissão para acessar Afazeres.");
@@ -1931,6 +1945,7 @@ function App() {
           onOpenSecurity={openSecurityMenu}
           onOpenMaintenance={openMaintenanceMenu}
           onOpenTasks={openTaskBoard}
+          onOpenServiceRequests={openServiceRequests}
           onOpenAssetsMaterials={openAssetsMaterialsMenu}
           onOpenHubAdministration={openHubAdministrationMenu}
         />
@@ -1942,6 +1957,21 @@ function App() {
             <TaskBoardScreen
               currentUser={currentManagedUser}
               managedUsers={managedUsers}
+              permissions={getManagedUserPermissions(currentUser, managedUsers)}
+              onBack={() => setView("admin")}
+              onLogout={goToLogin}
+            />
+          </Suspense>
+        ) : (
+          <AccessDeniedScreen onBack={() => setView(getCurrentHomeView())} onLogout={goToLogin} />
+        )
+      )}
+
+      {view === "service-requests" && (
+        currentUser === "tezzei" && currentManagedUser && hasCurrentPermission("chamados") ? (
+          <Suspense fallback={<section className="screen"><TopBar title="Chamados" subtitle="Carregando solicitações internas." onLogout={goToLogin} /><section className="empty-state"><h2>Carregando Chamados...</h2></section></section>}>
+            <ServiceRequestsScreen
+              currentUser={currentManagedUser}
               permissions={getManagedUserPermissions(currentUser, managedUsers)}
               onBack={() => setView("admin")}
               onLogout={goToLogin}
@@ -2875,7 +2905,7 @@ function UserSectorHomeScreen({ user, permissions, notice, onLogout, onOpenClean
   );
 }
 
-function AdminSectorHomeScreen({ user, notice, newOrdersCount, onlineEnabled, permissions, onLogout, onProfilePhotoChange, onOpenCleaningDashboard, onOpenCopaCafe, onOpenSecurity, onOpenMaintenance, onOpenTasks, onOpenAssetsMaterials, onOpenHubAdministration }: { user: ManagedUser; notice: string; newOrdersCount: number; onlineEnabled: boolean; permissions: UserPermission[]; onLogout: () => void; onProfilePhotoChange: (file: File | null) => void | Promise<void>; onOpenCleaningDashboard: () => void; onOpenCopaCafe: () => void; onOpenSecurity: () => void; onOpenMaintenance: () => void; onOpenTasks: () => void; onOpenAssetsMaterials: () => void; onOpenHubAdministration: () => void }) {
+function AdminSectorHomeScreen({ user, notice, newOrdersCount, onlineEnabled, permissions, onLogout, onProfilePhotoChange, onOpenCleaningDashboard, onOpenCopaCafe, onOpenSecurity, onOpenMaintenance, onOpenTasks, onOpenServiceRequests, onOpenAssetsMaterials, onOpenHubAdministration }: { user: ManagedUser; notice: string; newOrdersCount: number; onlineEnabled: boolean; permissions: UserPermission[]; onLogout: () => void; onProfilePhotoChange: (file: File | null) => void | Promise<void>; onOpenCleaningDashboard: () => void; onOpenCopaCafe: () => void; onOpenSecurity: () => void; onOpenMaintenance: () => void; onOpenTasks: () => void; onOpenServiceRequests: () => void; onOpenAssetsMaterials: () => void; onOpenHubAdministration: () => void }) {
   const operationCards: SectorModuleCard[] = [
     { key: "limpeza", title: "Limpeza", detail: "Rotinas, produtos, pedidos e histórico da equipe.", enabled: permissions.includes("limpeza"), onClick: onOpenCleaningDashboard, icon: "cleaning" },
     { key: "copa-cafe", title: "Copa & Café", detail: "Café, água, bebidas e insumos da copa.", enabled: permissions.includes("cafe") || permissions.includes("agua"), onClick: onOpenCopaCafe, icon: "coffee" },
@@ -2883,6 +2913,7 @@ function AdminSectorHomeScreen({ user, notice, newOrdersCount, onlineEnabled, pe
     { key: "manutencao", title: "Manutenção", detail: "Chamados, obras, fornecedores e pendências prediais.", enabled: permissions.includes("manutencao"), onClick: onOpenMaintenance, icon: "settings" },
   ];
   const managementCards: SectorModuleCard[] = [
+    { key: "chamados", title: "Chamados", detail: "Solicitações internas, atendimento e histórico.", enabled: permissions.includes("chamados"), onClick: onOpenServiceRequests, icon: "reports" },
     { key: "afazeres", title: "Afazeres", detail: "Tarefas, prazos, prioridades e acompanhamento diário.", enabled: permissions.includes("afazeres"), onClick: onOpenTasks, icon: "reports" },
     { key: "bens-materiais", title: "Bens e Materiais", detail: "Patrimônio, alocações, ferramentas e suprimentos.", enabled: permissions.includes("estoque") || permissions.includes("patrimonio"), onClick: onOpenAssetsMaterials, icon: "stock" },
     { key: "administracao-hub", title: "Administração do HUB", detail: "Usuários, permissões, relatórios e status do sistema.", enabled: permissions.includes("painel-admin") || permissions.includes("relatorios"), onClick: onOpenHubAdministration, className: "users-card", icon: "users" },
@@ -2966,6 +2997,7 @@ function SystemStatusScreen({ permissions, users, onBack, onLogout }: { permissi
     createSystemStatusCard({ key: "qrcode", title: "QR Code", icon: "qr", available: hasGuards, note: "Leitura de QR Code disponível no fluxo operacional do guarda." }),
     createSystemStatusCard({ key: "payments", title: "Pagamentos", icon: "payment", available: hasAdmin, restricted: true, note: "Fechamento / Pagamento restrito ao Admin/Tezzei em Segurança > Guardas." }),
     createSystemStatusCard({ key: "tasks", title: "Afazeres", icon: "reports", available: permissions.includes("afazeres"), restricted: true, note: "Quadro de tarefas e prazos disponível para o Admin Tezzei." }),
+    createSystemStatusCard({ key: "service-requests", title: "Chamados", icon: "reports", available: permissions.includes("chamados"), restricted: true, note: "Portal público de abertura e painel de atendimento disponíveis para o Admin Tezzei." }),
     createSystemStatusCard({ key: "users", title: "Usuários & Permissões", icon: "users", available: hasAdmin, note: "Cadastro e sincronização de usuários disponíveis somente para Admin." }),
     { key: "plate-ocr", title: "OCR de Placas", icon: "camera", status: "Atenção", tone: "attention", note: "OCR auxiliar. Requer validação com placa real." },
   ];
