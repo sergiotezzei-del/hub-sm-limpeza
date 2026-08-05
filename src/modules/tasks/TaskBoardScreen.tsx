@@ -90,7 +90,8 @@ export function TaskBoardScreen({ permissions, currentUser, managedUsers, onBack
       .filter((task) => {
         if (filterMode === "mine" && task.assigneeUserId !== currentUser.id) return false;
         if (filterMode === "overdue" && !isTaskOverdue(task)) return false;
-        if (assigneeFilter !== "all" && task.assigneeUserId !== assigneeFilter) return false;
+        if (assigneeFilter === "unassigned" && task.assigneeUserId) return false;
+        if (assigneeFilter !== "all" && assigneeFilter !== "unassigned" && task.assigneeUserId !== assigneeFilter) return false;
         if (departmentFilter !== "all" && task.department !== departmentFilter) return false;
         return true;
       })
