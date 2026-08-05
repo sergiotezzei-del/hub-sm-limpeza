@@ -1,0 +1,6 @@
+{
+  "rewrites": [
+    { "source": "/chamados", "destination": "/" },
+    { "source": "/chamados/", "destination": "/" }
+  ]
+}
