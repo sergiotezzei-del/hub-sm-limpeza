@@ -37,6 +37,7 @@ export type UserPermission =
   | "manutencao"
   | "chaves"
   | "patrimonio"
+  | "afazeres"
   | "relatorios";
 
 export type ManagedUser = {
