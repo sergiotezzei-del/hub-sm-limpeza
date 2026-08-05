@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useState } from "react";
+import { SantaMariaBrand } from "../../components/SantaMariaBrand";
 import { santaMariaRequestSectors } from "../../config/santaMariaSectors";
 import {
   getPublicServiceRequestErrorMessage,
@@ -75,11 +76,8 @@ export function PublicServiceRequestPage() {
     <main className="public-request-page">
       <section className="public-request-shell">
         <header className="public-request-brand">
-          <span className="public-request-logo" aria-hidden="true">T</span>
-          <div>
-            <strong>HUB Santa Maria</strong>
-            <span>Central de Chamados</span>
-          </div>
+          <SantaMariaBrand className="public-request-brand-logo" />
+          <span className="public-request-brand-context">Central de Chamados</span>
         </header>
 
         {receipt ? (
@@ -162,9 +160,7 @@ export function PublicServiceRequestPage() {
           </section>
         )}
 
-        <footer className="public-request-footer">
-          SANTA MARIA SOLUÇÕES IMOBILIÁRIAS
-        </footer>
+        <footer className="public-request-footer">Desenvolvido por TEZZEI</footer>
       </section>
     </main>
   );

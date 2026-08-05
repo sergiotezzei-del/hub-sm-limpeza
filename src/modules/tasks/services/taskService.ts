@@ -29,6 +29,7 @@ type TaskRow = {
   due_date: string | null;
   sort_order: number | string;
   source_module: string | null;
+  source_service_request_id: string | null;
   created_by_user_id: string | null;
   created_by_name: string;
   last_actor_name: string;
@@ -80,30 +81,12 @@ export async function saveHubTask(
   const department = draft.department.trim() || "Geral";
   if (!title) throw new HubTaskRemoteError(400, "Informe o título da tarefa.");
 
-  if (draft.id) {
-    const rows = await requestJson<TaskRow[]>(`hub_tasks?id=eq.${encodeURIComponent(draft.id)}&select=*`, {
-      method: "PATCH",
-      headers: { Prefer: "return=representation" },
-      body: JSON.stringify({
-        title,
-        description: cleanOptional(draft.description),
-        status: draft.status,
-        priority: draft.priority,
-        department,
-        assignee_user_id: draft.assigneeUserId || null,
-        due_date: draft.dueDate || null,
-        last_actor_name: actor.name,
-      }),
-    });
-    if (!rows[0]) throw new HubTaskRemoteError(404, "Tarefa não encontrada.");
-    return mapTask(rows[0]);
+  if (!draft.id && draft.sourceServiceRequestId) {
+    return createHubTaskFromServiceRequest(draft, actor, title, department);
   }
 
-  const rows = await requestJson<TaskRow[]>("hub_tasks?select=*", {
-    method: "POST",
-    headers: { Prefer: "return=representation" },
-    body: JSON.stringify([{
-      id: crypto.randomUUID(),
+  if (draft.id) {
+    const payload: Record<string, unknown> = {
       title,
       description: cleanOptional(draft.description),
       status: draft.status,
@@ -111,14 +94,54 @@ export async function saveHubTask(
       department,
       assignee_user_id: draft.assigneeUserId || null,
       due_date: draft.dueDate || null,
-      sort_order: 0,
-      created_by_user_id: actor.userId,
-      created_by_name: actor.name,
       last_actor_name: actor.name,
-    }]),
+    };
+    if (draft.sourceServiceRequestId) {
+      payload.source_module = draft.sourceModule || "chamados";
+      payload.source_service_request_id = draft.sourceServiceRequestId;
+    }
+
+    const rows = await requestJson<TaskRow[]>(`hub_tasks?id=eq.${encodeURIComponent(draft.id)}&select=*`, {
+      method: "PATCH",
+      headers: { Prefer: "return=representation" },
+      body: JSON.stringify(payload),
+    });
+    if (!rows[0]) throw new HubTaskRemoteError(404, "Tarefa não encontrada.");
+    return mapTask(rows[0]);
+  }
+
+  const payload: Record<string, unknown> = {
+    id: crypto.randomUUID(),
+    title,
+    description: cleanOptional(draft.description),
+    status: draft.status,
+    priority: draft.priority,
+    department,
+    assignee_user_id: draft.assigneeUserId || null,
+    due_date: draft.dueDate || null,
+    sort_order: 0,
+    created_by_user_id: actor.userId,
+    created_by_name: actor.name,
+    last_actor_name: actor.name,
+  };
+  if (draft.sourceModule) {
+    payload.source_module = draft.sourceModule;
+  }
+
+  const rows = await requestJson<TaskRow[]>("hub_tasks?select=*", {
+    method: "POST",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify([payload]),
   });
   if (!rows[0]) throw new HubTaskRemoteError(500, "Não foi possível confirmar a tarefa salva.");
   return mapTask(rows[0]);
+}
+
+export async function loadActiveHubTaskByServiceRequestId(requestId: string): Promise<HubTask | null> {
+  const rows = await requestJson<TaskRow[]>(
+    `hub_tasks?source_service_request_id=eq.${encodeURIComponent(requestId)}&archived_at=is.null&select=*&limit=1`,
+  );
+  return rows[0] ? mapTask(rows[0]) : null;
 }
 
 export async function moveHubTask(
@@ -156,6 +179,9 @@ export function getHubTaskErrorMessage(error: unknown) {
   if (normalized.includes("SEM PERMISSAO") || normalized.includes("ROW-LEVEL SECURITY")) {
     return "Você não tem permissão para alterar os afazeres.";
   }
+  if (isServiceRequestTaskDuplicateError(error)) {
+    return "Este chamado ja possui uma tarefa ativa nos Afazeres.";
+  }
   if (normalized.includes("FOREIGN KEY") || normalized.includes("MANAGED_USERS")) {
     return "O responsável selecionado não está mais disponível. Atualize a tela e escolha outro.";
   }
@@ -169,6 +195,43 @@ export function getHubTaskErrorMessage(error: unknown) {
     return "A conexão demorou demais. Verifique a internet e tente novamente.";
   }
   return message || "Não foi possível concluir a operação.";
+}
+
+export function isServiceRequestTaskDuplicateError(error: unknown) {
+  const details = error instanceof HubTaskRemoteError ? `${error.message} ${error.details}` : error instanceof Error ? error.message : "";
+  const normalized = normalize(details);
+  return normalized.includes("HUB_TASKS_ONE_ACTIVE_TASK_PER_SERVICE_REQUEST")
+    || normalized.includes("ACTIVE TASK ALREADY EXISTS")
+    || normalized.includes("JA EXISTE UMA TAREFA ATIVA")
+    || normalized.includes("JA POSSUI UMA TAREFA ATIVA");
+}
+
+async function createHubTaskFromServiceRequest(
+  draft: HubTaskDraft,
+  actor: { userId: string; name: string },
+  title: string,
+  department: string,
+) {
+  const rows = await requestJson<TaskRow[]>("rpc/create_hub_task_from_service_request", {
+    method: "POST",
+    body: JSON.stringify({
+      p_task_id: crypto.randomUUID(),
+      p_service_request_id: draft.sourceServiceRequestId,
+      p_title: title,
+      p_description: cleanOptional(draft.description),
+      p_status: draft.status,
+      p_priority: draft.priority,
+      p_department: department,
+      p_assignee_user_id: draft.assigneeUserId || null,
+      p_due_date: draft.dueDate || null,
+      p_actor_user_id: actor.userId,
+      p_actor_name: actor.name,
+      p_source_service_request_protocol: draft.sourceServiceRequestProtocol || null,
+    }),
+  });
+
+  if (!rows[0]) throw new HubTaskRemoteError(500, "Nao foi possivel confirmar a tarefa vinculada.");
+  return mapTask(rows[0]);
 }
 
 async function requestJson<T>(path: string, init: RequestInit = {}, allowRefresh = true): Promise<T> {
@@ -255,6 +318,7 @@ function mapTask(row: TaskRow): HubTask {
     dueDate: row.due_date || undefined,
     sortOrder: Number(row.sort_order),
     sourceModule: row.source_module || undefined,
+    sourceServiceRequestId: row.source_service_request_id || undefined,
     createdByUserId: row.created_by_user_id || undefined,
     createdByName: row.created_by_name,
     lastActorName: row.last_actor_name,

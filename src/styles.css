@@ -142,6 +142,68 @@ footer {
   border-top: 1px solid var(--line);
 }
 
+.santa-maria-brand {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  gap: 10px;
+  color: var(--ink);
+}
+
+.santa-maria-brand img {
+  width: 42px;
+  height: 42px;
+  flex: 0 0 auto;
+  object-fit: contain;
+}
+
+.santa-maria-brand div {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+
+.santa-maria-brand strong {
+  color: var(--ink);
+  font-size: 1rem;
+  font-weight: 900;
+  line-height: 1.05;
+  text-transform: uppercase;
+}
+
+.santa-maria-brand span {
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  line-height: 1.15;
+  text-transform: uppercase;
+}
+
+.santa-maria-brand.compact img {
+  width: 34px;
+  height: 34px;
+}
+
+.santa-maria-brand.compact strong {
+  font-size: 0.9rem;
+}
+
+.santa-maria-brand.compact span {
+  font-size: 0.64rem;
+}
+
+.home-brand-strip {
+  width: 100%;
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-left: 6px solid var(--orange);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: var(--shadow-card);
+}
+
 .login-form,
 .manual-form,
 .dialog,

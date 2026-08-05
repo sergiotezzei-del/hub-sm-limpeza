@@ -15,6 +15,8 @@ import type { ManagedUser, UserPermission } from "../../types";
 import {
   archiveHubTask,
   getHubTaskErrorMessage,
+  isServiceRequestTaskDuplicateError,
+  loadActiveHubTaskByServiceRequestId,
   loadHubTaskDataset,
   moveHubTask,
   saveHubTask,
@@ -24,6 +26,7 @@ import type {
   HubTask,
   HubTaskDataset,
   HubTaskDraft,
+  HubTaskNavigationDraft,
   HubTaskPriority,
   HubTaskStatus,
 } from "./types/task.types";
@@ -33,6 +36,9 @@ type TaskBoardScreenProps = {
   permissions: UserPermission[];
   currentUser: ManagedUser;
   managedUsers: ManagedUser[];
+  initialDraft?: HubTaskNavigationDraft | null;
+  initialFocusTaskId?: string | null;
+  onInitialNavigationConsumed?: () => void;
   onBack: () => void;
   onLogout: () => void;
 };
@@ -75,7 +81,16 @@ function createDraft(currentUser: ManagedUser): HubTaskDraft {
   };
 }
 
-export function TaskBoardScreen({ permissions, currentUser, managedUsers, onBack, onLogout }: TaskBoardScreenProps) {
+export function TaskBoardScreen({
+  permissions,
+  currentUser,
+  managedUsers,
+  initialDraft,
+  initialFocusTaskId,
+  onInitialNavigationConsumed,
+  onBack,
+  onLogout,
+}: TaskBoardScreenProps) {
   const canAccess = permissions.includes("afazeres");
   const [dataset, setDataset] = useState<HubTaskDataset>(emptyDataset);
   const [loadState, setLoadState] = useState<LoadState>("loading");
@@ -83,6 +98,7 @@ export function TaskBoardScreen({ permissions, currentUser, managedUsers, onBack
   const [busyTaskId, setBusyTaskId] = useState("");
   const [editorOpen, setEditorOpen] = useState(false);
   const [draft, setDraft] = useState<HubTaskDraft>(() => createDraft(currentUser));
+  const [pendingFocusTaskId, setPendingFocusTaskId] = useState("");
   const [filterMode, setFilterMode] = useState<FilterMode>("all");
   const [assigneeFilter, setAssigneeFilter] = useState("all");
   const [departmentFilter, setDepartmentFilter] = useState("all");
@@ -124,6 +140,45 @@ export function TaskBoardScreen({ permissions, currentUser, managedUsers, onBack
     void refresh();
   }, [canAccess]);
 
+  useEffect(() => {
+    if (!canAccess || !initialDraft) return;
+    setDraft({
+      ...createDraft(currentUser),
+      ...initialDraft,
+      id: undefined,
+      status: initialDraft.status || "a_fazer",
+      priority: initialDraft.priority || "media",
+      assigneeUserId: initialDraft.assigneeUserId || currentUser.id,
+      department: initialDraft.department || "Geral",
+      dueDate: initialDraft.dueDate || "",
+    });
+    resetTaskFilters("a_fazer");
+    setEditorOpen(true);
+    setNotice(initialDraft.notice || "Revise a tarefa antes de salvar.");
+    onInitialNavigationConsumed?.();
+  }, [canAccess, currentUser, initialDraft, onInitialNavigationConsumed]);
+
+  useEffect(() => {
+    if (!canAccess || !initialFocusTaskId) return;
+    setPendingFocusTaskId(initialFocusTaskId);
+    resetTaskFilters();
+    onInitialNavigationConsumed?.();
+  }, [canAccess, initialFocusTaskId, onInitialNavigationConsumed]);
+
+  useEffect(() => {
+    if (!pendingFocusTaskId || loadState !== "ready") return;
+    const linkedTask = dataset.tasks.find((task) => task.id === pendingFocusTaskId);
+    if (!linkedTask) {
+      setNotice("A tarefa vinculada nao esta ativa nos Afazeres.");
+      setPendingFocusTaskId("");
+      return;
+    }
+    setMobileStatus(linkedTask.status);
+    openTask(linkedTask);
+    setNotice("Tarefa vinculada ao chamado aberta.");
+    setPendingFocusTaskId("");
+  }, [dataset.tasks, loadState, pendingFocusTaskId]);
+
   async function refresh() {
     setLoadState("loading");
     setNotice("");
@@ -134,6 +189,13 @@ export function TaskBoardScreen({ permissions, currentUser, managedUsers, onBack
       setLoadState("error");
       setNotice(getHubTaskErrorMessage(error));
     }
+  }
+
+  function resetTaskFilters(status: HubTaskStatus = "a_fazer") {
+    setFilterMode("all");
+    setAssigneeFilter("all");
+    setDepartmentFilter("all");
+    setMobileStatus(status);
   }
 
   function openNewTask() {
@@ -152,6 +214,8 @@ export function TaskBoardScreen({ permissions, currentUser, managedUsers, onBack
       department: task.department,
       assigneeUserId: task.assigneeUserId || "",
       dueDate: task.dueDate || "",
+      sourceModule: task.sourceModule,
+      sourceServiceRequestId: task.sourceServiceRequestId,
     });
     setEditorOpen(true);
     setNotice("");
@@ -162,11 +226,21 @@ export function TaskBoardScreen({ permissions, currentUser, managedUsers, onBack
     setBusyTaskId(draft.id || "new");
     setNotice("");
     try {
-      await saveHubTask(draft, { userId: currentUser.id, name: currentUser.name });
+      const savedTask = await saveHubTask(draft, { userId: currentUser.id, name: currentUser.name });
       setEditorOpen(false);
       setDraft(createDraft(currentUser));
+      resetTaskFilters(savedTask.status);
       await refresh();
     } catch (error) {
+      if (draft.sourceServiceRequestId && isServiceRequestTaskDuplicateError(error)) {
+        const existingTask = await loadActiveHubTaskByServiceRequestId(draft.sourceServiceRequestId).catch(() => null);
+        if (existingTask) {
+          await refresh();
+          openTask(existingTask);
+          setNotice("Este chamado ja estava nos Afazeres. Abri a tarefa vinculada.");
+          return;
+        }
+      }
       setNotice(getHubTaskErrorMessage(error));
     } finally {
       setBusyTaskId("");
@@ -579,12 +653,18 @@ function TaskHistory({ taskId, dataset }: { taskId: string; dataset: HubTaskData
   return (
     <section className="task-history task-editor-full">
       <h3>Histórico recente</h3>
-      {events.map((event) => (
-        <p key={event.id}>
-          <strong>{eventLabel(event.eventType)}</strong>
-          <span>{event.actorName} · {formatDateTime(event.createdAt)}</span>
-        </p>
-      ))}
+      {events.map((event) => {
+        const detail = taskEventDetail(event.details);
+        return (
+          <article key={event.id}>
+            <div>
+              <strong>{eventLabel(event.eventType)}</strong>
+              {detail && <small>{detail}</small>}
+            </div>
+            <span>{event.actorName} · {formatDateTime(event.createdAt)}</span>
+          </article>
+        );
+      })}
     </section>
   );
 }
@@ -634,4 +714,12 @@ function eventLabel(eventType: string) {
     arquivada: "Tarefa arquivada",
   };
   return labels[eventType] || eventType;
+}
+
+function taskEventDetail(details: Record<string, unknown>) {
+  const protocol = typeof details.source_service_request_protocol === "string" ? details.source_service_request_protocol : "";
+  const requestId = typeof details.source_service_request_id === "string" ? details.source_service_request_id : "";
+  if (protocol) return `Origem: chamado ${protocol}`;
+  if (requestId) return "Origem: chamado interno";
+  return "";
 }

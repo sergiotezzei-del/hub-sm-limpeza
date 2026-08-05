@@ -13,6 +13,7 @@ export type HubTask = {
   dueDate?: string;
   sortOrder: number;
   sourceModule?: string;
+  sourceServiceRequestId?: string;
   createdByUserId?: string;
   createdByName: string;
   lastActorName: string;
@@ -42,6 +43,13 @@ export type HubTaskDraft = {
   department: string;
   assigneeUserId: string;
   dueDate: string;
+  sourceModule?: string;
+  sourceServiceRequestId?: string;
+  sourceServiceRequestProtocol?: string;
+};
+
+export type HubTaskNavigationDraft = HubTaskDraft & {
+  notice?: string;
 };
 
 export type HubTaskDataset = {
