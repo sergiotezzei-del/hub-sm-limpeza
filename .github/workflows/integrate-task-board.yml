@@ -10,6 +10,7 @@ on:
       - reopened
     paths:
       - scripts/integrate_task_board.py
+      - scripts/run_integrate_task_board.py
       - .github/workflows/integrate-task-board.yml
       - src/modules/tasks/**
       - src/types.ts
@@ -39,7 +40,7 @@ jobs:
           version: 10
 
       - name: Integrar tela ao aplicativo
-        run: python scripts/integrate_task_board.py
+        run: python scripts/run_integrate_task_board.py
 
       - name: Instalar dependências
         run: pnpm install --frozen-lockfile
@@ -48,12 +49,12 @@ jobs:
         run: pnpm run build
 
       - name: Remover automação temporária
-        run: rm -f scripts/integrate_task_board.py .github/workflows/integrate-task-board.yml
+        run: rm -f scripts/integrate_task_board.py scripts/run_integrate_task_board.py .github/workflows/integrate-task-board.yml
 
       - name: Publicar integração na branch
         run: |
           git config user.name "Sergio Tezzei"
           git config user.email "sergiotezzei@gmail.com"
-          git add src/App.tsx src/types.ts src/modules/tasks supabase/migrations/20260805183600_create_hub_tasks.sql scripts/integrate_task_board.py .github/workflows/integrate-task-board.yml
+          git add src/App.tsx src/types.ts src/modules/tasks supabase/migrations/20260805183600_create_hub_tasks.sql scripts/integrate_task_board.py scripts/run_integrate_task_board.py .github/workflows/integrate-task-board.yml
           git commit -m "Integra quadro de Afazeres ao HUB [tasks-auto]"
           git push origin HEAD:chatgpt/afazeres-board
