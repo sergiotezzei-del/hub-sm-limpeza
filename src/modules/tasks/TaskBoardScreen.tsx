@@ -54,6 +54,12 @@ const priorityLabels: Record<HubTaskPriority, string> = {
   urgente: "Urgente",
 };
 const priorityOptions: HubTaskPriority[] = ["baixa", "media", "alta", "urgente"];
+const priorityRank: Record<HubTaskPriority, number> = {
+  urgente: 0,
+  alta: 1,
+  media: 2,
+  baixa: 3,
+};
 
 const emptyDataset: HubTaskDataset = { tasks: [], events: [] };
 
@@ -492,6 +498,7 @@ function TaskCard({
   onMoveToStatus: (task: HubTask, status: HubTaskStatus) => void;
   onArchive: (task: HubTask) => void;
 }) {
+  const [expanded, setExpanded] = useState(false);
   const overdue = isTaskOverdue(task);
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: task.id,
@@ -506,42 +513,62 @@ function TaskCard({
   const previousButtonLabel = task.status === "concluido" ? "Reabrir" : "Voltar";
 
   return (
-    <section ref={setNodeRef} style={style} className={`task-card priority-${task.priority} ${overdue ? "task-card-overdue" : ""} ${isDragging ? "task-card-dragging" : ""}`}>
-      <div className="task-card-topline">
-        <span className="task-card-priority">{priorityLabels[task.priority]}</span>
+    <section ref={setNodeRef} style={style} className={`task-card priority-${task.priority} ${overdue ? "task-card-overdue" : ""} ${isDragging ? "task-card-dragging" : ""} ${expanded ? "task-card-expanded" : "task-card-collapsed"}`}>
+      <div className="task-card-summary">
         <button
           type="button"
-          className="task-drag-handle"
+          className="task-card-drag-title"
           disabled={busy}
           aria-label={`Arrastar tarefa ${task.title}`}
+          title="Segure e arraste para outra coluna"
           {...attributes}
           {...listeners}
         >
-          Arrastar
+          {task.title}
+        </button>
+        <button
+          type="button"
+          className="task-card-expand"
+          onClick={() => setExpanded((current) => !current)}
+          disabled={busy}
+          aria-expanded={expanded}
+          aria-label={expanded ? `Recolher detalhes de ${task.title}` : `Expandir detalhes de ${task.title}`}
+        >
+          {expanded ? "⌃" : "⌄"}
         </button>
       </div>
-      <button type="button" className="task-card-main" onClick={() => onOpen(task)} disabled={busy}>
-        <strong>{task.title}</strong>
-        {task.description && <small>{task.description}</small>}
-        <span className={`task-card-meta ${!assignee ? "task-card-meta-warning" : ""}`}>{assignee?.name || "Sem responsável"}</span>
-        <span className="task-card-meta">{task.department}</span>
-        {task.dueDate && <span className={`task-card-date ${overdue ? "overdue" : ""}`}>{overdue ? "Atrasada: " : "Prazo: "}{formatDate(task.dueDate)}</span>}
-      </button>
-      <footer>
-        <button type="button" onClick={() => onMove(task, -1)} disabled={busy || statusIndex === 0}>{previousButtonLabel}</button>
-        <button type="button" className="task-card-edit" onClick={() => onOpen(task)} disabled={busy}>Editar</button>
-        {task.status === "concluido" ? (
-          <button type="button" onClick={() => onArchive(task)} disabled={busy}>Arquivar</button>
-        ) : (
-          <button type="button" onClick={() => onMove(task, 1)} disabled={busy}>{nextButtonLabel}</button>
-        )}
-      </footer>
-      <label className="task-card-move-select">
-        <span>Mover para</span>
-        <select value={task.status} onChange={(event) => onMoveToStatus(task, event.target.value as HubTaskStatus)} disabled={busy}>
-          {statusOrder.map((status) => <option key={status} value={status}>{statusLabels[status]}</option>)}
-        </select>
-      </label>
+
+      {expanded && (
+        <div className="task-card-details">
+          <div className="task-card-detail-topline">
+            <span className="task-card-priority">{priorityLabels[task.priority]}</span>
+            {overdue && <span className="task-card-overdue-label">Atrasada</span>}
+          </div>
+          {task.description && <p className="task-card-description">{task.description}</p>}
+          <div className="task-card-information">
+            <span className={`task-card-meta ${!assignee ? "task-card-meta-warning" : ""}`}>{assignee?.name || "Sem responsável"}</span>
+            <span className="task-card-meta">{task.department}</span>
+            {task.dueDate && <span className={`task-card-date ${overdue ? "overdue" : ""}`}>{overdue ? "Atrasada: " : "Prazo: "}{formatDate(task.dueDate)}</span>}
+          </div>
+
+          <div className="task-card-actions" role="group" aria-label={`Ações da tarefa ${task.title}`}>
+            <button type="button" onClick={() => onMove(task, -1)} disabled={busy || statusIndex === 0}>{previousButtonLabel}</button>
+            {task.status === "concluido" ? (
+              <button type="button" onClick={() => onArchive(task)} disabled={busy}>Arquivar</button>
+            ) : (
+              <button type="button" onClick={() => onMove(task, 1)} disabled={busy}>{nextButtonLabel}</button>
+            )}
+            <button type="button" className="task-card-edit" onClick={() => onOpen(task)} disabled={busy}>Editar tarefa</button>
+          </div>
+
+          <label className="task-card-move-select">
+            <span>Mover para</span>
+            <select value={task.status} onChange={(event) => onMoveToStatus(task, event.target.value as HubTaskStatus)} disabled={busy}>
+              {statusOrder.map((status) => <option key={status} value={status}>{statusLabels[status]}</option>)}
+            </select>
+          </label>
+        </div>
+      )}
     </section>
   );
 }
@@ -568,6 +595,8 @@ function isTaskOverdue(task: HubTask) {
 }
 
 function compareTasks(a: HubTask, b: HubTask) {
+  const priorityDifference = priorityRank[a.priority] - priorityRank[b.priority];
+  if (priorityDifference !== 0) return priorityDifference;
   if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
   if (a.dueDate && b.dueDate && a.dueDate !== b.dueDate) return a.dueDate.localeCompare(b.dueDate);
   if (a.dueDate && !b.dueDate) return -1;
