@@ -1,0 +1,62 @@
+name: Integrar módulo Chamados
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+    paths:
+      - scripts/integrate_service_requests.py
+      - .github/workflows/integrate-service-requests.yml
+      - src/modules/service-requests/**
+      - src/config/santaMariaSectors.ts
+      - src/main.tsx
+      - src/types.ts
+      - vercel.json
+      - supabase/migrations/20260805170000_create_public_service_requests.sql
+
+permissions:
+  contents: write
+
+jobs:
+  integrate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout da branch
+        uses: actions/checkout@v4
+        with:
+          ref: chatgpt/chamados-publicos
+          fetch-depth: 0
+
+      - name: Configurar Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Configurar pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Integrar Chamados ao aplicativo
+        run: python scripts/integrate_service_requests.py
+
+      - name: Instalar dependências
+        run: pnpm install --frozen-lockfile
+
+      - name: Validar build
+        run: pnpm run build
+
+      - name: Remover automação temporária
+        run: rm -f scripts/integrate_service_requests.py .github/workflows/integrate-service-requests.yml
+
+      - name: Publicar integração na branch
+        run: |
+          git config user.name "Sergio Tezzei"
+          git config user.email "sergiotezzei@gmail.com"
+          git add src/App.tsx src/main.tsx src/types.ts src/config/santaMariaSectors.ts src/modules/service-requests vercel.json supabase/migrations/20260805170000_create_public_service_requests.sql scripts/integrate_service_requests.py .github/workflows/integrate-service-requests.yml
+          git commit -m "Integra portal público e painel de Chamados [service-requests-auto]"
+          git push origin HEAD:chatgpt/chamados-publicos
