@@ -494,7 +494,7 @@ export function TaskBoardScreen({
 function TaskTopBar({ onBack, onLogout }: { onBack: () => void; onLogout: () => void }) {
   return (
     <header className="task-top-bar">
-      <div className="module-top-actions">
+      <div className="screen-action-row">
         <button type="button" className="ghost-button" onClick={onBack}><AppIcon name="back" size="sm" className="action-icon" />Voltar</button>
         <button type="button" className="logout-button" onClick={onLogout}>Sair</button>
       </div>

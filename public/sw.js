@@ -1,4 +1,4 @@
-const CACHE_NAME = "hub-santa-maria-v2";
+const CACHE_NAME = "hub-santa-maria-v3";
 const APP_SHELL = [
   "/",
   "/manifest.webmanifest",

@@ -2335,7 +2335,7 @@ function EmployeeHeader({ employeeId, profile, adminPreview, onLogout, onBackToP
       photoData={profile?.photoData}
       onProfilePhotoChange={(file) => onProfilePhotoChange(employeeId, file)}
       onLogout={onLogout}
-      actions={adminPreview ? <button className="ghost-button" type="button" onClick={onBackToProfiles}>Voltar</button> : undefined}
+      actions={adminPreview ? <BackButton onClick={onBackToProfiles}>Voltar</BackButton> : undefined}
     />
   );
 }
@@ -2343,8 +2343,8 @@ function EmployeeHeader({ employeeId, profile, adminPreview, onLogout, onBackToP
 function OrderFormScreen({ products, quantities, manualOpen, manualDraft, manualItems, notice, sending, onBack, onLogout, onQuantityChange, onManualOpenChange, onManualDraftChange, onAddManualItem, onRemoveManualItem, onSendOrder }: { products: InventoryProduct[]; quantities: Record<string, string>; manualOpen: boolean; manualDraft: ManualDraft; manualItems: OrderItem[]; notice: string; sending: boolean; onBack: () => void; onLogout: () => void; onQuantityChange: (productId: string, value: string) => void; onManualOpenChange: (value: boolean) => void; onManualDraftChange: (draft: ManualDraft) => void; onAddManualItem: () => void; onRemoveManualItem: (itemId: string) => void; onSendOrder: () => void }) {
   return (
     <section className="screen">
-      <TopBar title="Fazer Pedido Sinval" subtitle="Solicitante: Neia" onLogout={onLogout} />
-      <button className="ghost-button" type="button" onClick={onBack}>Voltar</button>{notice && <p className="notice-message">{notice}</p>}
+      <TopBar title="Fazer Pedido Sinval" subtitle="Solicitante: Neia" onLogout={onLogout} showLogout={false} />
+      <BackLogoutActions onBack={onBack} onLogout={onLogout} />{notice && <p className="notice-message">{notice}</p>}
       <section className="product-list" aria-label="Produtos cadastrados">
         {products.map((product) => <label className="product-row" key={product.id}><span><strong>{product.name}</strong><small>{product.unit}</small></span><input type="number" inputMode="numeric" min="0" placeholder="0" value={quantities[product.id] ?? ""} onChange={(event) => onQuantityChange(product.id, event.target.value)} /></label>)}
       </section>
@@ -2358,7 +2358,7 @@ function OrderFormScreen({ products, quantities, manualOpen, manualDraft, manual
 
 function StockCheckScreen({ products, quantities, observations, notice, sending, onBack, onLogout, onQuantityChange, onObservationChange, onSendStockCheck }: { products: InventoryProduct[]; quantities: Record<string, string>; observations: Record<string, string>; notice: string; sending: boolean; onBack: () => void; onLogout: () => void; onQuantityChange: (productId: string, value: string) => void; onObservationChange: (productId: string, value: string) => void; onSendStockCheck: () => void }) {
   return (
-    <section className="screen"><TopBar title="Conferência de Estoque" subtitle="Solicitante: Neia" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}>Voltar</button>{notice && <p className="notice-message">{notice}</p>}<p className="notice-message">Conte todos os produtos antes de receber a mercadoria nova. Use 0 quando o produto estiver zerado.</p><section className="product-list">{products.map((product) => <label className="product-row stock-row" key={product.id}><span><strong>{product.name}</strong><small>{product.unit}</small></span><input type="number" inputMode="decimal" min="0" placeholder="0" value={quantities[product.id] ?? ""} onChange={(event) => onQuantityChange(product.id, event.target.value)} /><input type="text" placeholder="Obs." value={observations[product.id] ?? ""} onChange={(event) => onObservationChange(product.id, event.target.value)} /></label>)}</section><button className="primary-button wide-button sticky-action" type="button" disabled={sending} onClick={onSendStockCheck}>{sending ? "Salvando..." : "Enviar Conferência"}</button></section>
+    <section className="screen"><TopBar title="Conferência de Estoque" subtitle="Solicitante: Neia" onLogout={onLogout} showLogout={false} /><BackLogoutActions onBack={onBack} onLogout={onLogout} />{notice && <p className="notice-message">{notice}</p>}<p className="notice-message">Conte todos os produtos antes de receber a mercadoria nova. Use 0 quando o produto estiver zerado.</p><section className="product-list">{products.map((product) => <label className="product-row stock-row" key={product.id}><span><strong>{product.name}</strong><small>{product.unit}</small></span><input type="number" inputMode="decimal" min="0" placeholder="0" value={quantities[product.id] ?? ""} onChange={(event) => onQuantityChange(product.id, event.target.value)} /><input type="text" placeholder="Obs." value={observations[product.id] ?? ""} onChange={(event) => onObservationChange(product.id, event.target.value)} /></label>)}</section><button className="primary-button wide-button sticky-action" type="button" disabled={sending} onClick={onSendStockCheck}>{sending ? "Salvando..." : "Enviar Conferência"}</button></section>
   );
 }
 
@@ -2419,8 +2419,8 @@ function StockExitScreen({ inventoryProducts, movements, selectedProduct, userId
 
   return (
     <section className="screen stock-exit-quick-screen">
-      <TopBar title="Retirar Produto" subtitle="Escolha o produto, informe a quantidade e confirme." onLogout={onLogout} />
-      <button className="ghost-button" type="button" onClick={onBack}><AppIcon name="back" size="sm" className="action-icon" />Voltar</button>
+      <TopBar title="Retirar Produto" subtitle="Escolha o produto, informe a quantidade e confirme." onLogout={onLogout} showLogout={false} />
+      <BackLogoutActions onBack={onBack} onLogout={onLogout} />
       {message && <p className={getStockExitNoticeClass(message)}>{message}</p>}
       <section className="manual-form inventory-form stock-exit-quick-form">
         {adminMode ? (
@@ -2592,8 +2592,8 @@ function ProductRegisterScreen({ inventoryProducts, selectedProduct, mode, produ
 
   return (
     <section className="screen">
-      <TopBar title="Cadastro de Produtos" subtitle="Edite código de barras e foto do produto" onLogout={onLogout} />
-      <button className="ghost-button" type="button" onClick={onBack} disabled={saving}>{backLabel}</button>
+      <TopBar title="Cadastro de Produtos" subtitle="Edite código de barras e foto do produto" onLogout={onLogout} showLogout={false} />
+      <BackLogoutActions onBack={onBack} onLogout={onLogout} backLabel={backLabel} disabledBack={saving} />
       {message && <p className={message.includes("salvo") ? "success-message" : "notice-message"}>{message}</p>}
       <section className="manual-form inventory-form product-register-form">
         <div className="button-grid">
@@ -2654,11 +2654,11 @@ function ProductRegisterScreen({ inventoryProducts, selectedProduct, mode, produ
 }
 
 function StockExitHistoryScreen({ movements, onBack, onLogout }: { movements: StockMovement[]; onBack: () => void; onLogout: () => void }) {
-  return <section className="screen"><TopBar title="Histórico de Saídas" subtitle="Consumo de produtos por usuária" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}>Voltar para Limpeza</button>{movements.length === 0 ? <section className="empty-state"><h2>Nenhuma saída registrada</h2><p>Quando uma funcionária retirar produto, aparecerá aqui.</p></section> : <section className="orders-list">{movements.map((movement) => <article className="order-card" key={movement.id}><div className="order-head"><div><p className="card-kicker">{formatDateTime(movement.createdAt)}</p><h2>{movement.productName}</h2><small>Retirado por {movement.userName}</small>{movement.barcode && <small>Código: {movement.barcode}</small>}{movement.observation && <small>{movement.observation}</small>}</div><span className="status-done">{formatStockQuantity(movement.quantity, movement.unit)}</span></div></article>)}</section>}</section>;
+  return <section className="screen"><TopBar title="Histórico de Saídas" subtitle="Consumo de produtos por usuária" onLogout={onLogout} showLogout={false} /><BackLogoutActions onBack={onBack} onLogout={onLogout} backLabel="Voltar para Limpeza" />{movements.length === 0 ? <section className="empty-state"><h2>Nenhuma saída registrada</h2><p>Quando uma funcionária retirar produto, aparecerá aqui.</p></section> : <section className="orders-list">{movements.map((movement) => <article className="order-card" key={movement.id}><div className="order-head"><div><p className="card-kicker">{formatDateTime(movement.createdAt)}</p><h2>{movement.productName}</h2><small>Retirado por {movement.userName}</small>{movement.barcode && <small>Código: {movement.barcode}</small>}{movement.observation && <small>{movement.observation}</small>}</div><span className="status-done">{formatStockQuantity(movement.quantity, movement.unit)}</span></div></article>)}</section>}</section>;
 }
 
 function CurrentStockScreen({ inventoryProducts, onBack, onLogout, onEditProduct }: { inventoryProducts: InventoryProduct[]; onBack: () => void; onLogout: () => void; onEditProduct: (productId: string) => void }) {
-  return <section className="screen"><TopBar title="Estoque Atual" subtitle="Produtos cadastrados para controle de limpeza" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}><AppIcon name="back" size="sm" className="action-icon" />Voltar para Limpeza</button><section className="product-list current-stock-list">{inventoryProducts.map((product) => <article className="product-row inventory-stock-row" key={product.id}><ProductPhoto productName={product.name} photoData={product.photoData} /><span><strong>{product.name}</strong><small>{product.barcode ? `Código: ${product.barcode}` : "Sem código cadastrado"}</small></span><strong className="stock-quantity">{formatStockQuantity(product.currentStock, product.unit)}</strong><button className="secondary-button inventory-edit-button" type="button" onClick={() => onEditProduct(product.id)}><AppIcon name="edit" size="sm" className="action-icon" />Editar</button></article>)}</section></section>;
+  return <section className="screen"><TopBar title="Estoque Atual" subtitle="Produtos cadastrados para controle de limpeza" onLogout={onLogout} showLogout={false} /><BackLogoutActions onBack={onBack} onLogout={onLogout} backLabel="Voltar para Limpeza" /><section className="product-list current-stock-list">{inventoryProducts.map((product) => <article className="product-row inventory-stock-row" key={product.id}><ProductPhoto productName={product.name} photoData={product.photoData} /><span><strong>{product.name}</strong><small>{product.barcode ? `Código: ${product.barcode}` : "Sem código cadastrado"}</small></span><strong className="stock-quantity">{formatStockQuantity(product.currentStock, product.unit)}</strong><button className="secondary-button inventory-edit-button" type="button" onClick={() => onEditProduct(product.id)}><AppIcon name="edit" size="sm" className="action-icon" />Editar</button></article>)}</section></section>;
 }
 
 function ProductPhoto({ productName, photoData }: { productName: string; photoData?: string }) {
@@ -2765,8 +2765,8 @@ function UsersPermissionsScreen({ users, syncState, notice, onBack, onLogout, on
 
   return (
     <section className="screen users-screen">
-      <TopBar title="Usuários e Permissões" subtitle="Acessos, setores e módulos do HUB SM" onLogout={onLogout} />
-      <button className="ghost-button" type="button" onClick={onBack}><AppIcon name="back" size="sm" className="action-icon" />Voltar</button>
+      <TopBar title="Usuários e Permissões" subtitle="Acessos, setores e módulos do HUB SM" onLogout={onLogout} showLogout={false} />
+      <BackLogoutActions onBack={onBack} onLogout={onLogout} />
       <section className={syncState.source === "supabase" ? "users-sync-panel synced" : "users-sync-panel local"}>
         <div>
           <p className="card-kicker">Origem dos usuários</p>
@@ -2842,6 +2842,19 @@ function ProfileAvatar({ name, photoData, large = false }: { name: string; photo
   return <div className={large ? "user-avatar profile-avatar large" : "user-avatar profile-avatar"}>{photoData ? <img src={photoData} alt={`Foto de ${name}`} /> : <span>{getInitials(name)}</span>}</div>;
 }
 
+function BackButton({ onClick, children = "Voltar", disabled = false }: { onClick: () => void; children?: ReactNode; disabled?: boolean }) {
+  return <button className="ghost-button" type="button" disabled={disabled} onClick={onClick}><AppIcon name="back" size="sm" className="action-icon" />{children}</button>;
+}
+
+function BackLogoutActions({ onBack, onLogout, backLabel = "Voltar", disabledBack = false }: { onBack: () => void; onLogout: () => void; backLabel?: string; disabledBack?: boolean }) {
+  return (
+    <div className="screen-action-row">
+      <BackButton onClick={onBack} disabled={disabledBack}>{backLabel}</BackButton>
+      <button className="logout-button" type="button" onClick={onLogout}>Sair</button>
+    </div>
+  );
+}
+
 function ProfileHero({ name, role, department, subtitle, photoData, actions, onProfilePhotoChange, onLogout }: { name: string; role: string; department: string; subtitle?: string; photoData?: string; actions?: ReactNode; onProfilePhotoChange?: (file: File | null) => void | Promise<void>; onLogout?: () => void }) {
   const interactiveAvatar = onProfilePhotoChange && onLogout;
   return (
@@ -2904,8 +2917,8 @@ function ModuleCard({ title, detail, enabled = true, onClick, className = "", at
 function AccessDeniedScreen({ onBack, onLogout }: { onBack: () => void; onLogout: () => void }) {
   return (
     <section className="screen">
-      <TopBar title="Acesso restrito" subtitle="Você não tem acesso a este módulo." onLogout={onLogout} />
-      <button className="ghost-button" type="button" onClick={onBack}><AppIcon name="back" size="sm" className="action-icon" />Voltar</button>
+      <TopBar title="Acesso restrito" subtitle="Você não tem acesso a este módulo." onLogout={onLogout} showLogout={false} />
+      <BackLogoutActions onBack={onBack} onLogout={onLogout} />
       <section className="empty-state">
         <h2>Você não tem acesso a este módulo.</h2>
         <p>Solicite permissão ao admin.</p>
@@ -3078,8 +3091,8 @@ function SystemStatusScreen({ permissions, users, onBack, onLogout }: { permissi
 
   return (
     <section className="screen">
-      <TopBar title="Status do Sistema" subtitle="Visão rápida dos módulos principais do HUB SM." onLogout={onLogout} />
-      <button className="ghost-button" type="button" onClick={onBack}><AppIcon name="back" size="sm" className="action-icon" />Voltar</button>
+      <TopBar title="Status do Sistema" subtitle="Visão rápida dos módulos principais do HUB SM." onLogout={onLogout} showLogout={false} />
+      <BackLogoutActions onBack={onBack} onLogout={onLogout} />
       <section className="system-status-grid" aria-label="Status dos módulos">
         {systemCards.map((card) => (
           <article className={`system-status-card system-status-${card.tone}`} key={card.key}>
@@ -3138,8 +3151,8 @@ function OperationalSectorScreen({ title, subtitle, cards, onBack, onLogout }: {
 
   return (
     <section className="screen">
-      <TopBar title={title} subtitle={subtitle} onLogout={onLogout} />
-      <button className="ghost-button" type="button" onClick={onBack}>Voltar</button>
+      <TopBar title={title} subtitle={subtitle} onLogout={onLogout} showLogout={false} />
+      <BackLogoutActions onBack={onBack} onLogout={onLogout} />
       <section className="admin-grid module-grid">
         {visibleCards.map((card) => <ModuleCard key={card.key} title={card.title} detail={card.detail} enabled={card.enabled} onClick={card.onClick} className={card.className} attention={card.attention} icon={card.icon} />)}
       </section>
@@ -3258,7 +3271,7 @@ function SecurityMenuScreen({ permissions, isAdmin, onBack, onLogout, onOpenGuar
   ];
   const visibleCards = cards.filter((card) => isAdmin || card.enabled);
 
-  return <section className="screen"><TopBar title="Segurança" subtitle="Controle de segurança" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}><AppIcon name="back" size="sm" className="action-icon" />Voltar</button><section className="admin-grid security-grid">{visibleCards.map((card) => <ModuleCard key={card.key} title={card.title} detail={card.detail} enabled={card.enabled} onClick={card.onClick} className={card.className} icon={card.icon} />)}</section>{visibleCards.length === 0 && <section className="empty-state"><h2>Você não tem acesso a este módulo.</h2><p>Solicite permissão ao admin.</p></section>}</section>;
+  return <section className="screen"><TopBar title="Segurança" subtitle="Controle de segurança" onLogout={onLogout} showLogout={false} /><BackLogoutActions onBack={onBack} onLogout={onLogout} /><section className="admin-grid security-grid">{visibleCards.map((card) => <ModuleCard key={card.key} title={card.title} detail={card.detail} enabled={card.enabled} onClick={card.onClick} className={card.className} icon={card.icon} />)}</section>{visibleCards.length === 0 && <section className="empty-state"><h2>Você não tem acesso a este módulo.</h2><p>Solicite permissão ao admin.</p></section>}</section>;
 }
 
 type ParkingTab = "search" | "register";
@@ -3619,8 +3632,8 @@ function SecurityParkingScreen({ permissions, isAdmin, onBack, onLogout }: { per
 
   return (
     <section className="screen parking-screen">
-      <TopBar title="Estacionamento" subtitle="Consulta rápida de placas e controle de veículos" onLogout={onLogout} />
-      <button className="ghost-button" type="button" onClick={onBack}><AppIcon name="back" size="sm" className="action-icon" />Voltar para Segurança</button>
+      <TopBar title="Estacionamento" subtitle="Consulta rápida de placas e controle de veículos" onLogout={onLogout} showLogout={false} />
+      <BackLogoutActions onBack={onBack} onLogout={onLogout} backLabel="Voltar para Segurança" />
       {vehicleState.message && <p className="notice-message">{vehicleState.message}</p>}
       <div className="monitoring-tabs parking-tabs">
         <button className={activeTab === "search" ? "active" : ""} type="button" onClick={() => setActiveTab("search")}><AppIcon name="search" size="sm" className="action-icon" />Pesquisar Veículo</button>
@@ -4154,8 +4167,8 @@ function SecurityMonitoringScreen({ onBack, onLogout }: { onBack: () => void; on
 
   return (
     <section className="screen monitoring-screen">
-      <TopBar title="Monitoramento de Guardas" subtitle="Relatórios de entrada, saída e rondas" onLogout={onLogout} />
-      <button className="ghost-button" type="button" onClick={onBack}><AppIcon name="back" size="sm" className="action-icon" />Voltar para Segurança</button>
+      <TopBar title="Monitoramento de Guardas" subtitle="Relatórios de entrada, saída e rondas" onLogout={onLogout} showLogout={false} />
+      <BackLogoutActions onBack={onBack} onLogout={onLogout} backLabel="Voltar para Segurança" />
       <div className="monitoring-tabs" role="tablist" aria-label="Relatórios de monitoramento">
         <button className={activeTab === "entries" ? "active" : ""} type="button" onClick={() => setActiveTab("entries")}><AppIcon name="security" size="sm" className="action-icon" />Entrada / Ativação de Serviço</button>
         <button className={activeTab === "rounds" ? "active" : ""} type="button" onClick={() => setActiveTab("rounds")}><AppIcon name="guards" size="sm" className="action-icon" />Rondas</button>
@@ -4227,8 +4240,8 @@ function SecurityGuardsPaymentScreen({ onBack, onLogout }: { onBack: () => void;
 
   return (
     <section className="screen monitoring-screen guards-payment-screen">
-      <TopBar title="Fechamento / Pagamento" subtitle="Conferência dos plantões dos guardas" onLogout={onLogout} />
-      <button className="ghost-button" type="button" onClick={onBack}><AppIcon name="back" size="sm" className="action-icon" />Voltar para Guardas</button>
+      <TopBar title="Fechamento / Pagamento" subtitle="Conferência dos plantões dos guardas" onLogout={onLogout} showLogout={false} />
+      <BackLogoutActions onBack={onBack} onLogout={onLogout} backLabel="Voltar para Guardas" />
       <PaymentReportSection />
     </section>
   );
@@ -5874,7 +5887,7 @@ function parseDateOnly(value: string) {
 }
 
 function SecurityGuardsScreen({ isAdmin, onBack, onLogout, onOpenGuard, onOpenPayment, showPayment }: { isAdmin: boolean; onBack: () => void; onLogout: () => void; onOpenGuard: (guardName: GuardName) => void; onOpenPayment: () => void; showPayment: boolean }) {
-  return <section className="screen"><TopBar title="Guardas" subtitle="Selecione o guarda" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}><AppIcon name="back" size="sm" className="action-icon" />Voltar para Segurança</button>{isAdmin && <GuardSyncDiagnosticPanel />}<section className="admin-grid security-grid"><TodayDutyCard />{guardNames.map((guardName) => <ModuleCard key={guardName} title={guardName} detail="Guarda Santa Maria" enabled onClick={() => onOpenGuard(guardName)} className="security-card" icon="guards" />)}{showPayment && <ModuleCard title="Fechamento / Pagamento" detail="Conferência dos plantões" enabled onClick={onOpenPayment} className="security-card" icon="payment" />}</section></section>;
+  return <section className="screen"><TopBar title="Guardas" subtitle="Selecione o guarda" onLogout={onLogout} showLogout={false} /><BackLogoutActions onBack={onBack} onLogout={onLogout} backLabel="Voltar para Segurança" />{isAdmin && <GuardSyncDiagnosticPanel />}<section className="admin-grid security-grid"><TodayDutyCard />{guardNames.map((guardName) => <ModuleCard key={guardName} title={guardName} detail="Guarda Santa Maria" enabled onClick={() => onOpenGuard(guardName)} className="security-card" icon="guards" />)}{showPayment && <ModuleCard title="Fechamento / Pagamento" detail="Conferência dos plantões" enabled onClick={onOpenPayment} className="security-card" icon="payment" />}</section></section>;
 }
 
 function SecurityGuardDetailScreen({ guardLocalId, guardName, onBack, onLogout }: { guardLocalId: GuardId; guardName: GuardName; onBack: () => void; onLogout: () => void }) {
@@ -5883,7 +5896,7 @@ function SecurityGuardDetailScreen({ guardLocalId, guardName, onBack, onLogout }
   const todayShift = getGuardTodayShift(guardName);
   const nextShift = getNextGuardFutureShift(guardName);
 
-  return <section className="screen"><ProfileHero name={guardName} role="Guarda Santa Maria" department="Segurança" subtitle="Escala de horário" actions={<><button className="ghost-button" type="button" onClick={onBack}>Voltar para Guardas</button><button className="logout-button" type="button" onClick={onLogout}>Sair</button></>} /><GuardShiftPanel guardLocalId={guardLocalId} guardName={guardName} todayShift={todayShift} nextShift={nextShift} canManage={false} showTechnicalSync /><section className="shift-section">{summary ? <ShiftCard shift={summary.shift} label={summary.label} featured /> : <article className="shift-card featured"><span>ESCALA</span><strong>Sem próximo plantão lançado</strong><p>Atualize a escala do mês.</p></article>}<h2>Próximos plantões</h2><div className="shift-list">{upcomingShifts.length > 0 ? upcomingShifts.map((shift) => <ShiftCard key={`${shift.startDate}-${shift.startTime}-${shift.endDate}-${shift.endTime}`} shift={shift} />) : <article className="shift-card"><strong>Sem próximos plantões</strong><p>Atualize a escala do mês.</p></article>}</div></section></section>;
+  return <section className="screen"><ProfileHero name={guardName} role="Guarda Santa Maria" department="Segurança" subtitle="Escala de horário" actions={<><BackButton onClick={onBack}>Voltar para Guardas</BackButton><button className="logout-button" type="button" onClick={onLogout}>Sair</button></>} /><GuardShiftPanel guardLocalId={guardLocalId} guardName={guardName} todayShift={todayShift} nextShift={nextShift} canManage={false} showTechnicalSync /><section className="shift-section">{summary ? <ShiftCard shift={summary.shift} label={summary.label} featured /> : <article className="shift-card featured"><span>ESCALA</span><strong>Sem próximo plantão lançado</strong><p>Atualize a escala do mês.</p></article>}<h2>Próximos plantões</h2><div className="shift-list">{upcomingShifts.length > 0 ? upcomingShifts.map((shift) => <ShiftCard key={`${shift.startDate}-${shift.startTime}-${shift.endDate}-${shift.endTime}`} shift={shift} />) : <article className="shift-card"><strong>Sem próximos plantões</strong><p>Atualize a escala do mês.</p></article>}</div></section></section>;
 }
 
 function GuardUserScreen({ guardLocalId, guardName, permissions, photoData, onProfilePhotoChange, onOpenParking, onLogout }: { guardLocalId: GuardId; guardName: GuardName; permissions: UserPermission[]; photoData?: string; onProfilePhotoChange: (file: File | null) => void | Promise<void>; onOpenParking: () => void; onLogout: () => void }) {
@@ -5947,15 +5960,15 @@ function CleaningDashboardScreen({ newOrdersCount, permissions, offlinePendingCo
 }
 
 function ProfilesScreen({ profiles, notice, onBack, onLogout, onPreviewEmployee, onProfilePhotoChange }: { profiles: Record<EmployeeId, EmployeeProfile>; notice: string; onBack: () => void; onLogout: () => void; onPreviewEmployee: (employeeId: EmployeeId) => void; onProfilePhotoChange: (employeeId: EmployeeId, file: File | null) => void }) {
-  return <section className="screen"><TopBar title="Perfis da Equipe de Limpeza" subtitle="Visualizar telas sem digitar senha" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}>Voltar para Limpeza</button>{notice && <p className="success-message">{notice}</p>}<section className="profile-grid">{employeeIds.map((employeeId) => { const employee = employees[employeeId]; const profile = profiles[employeeId]; return <article className="profile-card" key={employeeId}><ProfileAvatar name={employee.name} photoData={profile?.photoData} large /><div className="profile-card-copy"><p className="card-kicker">Limpeza</p><h2>{employee.name}</h2><p>Limpeza — {employee.schedule}</p></div><div className="profile-card-actions"><label className="photo-button">Cadastrar / alterar foto<input type="file" accept="image/*" capture="environment" onChange={(event) => { onProfilePhotoChange(employeeId, event.target.files?.[0] ?? null); event.target.value = ""; }} /></label><button className="primary-button" type="button" onClick={() => onPreviewEmployee(employeeId)}>Ver tela da usuária</button></div></article>; })}</section></section>;
+  return <section className="screen"><TopBar title="Perfis da Equipe de Limpeza" subtitle="Visualizar telas sem digitar senha" onLogout={onLogout} showLogout={false} /><BackLogoutActions onBack={onBack} onLogout={onLogout} backLabel="Voltar para Limpeza" />{notice && <p className="success-message">{notice}</p>}<section className="profile-grid">{employeeIds.map((employeeId) => { const employee = employees[employeeId]; const profile = profiles[employeeId]; return <article className="profile-card" key={employeeId}><ProfileAvatar name={employee.name} photoData={profile?.photoData} large /><div className="profile-card-copy"><p className="card-kicker">Limpeza</p><h2>{employee.name}</h2><p>Limpeza — {employee.schedule}</p></div><div className="profile-card-actions"><label className="photo-button">Cadastrar / alterar foto<input type="file" accept="image/*" capture="environment" onChange={(event) => { onProfilePhotoChange(employeeId, event.target.files?.[0] ?? null); event.target.value = ""; }} /></label><button className="primary-button" type="button" onClick={() => onPreviewEmployee(employeeId)}>Ver tela da usuária</button></div></article>; })}</section></section>;
 }
 
 function OrdersScreen({ orders, notice, editingOrderId, editDraft, onBack, onLogout, onCopyOrder, onDownloadWord, canDownloadWord, onStartEdit, onCancelEdit, onUpdateDraftItem, onRemoveDraftItem, onSaveEdit, onMarkDone, onRequestDelete }: { orders: CleaningOrder[]; notice: string; editingOrderId: string | null; editDraft: OrderItem[]; onBack: () => void; onLogout: () => void; onCopyOrder: (order: CleaningOrder) => void; onDownloadWord: (order: CleaningOrder) => void; canDownloadWord: boolean; onStartEdit: (order: CleaningOrder) => void; onCancelEdit: () => void; onUpdateDraftItem: (itemId: string, field: keyof OrderItem, value: string) => void; onRemoveDraftItem: (itemId: string) => void; onSaveEdit: (order: CleaningOrder) => void; onMarkDone: (order: CleaningOrder) => void; onRequestDelete: (order: CleaningOrder) => void }) {
-  return <section className="screen"><TopBar title="Limpeza — Pedidos Sinval" subtitle="Pedidos feitos pela Neia" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}>Voltar para Limpeza</button>{notice && <p className="notice-message">{notice}</p>}{orders.length === 0 ? <section className="empty-state"><h2>Nenhum pedido salvo</h2><p>Quando a Neia enviar um pedido, ele aparecerá aqui.</p></section> : <section className="orders-list">{orders.map((order) => { const editing = editingOrderId === order.id; return <article className="order-card" key={order.id}><OrderHeader order={order} />{editing ? <EditOrderItems items={editDraft} onUpdateDraftItem={onUpdateDraftItem} onRemoveDraftItem={onRemoveDraftItem} /> : <OrderItems order={order} />}<div className="button-grid">{editing ? <><button className="primary-button" type="button" onClick={() => onSaveEdit(order)}>Salvar</button><button className="ghost-button" type="button" onClick={onCancelEdit}>Cancelar</button></> : <><button className="secondary-button" type="button" onClick={() => onCopyOrder(order)}>Copiar Pedido</button>{canDownloadWord && <button className="primary-button" type="button" onClick={() => onDownloadWord(order)}>Baixar Word para Thelma</button>}<button className="ghost-button" type="button" onClick={() => onStartEdit(order)}>Editar Pedido</button><button className="success-button" type="button" onClick={() => onMarkDone(order)}>Marcar como Pedido Feito</button><button className="danger-button" type="button" onClick={() => onRequestDelete(order)}>Excluir Pedido</button></>}</div></article>; })}</section>}</section>;
+  return <section className="screen"><TopBar title="Limpeza — Pedidos Sinval" subtitle="Pedidos feitos pela Neia" onLogout={onLogout} showLogout={false} /><BackLogoutActions onBack={onBack} onLogout={onLogout} backLabel="Voltar para Limpeza" />{notice && <p className="notice-message">{notice}</p>}{orders.length === 0 ? <section className="empty-state"><h2>Nenhum pedido salvo</h2><p>Quando a Neia enviar um pedido, ele aparecerá aqui.</p></section> : <section className="orders-list">{orders.map((order) => { const editing = editingOrderId === order.id; return <article className="order-card" key={order.id}><OrderHeader order={order} />{editing ? <EditOrderItems items={editDraft} onUpdateDraftItem={onUpdateDraftItem} onRemoveDraftItem={onRemoveDraftItem} /> : <OrderItems order={order} />}<div className="button-grid">{editing ? <><button className="primary-button" type="button" onClick={() => onSaveEdit(order)}>Salvar</button><button className="ghost-button" type="button" onClick={onCancelEdit}>Cancelar</button></> : <><button className="secondary-button" type="button" onClick={() => onCopyOrder(order)}>Copiar Pedido</button>{canDownloadWord && <button className="primary-button" type="button" onClick={() => onDownloadWord(order)}>Baixar Word para Thelma</button>}<button className="ghost-button" type="button" onClick={() => onStartEdit(order)}>Editar Pedido</button><button className="success-button" type="button" onClick={() => onMarkDone(order)}>Marcar como Pedido Feito</button><button className="danger-button" type="button" onClick={() => onRequestDelete(order)}>Excluir Pedido</button></>}</div></article>; })}</section>}</section>;
 }
 
 function HistoryScreen({ title, subtitle, orders, onBack, onLogout, onCopyOrder, onDownloadWord, canDownloadWord }: { title: string; subtitle: string; orders: CleaningOrder[]; onBack: () => void; onLogout: () => void; onCopyOrder: (order: CleaningOrder) => void; onDownloadWord: (order: CleaningOrder) => void; canDownloadWord: boolean }) {
-  return <section className="screen"><TopBar title={title} subtitle={subtitle} onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}>Voltar para Limpeza</button>{orders.length === 0 ? <section className="empty-state"><h2>Nenhum histórico encontrado</h2><p>Os pedidos concluídos ou excluídos aparecerão aqui.</p></section> : <section className="orders-list">{orders.map((order) => <article className="order-card" key={order.id}><OrderHeader order={order} /><OrderItems order={order} /><div className="button-grid"><button className="secondary-button" type="button" onClick={() => onCopyOrder(order)}>Copiar Pedido</button>{canDownloadWord && <button className="primary-button" type="button" onClick={() => onDownloadWord(order)}>Baixar Word para Thelma</button>}</div></article>)}</section>}</section>;
+  return <section className="screen"><TopBar title={title} subtitle={subtitle} onLogout={onLogout} showLogout={false} /><BackLogoutActions onBack={onBack} onLogout={onLogout} backLabel="Voltar para Limpeza" />{orders.length === 0 ? <section className="empty-state"><h2>Nenhum histórico encontrado</h2><p>Os pedidos concluídos ou excluídos aparecerão aqui.</p></section> : <section className="orders-list">{orders.map((order) => <article className="order-card" key={order.id}><OrderHeader order={order} /><OrderItems order={order} /><div className="button-grid"><button className="secondary-button" type="button" onClick={() => onCopyOrder(order)}>Copiar Pedido</button>{canDownloadWord && <button className="primary-button" type="button" onClick={() => onDownloadWord(order)}>Baixar Word para Thelma</button>}</div></article>)}</section>}</section>;
 }
 
 function EditOrderItems({ items, onUpdateDraftItem, onRemoveDraftItem }: { items: OrderItem[]; onUpdateDraftItem: (itemId: string, field: keyof OrderItem, value: string) => void; onRemoveDraftItem: (itemId: string) => void }) {

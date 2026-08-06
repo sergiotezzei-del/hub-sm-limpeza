@@ -1654,11 +1654,13 @@ export function MasterMapScreen({
         </div>
         <div className="top-bar-actions">
           <SantaMariaBrand compact showTagline={false} className="panel-corner-brand" />
-          <button className="logout-button" type="button" onClick={onLogout}>Sair</button>
         </div>
       </header>
 
-      <button className="ghost-button" type="button" onClick={onBack}><AppIcon name="back" size="sm" className="action-icon" />Voltar</button>
+      <div className="screen-action-row">
+        <button className="ghost-button" type="button" onClick={onBack}><AppIcon name="back" size="sm" className="action-icon" />Voltar</button>
+        <button className="logout-button" type="button" onClick={onLogout}>Sair</button>
+      </div>
 
       {message && <p className={`notice-message ${saveStatus === "error" ? "error" : ""}`}>{message}</p>}
       {!canEdit && <section className="empty-state"><h2>Acesso restrito</h2><p>Somente Admin/Tezzei pode acessar o Mapa Mestre nesta versão.</p></section>}
