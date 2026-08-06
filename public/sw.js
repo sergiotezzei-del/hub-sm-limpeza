@@ -1,4 +1,4 @@
-const CACHE_NAME = "hub-santa-maria-v1";
+const CACHE_NAME = "hub-santa-maria-v2";
 const APP_SHELL = [
   "/",
   "/manifest.webmanifest",
@@ -48,7 +48,7 @@ self.addEventListener("fetch", (event) => {
         }
         return response;
       }).catch(() => cached || Response.error());
-      return cached || network;
+      return network;
     }),
   );
 });
