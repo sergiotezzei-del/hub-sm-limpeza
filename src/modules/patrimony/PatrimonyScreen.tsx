@@ -453,8 +453,11 @@ export function PatrimonyScreen({ permissions, actorName, onBack, onLogout }: Pa
   if (!canAccess) {
     return (
       <section className="screen">
-        <PatrimonyTopBar onLogout={onLogout} />
-        <button className="ghost-button" type="button" onClick={onBack}><AppIcon name="back" size="sm" className="action-icon" />Voltar</button>
+        <PatrimonyTopBar />
+        <div className="screen-action-row">
+          <button className="ghost-button" type="button" onClick={onBack}><AppIcon name="back" size="sm" className="action-icon" />Voltar</button>
+          <button className="logout-button" type="button" onClick={onLogout}>Sair</button>
+        </div>
         <section className="empty-state">
           <h2>Acesso restrito</h2>
           <p>O módulo de Patrimônio exige permissão específica.</p>
@@ -465,8 +468,11 @@ export function PatrimonyScreen({ permissions, actorName, onBack, onLogout }: Pa
 
   return (
     <section className="screen patrimony-screen">
-      <PatrimonyTopBar onLogout={onLogout} />
-      <button className="ghost-button" type="button" onClick={onBack}><AppIcon name="back" size="sm" className="action-icon" />Voltar</button>
+      <PatrimonyTopBar />
+      <div className="screen-action-row">
+        <button className="ghost-button" type="button" onClick={onBack}><AppIcon name="back" size="sm" className="action-icon" />Voltar</button>
+        <button className="logout-button" type="button" onClick={onLogout}>Sair</button>
+      </div>
       {notice && <p className={isSuccessNotice(notice) ? "success-message" : "notice-message"}>{notice}</p>}
 
       <nav className="patrimony-tabs" aria-label="Áreas de Patrimônio">
@@ -609,7 +615,7 @@ export function PatrimonyScreen({ permissions, actorName, onBack, onLogout }: Pa
   );
 }
 
-function PatrimonyTopBar({ onLogout }: { onLogout: () => void }) {
+function PatrimonyTopBar() {
   return (
     <header className="top-bar">
       <div>
@@ -619,7 +625,6 @@ function PatrimonyTopBar({ onLogout }: { onLogout: () => void }) {
       </div>
       <div className="top-bar-actions">
         <SantaMariaBrand compact showTagline={false} className="panel-corner-brand" />
-        <button className="logout-button" type="button" onClick={onLogout}>Sair</button>
       </div>
     </header>
   );

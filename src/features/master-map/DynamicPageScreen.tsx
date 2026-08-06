@@ -179,10 +179,12 @@ export function DynamicPageScreen({ pageId, canEdit, onBackToMap, onLogout, onNo
           </div>
           <div className="top-bar-actions">
             <SantaMariaBrand compact showTagline={false} className="panel-corner-brand" />
-            <button className="logout-button" type="button" onClick={onLogout}>Sair</button>
           </div>
         </header>
-        <button className="ghost-button" type="button" onClick={() => onBackToMap()}><AppIcon name="back" size="sm" className="action-icon" />Voltar ao mapa</button>
+        <div className="screen-action-row">
+          <button className="ghost-button" type="button" onClick={() => onBackToMap()}><AppIcon name="back" size="sm" className="action-icon" />Voltar ao mapa</button>
+          <button className="logout-button" type="button" onClick={onLogout}>Sair</button>
+        </div>
       </section>
     );
   }
@@ -198,10 +200,12 @@ export function DynamicPageScreen({ pageId, canEdit, onBackToMap, onLogout, onNo
           </div>
           <div className="top-bar-actions">
             <SantaMariaBrand compact showTagline={false} className="panel-corner-brand" />
-            <button className="logout-button" type="button" onClick={onLogout}>Sair</button>
           </div>
         </header>
-        <button className="ghost-button" type="button" onClick={() => onBackToMap()}><AppIcon name="back" size="sm" className="action-icon" />Voltar ao mapa</button>
+        <div className="screen-action-row">
+          <button className="ghost-button" type="button" onClick={() => onBackToMap()}><AppIcon name="back" size="sm" className="action-icon" />Voltar ao mapa</button>
+          <button className="logout-button" type="button" onClick={onLogout}>Sair</button>
+        </div>
         <section className="empty-state"><h2>Carregando...</h2></section>
       </section>
     );
@@ -217,12 +221,12 @@ export function DynamicPageScreen({ pageId, canEdit, onBackToMap, onLogout, onNo
         </div>
         <div className="top-bar-actions">
           <SantaMariaBrand compact showTagline={false} className="panel-corner-brand" />
-          <button className="logout-button" type="button" onClick={onLogout}>Sair</button>
         </div>
       </header>
 
       <div className="dynamic-page-actions">
         <button className="ghost-button" type="button" onClick={() => onBackToMap(page.nodeId)}><AppIcon name="back" size="sm" className="action-icon" />Voltar e centralizar no quadro</button>
+        <button className="logout-button" type="button" onClick={onLogout}>Sair</button>
         <button className="secondary-button" type="button" onClick={copyDirectUrl}>Copiar URL direta</button>
         <button className="primary-button" type="button" disabled={saveStatus === "saving" || !dirty} onClick={handleSave}><AppIcon name="save" size="sm" className="action-icon" />Salvar</button>
         <span className={`master-map-save-state master-map-save-${saveStatus}`}>{saveLabel}</span>
