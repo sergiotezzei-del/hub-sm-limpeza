@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { AppIcon } from "../../components/AppIcon";
+import { SantaMariaBrand } from "../../components/SantaMariaBrand";
 import { santaMariaRequestSectors } from "../../config/santaMariaSectors";
 import { getHubTaskErrorMessage, loadActiveHubTaskByServiceRequestId } from "../tasks/services/taskService";
 import type { HubTask } from "../tasks/types/task.types";
@@ -445,7 +446,10 @@ function ServiceRequestTopBar({ onBack, onLogout }: { onBack: () => void; onLogo
   return (
     <header className="service-request-top-bar">
       <button type="button" className="back-button" onClick={onBack}><AppIcon name="back" size="sm" /> Voltar</button>
-      <button type="button" className="logout-button" onClick={onLogout}>Sair</button>
+      <div className="top-bar-actions">
+        <SantaMariaBrand compact showTagline={false} className="panel-corner-brand" />
+        <button type="button" className="logout-button" onClick={onLogout}>Sair</button>
+      </div>
     </header>
   );
 }

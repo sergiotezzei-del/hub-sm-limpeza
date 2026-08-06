@@ -1824,7 +1824,6 @@ function App() {
 
   return (
     <main className="app-shell">
-      <SantaMariaBrand compact showTagline={false} className="global-corner-brand" />
       {view === "login" && <LoginScreen password={password} loginError={loginError} onPasswordChange={setPassword} onSubmit={handleLogin} />}
 
       {view === "guard" && currentUser && isGuardId(currentUser) && (
@@ -2277,6 +2276,7 @@ function LoginScreen({ password, loginError, onPasswordChange, onSubmit }: { pas
         <h1>{BRAND}</h1>
       </div>
       <form className="login-form" onSubmit={onSubmit}>
+        <SantaMariaBrand compact showTagline={false} className="panel-corner-brand login-panel-brand" />
         <label htmlFor="password">Digite sua senha</label>
         <input id="password" type="password" value={password} autoComplete="current-password" onChange={(event) => onPasswordChange(event.target.value)} />
         {loginError && <p className="error-message">{loginError}</p>}
@@ -2857,7 +2857,10 @@ function ProfileHero({ name, role, department, subtitle, photoData, actions, onP
         <h1>{name}</h1>
         <p>{role}{subtitle ? ` — ${subtitle}` : ""}</p>
       </div>
-      {actions && <div className="profile-actions">{actions}</div>}
+      <div className="profile-hero-side">
+        <SantaMariaBrand compact showTagline={false} className="panel-corner-brand" />
+        {actions && <div className="profile-actions">{actions}</div>}
+      </div>
     </header>
   );
 }
@@ -5961,7 +5964,7 @@ function EditOrderItems({ items, onUpdateDraftItem, onRemoveDraftItem }: { items
 }
 
 function TopBar({ title, subtitle, onLogout }: { title: string; subtitle: string; onLogout: () => void }) {
-  return <header className="top-bar"><div><p className="eyebrow">{BRAND}</p><h1>{title}</h1><p>{subtitle}</p></div><button className="logout-button" type="button" onClick={onLogout}>Sair</button></header>;
+  return <header className="top-bar"><div><p className="eyebrow">{BRAND}</p><h1>{title}</h1><p>{subtitle}</p></div><div className="top-bar-actions"><SantaMariaBrand compact showTagline={false} className="panel-corner-brand" /><button className="logout-button" type="button" onClick={onLogout}>Sair</button></div></header>;
 }
 
 function OfflinePendingNotice({ count, syncing, onSync }: { count: number; syncing: boolean; onSync: () => void }) {

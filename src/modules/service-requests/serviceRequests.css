@@ -1,6 +1,6 @@
 .public-request-page {
   min-height: 100vh;
-  padding: 72px 16px 24px;
+  padding: 24px 16px;
   background: linear-gradient(180deg, #fff7ed 0%, #f8fafc 48%, #eef2f7 100%);
   color: #172033;
 }
@@ -14,12 +14,13 @@
   display: flex;
   align-items: center;
   gap: 12px;
+  justify-content: flex-end;
   margin-bottom: 18px;
   flex-wrap: wrap;
 }
 
 .public-request-brand-logo {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
 }
 
 .public-request-brand-context {
@@ -28,6 +29,7 @@
   font-size: .86rem;
   font-weight: 800;
   letter-spacing: .04em;
+  text-align: right;
   text-transform: uppercase;
 }
 
@@ -545,7 +547,7 @@
 
 @media (max-width: 680px) {
   .public-request-page {
-    padding: 68px 10px 24px;
+    padding: 14px 10px 24px;
   }
 
   .public-request-card,

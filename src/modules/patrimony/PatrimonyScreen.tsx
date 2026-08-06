@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { AppIcon } from "../../components/AppIcon";
+import { SantaMariaBrand } from "../../components/SantaMariaBrand";
 import type { UserPermission } from "../../types";
 import {
   assignPatrimonyItem,
@@ -616,7 +617,10 @@ function PatrimonyTopBar({ onLogout }: { onLogout: () => void }) {
         <h1>Patrimônio</h1>
         <p>Itens, pessoas, lockers e histórico de alocações.</p>
       </div>
-      <button className="logout-button" type="button" onClick={onLogout}>Sair</button>
+      <div className="top-bar-actions">
+        <SantaMariaBrand compact showTagline={false} className="panel-corner-brand" />
+        <button className="logout-button" type="button" onClick={onLogout}>Sair</button>
+      </div>
     </header>
   );
 }

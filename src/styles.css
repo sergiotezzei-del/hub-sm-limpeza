@@ -55,7 +55,6 @@ button {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  padding-top: 58px;
 }
 
 .screen {
@@ -194,25 +193,21 @@ footer {
   font-size: 0.64rem;
 }
 
-.global-corner-brand {
-  position: fixed;
-  top: max(10px, env(safe-area-inset-top));
-  right: max(10px, env(safe-area-inset-right));
-  z-index: 1200;
+.panel-corner-brand {
+  justify-self: end;
   padding: 7px 9px;
   border: 1px solid rgba(216, 222, 232, 0.95);
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.94);
   box-shadow: 0 8px 20px rgba(31, 41, 51, 0.12);
-  pointer-events: none;
 }
 
-.global-corner-brand img {
+.panel-corner-brand img {
   width: 30px;
   height: 30px;
 }
 
-.global-corner-brand strong {
+.panel-corner-brand strong {
   font-size: 0.78rem;
   letter-spacing: 0;
 }
@@ -514,6 +509,24 @@ button:focus-visible,
 
 .top-bar .eyebrow {
   color: var(--orange-dark);
+}
+
+.top-bar-actions,
+.profile-hero-side {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.top-bar-actions {
+  align-items: flex-end;
+  flex-direction: column;
+}
+
+.profile-hero-side {
+  align-items: flex-end;
+  flex-direction: column;
 }
 
 .profile-hero {
