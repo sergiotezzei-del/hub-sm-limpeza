@@ -1824,6 +1824,7 @@ function App() {
 
   return (
     <main className="app-shell">
+      <SantaMariaBrand compact showTagline={false} className="global-corner-brand" />
       {view === "login" && <LoginScreen password={password} loginError={loginError} onPasswordChange={setPassword} onSubmit={handleLogin} />}
 
       {view === "guard" && currentUser && isGuardId(currentUser) && (
@@ -2290,7 +2291,6 @@ function EmployeeScreen({ employeeId, profile, notice, offlinePendingCount, offl
   const employeeActivities = activities.filter((activity) => activity.employeeId === employeeId);
   return (
     <section className="screen">
-      <SantaMariaBrand compact className="home-brand-strip" />
       <EmployeeHeader employeeId={employeeId} profile={profile} adminPreview={adminPreview} onLogout={onLogout} onBackToProfiles={onBackToProfiles} onProfilePhotoChange={onProfilePhotoChange} />
       <HomeMenuMeta />
       {notice && <p className="success-message">{notice}</p>}
@@ -2684,7 +2684,6 @@ function UserAccessScreen({ user, permissions, notice, onLogout, onOpenCleaningD
 
   return (
     <section className="screen">
-      <SantaMariaBrand compact className="home-brand-strip" />
       <ProfileHero name={user.name} role={user.jobTitle} department={user.department} photoData={user.photoData} subtitle={user.userType} actions={<button className="logout-button" type="button" onClick={onLogout}>Sair</button>} />
       {notice && <p className="notice-message">{notice}</p>}
       <section className="admin-grid module-grid">
@@ -2931,7 +2930,6 @@ function UserSectorHomeScreen({ user, permissions, notice, onLogout, onOpenClean
 
   return (
     <section className="screen">
-      <SantaMariaBrand compact className="home-brand-strip" />
       <ProfileHero
         name={user.name}
         role={user.jobTitle}
@@ -2982,7 +2980,6 @@ function AdminSectorHomeScreen({ user, notice, newOrdersCount, onlineEnabled, pe
 
   return (
     <section className="screen">
-      <SantaMariaBrand compact className="home-brand-strip" />
       <ProfileHero
         name={user.name}
         role={user.jobTitle}
@@ -3239,7 +3236,6 @@ function AdminScreen({ newOrdersCount, onlineEnabled, permissions, onLogout, onO
 
   return (
     <section className="screen">
-      <SantaMariaBrand compact className="home-brand-strip" />
       <TopBar title="Painel Tezzei" subtitle={onlineEnabled ? "Central Operacional HUB SM — online" : "Central Operacional HUB SM — local"} onLogout={onLogout} />
       <section className="admin-grid module-grid">
         {cards.map((card) => <ModuleCard key={card.permission} title={card.title} detail={card.detail} enabled={permissions.includes(card.permission)} onClick={card.onClick} className={card.className} attention={card.attention} icon={card.icon} />)}
@@ -5897,7 +5893,6 @@ function GuardUserScreen({ guardLocalId, guardName, permissions, photoData, onPr
 
   return (
     <section className="screen">
-      <SantaMariaBrand compact className="home-brand-strip" />
       <ProfileHero name={guardName} role="Guarda Santa Maria" department="Segurança" subtitle="Escala de horário" photoData={photoData} onProfilePhotoChange={onProfilePhotoChange} onLogout={onLogout} />
       <HomeMenuMeta />
       <GuardShiftPanel guardLocalId={guardLocalId} guardName={guardName} todayShift={todayShift} nextShift={nextShift} canManage />

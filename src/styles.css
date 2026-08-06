@@ -55,6 +55,7 @@ button {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+  padding-top: 58px;
 }
 
 .screen {
@@ -193,15 +194,27 @@ footer {
   font-size: 0.64rem;
 }
 
-.home-brand-strip {
-  width: 100%;
-  margin: 0 0 12px;
-  padding: 10px 12px;
-  border: 1px solid var(--line);
-  border-left: 6px solid var(--orange);
-  border-radius: 8px;
-  background: #fff;
-  box-shadow: var(--shadow-card);
+.global-corner-brand {
+  position: fixed;
+  top: max(10px, env(safe-area-inset-top));
+  right: max(10px, env(safe-area-inset-right));
+  z-index: 1200;
+  padding: 7px 9px;
+  border: 1px solid rgba(216, 222, 232, 0.95);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 8px 20px rgba(31, 41, 51, 0.12);
+  pointer-events: none;
+}
+
+.global-corner-brand img {
+  width: 30px;
+  height: 30px;
+}
+
+.global-corner-brand strong {
+  font-size: 0.78rem;
+  letter-spacing: 0;
 }
 
 .login-form,
