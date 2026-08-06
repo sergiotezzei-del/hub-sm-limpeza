@@ -147,37 +147,78 @@ footer {
   max-width: 100%;
   align-items: center;
   justify-content: center;
+  gap: 9px;
   color: var(--ink);
+  line-height: 1;
 }
 
 .santa-maria-brand img {
   display: block;
-  width: min(220px, 100%);
+  width: 58px;
   height: auto;
-  max-height: 128px;
+  max-height: 58px;
   flex: 0 0 auto;
   object-fit: contain;
 }
 
+.santa-maria-brand-text {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+  text-transform: uppercase;
+}
+
+.santa-maria-brand strong,
+.santa-maria-brand small {
+  display: block;
+  margin: 0;
+  overflow-wrap: normal;
+  white-space: nowrap;
+}
+
+.santa-maria-brand strong {
+  color: #1f2328;
+  font-size: clamp(1rem, 2vw, 1.25rem);
+  font-weight: 950;
+}
+
+.santa-maria-brand small {
+  color: #1f2328;
+  font-size: clamp(0.68rem, 1.35vw, 0.82rem);
+  font-weight: 750;
+}
+
+.santa-maria-brand.compact {
+  gap: 7px;
+}
+
 .santa-maria-brand.compact img {
-  width: 128px;
-  max-height: 96px;
+  width: 40px;
+  max-height: 40px;
+}
+
+.santa-maria-brand.compact strong {
+  font-size: clamp(0.78rem, 1.25vw, 0.94rem);
+}
+
+.santa-maria-brand.compact small {
+  font-size: clamp(0.54rem, 1vw, 0.68rem);
 }
 
 .panel-corner-brand {
   justify-self: end;
   width: fit-content;
-  padding: 7px 10px;
-  border: 1px solid rgba(216, 222, 232, 0.95);
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.94);
-  box-shadow: 0 8px 20px rgba(31, 41, 51, 0.12);
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .panel-corner-brand img {
-  width: clamp(96px, 13vw, 136px);
+  width: clamp(36px, 5vw, 44px);
   height: auto;
-  max-height: 104px;
+  max-height: 44px;
 }
 
 .login-panel-brand {
@@ -555,6 +596,31 @@ button:focus-visible,
 .screen-action-row .logout-button,
 .top-bar-actions .logout-button {
   width: auto;
+}
+
+.module-top-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.module-top-actions .ghost-button,
+.module-top-actions .logout-button {
+  min-height: 44px;
+  width: auto;
+}
+
+@media (max-width: 520px) {
+  .module-top-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .module-top-actions .ghost-button,
+  .module-top-actions .logout-button {
+    width: 100%;
+  }
 }
 
 .info-grid,
