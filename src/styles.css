@@ -147,62 +147,22 @@ footer {
   max-width: 100%;
   align-items: center;
   justify-content: center;
-  gap: 9px;
   color: var(--ink);
   line-height: 1;
 }
 
 .santa-maria-brand img {
   display: block;
-  width: 58px;
+  width: min(220px, 100%);
   height: auto;
-  max-height: 58px;
+  max-height: 128px;
   flex: 0 0 auto;
   object-fit: contain;
 }
 
-.santa-maria-brand-text {
-  display: grid;
-  min-width: 0;
-  gap: 3px;
-  text-transform: uppercase;
-}
-
-.santa-maria-brand strong,
-.santa-maria-brand small {
-  display: block;
-  margin: 0;
-  overflow-wrap: normal;
-  white-space: nowrap;
-}
-
-.santa-maria-brand strong {
-  color: #1f2328;
-  font-size: clamp(1rem, 2vw, 1.25rem);
-  font-weight: 950;
-}
-
-.santa-maria-brand small {
-  color: #1f2328;
-  font-size: clamp(0.68rem, 1.35vw, 0.82rem);
-  font-weight: 750;
-}
-
-.santa-maria-brand.compact {
-  gap: 7px;
-}
-
 .santa-maria-brand.compact img {
-  width: 40px;
-  max-height: 40px;
-}
-
-.santa-maria-brand.compact strong {
-  font-size: clamp(0.78rem, 1.25vw, 0.94rem);
-}
-
-.santa-maria-brand.compact small {
-  font-size: clamp(0.54rem, 1vw, 0.68rem);
+  width: clamp(96px, 12vw, 136px);
+  max-height: 112px;
 }
 
 .panel-corner-brand {
@@ -216,9 +176,9 @@ footer {
 }
 
 .panel-corner-brand img {
-  width: clamp(36px, 5vw, 44px);
+  width: clamp(96px, 12vw, 136px);
   height: auto;
-  max-height: 44px;
+  max-height: 112px;
 }
 
 .login-panel-brand {
