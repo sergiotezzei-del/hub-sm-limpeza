@@ -3,6 +3,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { AppIcon, type AppIconName } from "./components/AppIcon";
 import { HomeMenuMeta } from "./components/HomeMenuMeta";
 import { ProfileAvatarMenu } from "./components/ProfileAvatarMenu";
+import { SantaMariaBrand } from "./components/SantaMariaBrand";
 import { activities, employees } from "./data";
 import type { MasterMapTargetScreen } from "./features/master-map/masterMapTypes";
 import { GuardShiftPanel, GuardSyncDiagnosticPanel } from "./modules/security/components/GuardShift";
@@ -18,6 +19,8 @@ import type { GuardRoundCheckin, GuardRoundCheckinSource, GuardRoundCheckinStatu
 import type { GuardMonitoringEntry, GuardMonitoringLoadState, GuardShiftStatus } from "./modules/security/types/shift.types";
 import type { VehicleLoadState, VehicleRecord, VehicleRecordDraft } from "./modules/security/types/vehicle.types";
 import { vehicleOwnerTypes } from "./modules/security/types/vehicle.types";
+import type { ServiceRequest } from "./modules/service-requests/types/serviceRequest.types";
+import type { HubTaskNavigationDraft } from "./modules/tasks/types/task.types";
 import { recognizePlateFromPhoto } from "./utils/plateOcr";
 import {
   addOrder,
@@ -262,6 +265,7 @@ type ManagedUsersSyncState = {
 
 const SESSION_KEY = "hub-sm-active-session";
 const USERS_KEY = "hub-sm-users-permissions";
+const SERVICE_REQUEST_TASK_TITLE_MAX_LENGTH = 140;
 const PRODUCT_PHOTO_SOURCE_MAX_BYTES = 10 * 1024 * 1024;
 const PRODUCT_PHOTO_SOURCE_MAX_DATA_URL_LENGTH = 14 * 1024 * 1024;
 const PRODUCT_PHOTO_MAX_DATA_URL_LENGTH = 70 * 1024;
@@ -523,6 +527,8 @@ function App() {
   const [orderSubmitting, setOrderSubmitting] = useState(false);
   const [stockCheckSubmitting, setStockCheckSubmitting] = useState(false);
   const [stockExitSubmitting, setStockExitSubmitting] = useState(false);
+  const [taskDraftFromServiceRequest, setTaskDraftFromServiceRequest] = useState<HubTaskNavigationDraft | null>(null);
+  const [taskFocusFromServiceRequest, setTaskFocusFromServiceRequest] = useState<string | null>(null);
   const cleaningSubmitLocks = useRef({ order: false, stockCheck: false, stockExit: false });
 
   const onlineEnabled = isCloudStorageEnabled();
@@ -1398,7 +1404,52 @@ function App() {
 
     setNotice("");
     setSelectedGuardName(null);
+    setTaskDraftFromServiceRequest(null);
+    setTaskFocusFromServiceRequest(null);
     setView("tasks-board");
+  }
+
+  function openTaskBoardFromServiceRequest(request: ServiceRequest, protocol: string) {
+    if (currentUser !== "tezzei" || !currentManagedUser || !hasCurrentPermission("afazeres")) {
+      setNotice("Sem permissão para acessar Afazeres.");
+      return;
+    }
+
+    setNotice("");
+    setSelectedGuardName(null);
+    setTaskFocusFromServiceRequest(null);
+    setTaskDraftFromServiceRequest({
+      title: createServiceRequestTaskTitle(request),
+      description: createServiceRequestTaskDescription(request, protocol),
+      status: "a_fazer",
+      priority: "media",
+      department: request.department || "Geral",
+      assigneeUserId: currentManagedUser.id,
+      dueDate: "",
+      sourceModule: "chamados",
+      sourceServiceRequestId: request.id,
+      sourceServiceRequestProtocol: protocol,
+      notice: "Revise a tarefa criada a partir do chamado antes de salvar.",
+    });
+    setView("tasks-board");
+  }
+
+  function openLinkedTaskFromServiceRequest(taskId: string) {
+    if (currentUser !== "tezzei" || !hasCurrentPermission("afazeres")) {
+      setNotice("Sem permissão para acessar Afazeres.");
+      return;
+    }
+
+    setNotice("");
+    setSelectedGuardName(null);
+    setTaskDraftFromServiceRequest(null);
+    setTaskFocusFromServiceRequest(taskId);
+    setView("tasks-board");
+  }
+
+  function consumeTaskServiceRequestNavigation() {
+    setTaskDraftFromServiceRequest(null);
+    setTaskFocusFromServiceRequest(null);
   }
 
   function openAssetsMaterialsMenu() {
@@ -1958,6 +2009,9 @@ function App() {
               currentUser={currentManagedUser}
               managedUsers={managedUsers}
               permissions={getManagedUserPermissions(currentUser, managedUsers)}
+              initialDraft={taskDraftFromServiceRequest}
+              initialFocusTaskId={taskFocusFromServiceRequest}
+              onInitialNavigationConsumed={consumeTaskServiceRequestNavigation}
               onBack={() => setView("admin")}
               onLogout={goToLogin}
             />
@@ -1973,6 +2027,8 @@ function App() {
             <ServiceRequestsScreen
               currentUser={currentManagedUser}
               permissions={getManagedUserPermissions(currentUser, managedUsers)}
+              onAddToTasks={openTaskBoardFromServiceRequest}
+              onOpenLinkedTask={openLinkedTaskFromServiceRequest}
               onBack={() => setView("admin")}
               onLogout={goToLogin}
             />
@@ -2234,6 +2290,7 @@ function EmployeeScreen({ employeeId, profile, notice, offlinePendingCount, offl
   const employeeActivities = activities.filter((activity) => activity.employeeId === employeeId);
   return (
     <section className="screen">
+      <SantaMariaBrand compact className="home-brand-strip" />
       <EmployeeHeader employeeId={employeeId} profile={profile} adminPreview={adminPreview} onLogout={onLogout} onBackToProfiles={onBackToProfiles} onProfilePhotoChange={onProfilePhotoChange} />
       <HomeMenuMeta />
       {notice && <p className="success-message">{notice}</p>}
@@ -2627,6 +2684,7 @@ function UserAccessScreen({ user, permissions, notice, onLogout, onOpenCleaningD
 
   return (
     <section className="screen">
+      <SantaMariaBrand compact className="home-brand-strip" />
       <ProfileHero name={user.name} role={user.jobTitle} department={user.department} photoData={user.photoData} subtitle={user.userType} actions={<button className="logout-button" type="button" onClick={onLogout}>Sair</button>} />
       {notice && <p className="notice-message">{notice}</p>}
       <section className="admin-grid module-grid">
@@ -2873,6 +2931,7 @@ function UserSectorHomeScreen({ user, permissions, notice, onLogout, onOpenClean
 
   return (
     <section className="screen">
+      <SantaMariaBrand compact className="home-brand-strip" />
       <ProfileHero
         name={user.name}
         role={user.jobTitle}
@@ -2923,6 +2982,7 @@ function AdminSectorHomeScreen({ user, notice, newOrdersCount, onlineEnabled, pe
 
   return (
     <section className="screen">
+      <SantaMariaBrand compact className="home-brand-strip" />
       <ProfileHero
         name={user.name}
         role={user.jobTitle}
@@ -3179,6 +3239,7 @@ function AdminScreen({ newOrdersCount, onlineEnabled, permissions, onLogout, onO
 
   return (
     <section className="screen">
+      <SantaMariaBrand compact className="home-brand-strip" />
       <TopBar title="Painel Tezzei" subtitle={onlineEnabled ? "Central Operacional HUB SM — online" : "Central Operacional HUB SM — local"} onLogout={onLogout} />
       <section className="admin-grid module-grid">
         {cards.map((card) => <ModuleCard key={card.permission} title={card.title} detail={card.detail} enabled={permissions.includes(card.permission)} onClick={card.onClick} className={card.className} attention={card.attention} icon={card.icon} />)}
@@ -5836,6 +5897,7 @@ function GuardUserScreen({ guardLocalId, guardName, permissions, photoData, onPr
 
   return (
     <section className="screen">
+      <SantaMariaBrand compact className="home-brand-strip" />
       <ProfileHero name={guardName} role="Guarda Santa Maria" department="Segurança" subtitle="Escala de horário" photoData={photoData} onProfilePhotoChange={onProfilePhotoChange} onLogout={onLogout} />
       <HomeMenuMeta />
       <GuardShiftPanel guardLocalId={guardLocalId} guardName={guardName} todayShift={todayShift} nextShift={nextShift} canManage />
@@ -5945,6 +6007,25 @@ function CleaningPrepDialog({ running, onCancel, onConfirm }: { running: boolean
       </section>
     </div>
   );
+}
+
+function createServiceRequestTaskTitle(request: ServiceRequest) {
+  const cleanRequest = request.requestText.replace(/\s+/g, " ").trim();
+  return truncateText(cleanRequest || `Chamado de ${request.requesterName}`, SERVICE_REQUEST_TASK_TITLE_MAX_LENGTH);
+}
+
+function createServiceRequestTaskDescription(request: ServiceRequest, protocol: string) {
+  return [
+    `Chamado: ${protocol}`,
+    `Solicitante: ${request.requesterName}`,
+    `Setor: ${request.department}`,
+    `Solicitação: ${request.requestText}`,
+  ].join("\n");
+}
+
+function truncateText(value: string, maxLength: number) {
+  if (value.length <= maxLength) return value;
+  return `${value.slice(0, Math.max(0, maxLength - 1)).trimEnd()}…`;
 }
 
 function getGuardShifts(guardName: GuardName) {

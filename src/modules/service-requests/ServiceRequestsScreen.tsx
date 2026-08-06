@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { AppIcon } from "../../components/AppIcon";
 import { santaMariaRequestSectors } from "../../config/santaMariaSectors";
+import { getHubTaskErrorMessage, loadActiveHubTaskByServiceRequestId } from "../tasks/services/taskService";
+import type { HubTask } from "../tasks/types/task.types";
 import type { ManagedUser, UserPermission } from "../../types";
 import {
   getAdminServiceRequestErrorMessage,
@@ -17,6 +19,8 @@ import "./serviceRequests.css";
 type ServiceRequestsScreenProps = {
   currentUser: ManagedUser;
   permissions: UserPermission[];
+  onAddToTasks: (request: ServiceRequest, protocol: string) => void;
+  onOpenLinkedTask: (taskId: string) => void;
   onBack: () => void;
   onLogout: () => void;
 };
@@ -45,10 +49,13 @@ const statusOrder: ServiceRequestStatus[] = [
 export function ServiceRequestsScreen({
   currentUser,
   permissions,
+  onAddToTasks,
+  onOpenLinkedTask,
   onBack,
   onLogout,
 }: ServiceRequestsScreenProps) {
   const canAccess = permissions.includes("chamados");
+  const canUseTasks = permissions.includes("afazeres");
   const [dataset, setDataset] = useState<ServiceRequestDataset>(emptyDataset);
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [notice, setNotice] = useState("");
@@ -59,11 +66,14 @@ export function ServiceRequestsScreen({
   const [noteDraft, setNoteDraft] = useState("");
   const [busyRequestId, setBusyRequestId] = useState("");
   const [linkCopied, setLinkCopied] = useState(false);
+  const [linkedTaskByRequestId, setLinkedTaskByRequestId] = useState<Record<string, HubTask | null>>({});
+  const [linkedTaskLoadingId, setLinkedTaskLoadingId] = useState("");
 
   const selectedRequest = useMemo(
     () => dataset.requests.find((request) => request.id === selectedRequestId) ?? null,
     [dataset.requests, selectedRequestId],
   );
+  const selectedLinkedTask = selectedRequest ? linkedTaskByRequestId[selectedRequest.id] : null;
 
   const departments = useMemo(() => {
     const values = [
@@ -105,6 +115,11 @@ export function ServiceRequestsScreen({
     if (!selectedRequest) return;
     setNoteDraft(selectedRequest.adminNotes ?? "");
   }, [selectedRequest]);
+
+  useEffect(() => {
+    if (!selectedRequest || !canUseTasks) return;
+    void refreshLinkedTask(selectedRequest.id);
+  }, [canUseTasks, selectedRequest]);
 
   async function refresh() {
     setLoadState("loading");
@@ -183,6 +198,44 @@ export function ServiceRequestsScreen({
     } catch {
       // A alteração principal já foi confirmada. A próxima atualização recarrega o histórico.
     }
+  }
+
+  async function refreshLinkedTask(requestId: string) {
+    if (linkedTaskLoadingId === requestId) return;
+    setLinkedTaskLoadingId(requestId);
+    try {
+      const linkedTask = await loadActiveHubTaskByServiceRequestId(requestId);
+      setLinkedTaskByRequestId((current) => ({ ...current, [requestId]: linkedTask }));
+    } catch {
+      setLinkedTaskByRequestId((current) => ({ ...current, [requestId]: null }));
+    } finally {
+      setLinkedTaskLoadingId("");
+    }
+  }
+
+  async function addRequestToTasks(request: ServiceRequest) {
+    if (!canUseTasks || busyRequestId) return;
+    const protocol = formatProtocol(request.protocolNumber, request.openedAt);
+    setBusyRequestId(`task:${request.id}`);
+    setNotice("");
+    try {
+      const linkedTask = await loadActiveHubTaskByServiceRequestId(request.id);
+      if (linkedTask) {
+        setLinkedTaskByRequestId((current) => ({ ...current, [request.id]: linkedTask }));
+        onOpenLinkedTask(linkedTask.id);
+        return;
+      }
+      onAddToTasks(request, protocol);
+    } catch (error) {
+      setNotice(`Não foi possível preparar a tarefa. ${getHubTaskErrorMessage(error)}`);
+    } finally {
+      setBusyRequestId("");
+    }
+  }
+
+  function openLinkedTask(task: HubTask) {
+    setNotice("");
+    onOpenLinkedTask(task.id);
   }
 
   async function copyPublicLink() {
@@ -348,6 +401,37 @@ export function ServiceRequestsScreen({
               </button>
               {renderStatusActions(selectedRequest, busyRequestId, changeStatus)}
             </div>
+
+            {canUseTasks && (
+              <section className="service-request-task-link" aria-label="Vínculo com Afazeres">
+                <div>
+                  <strong>{selectedLinkedTask ? "Já adicionado aos Afazeres" : "Gerar tarefa nos Afazeres"}</strong>
+                  <p>
+                    {selectedLinkedTask
+                      ? "Este chamado já tem uma tarefa ativa vinculada."
+                      : "Abre o formulário de Nova tarefa já preenchido para revisão antes de salvar."}
+                  </p>
+                </div>
+                {selectedLinkedTask ? (
+                  <button className="primary-button" type="button" onClick={() => openLinkedTask(selectedLinkedTask)} disabled={Boolean(busyRequestId)}>
+                    Abrir nos Afazeres
+                  </button>
+                ) : (
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    onClick={() => void addRequestToTasks(selectedRequest)}
+                    disabled={Boolean(busyRequestId) || linkedTaskLoadingId === selectedRequest.id}
+                  >
+                    {linkedTaskLoadingId === selectedRequest.id
+                      ? "Verificando..."
+                      : busyRequestId === `task:${selectedRequest.id}`
+                        ? "Abrindo Afazeres..."
+                        : "Adicionar aos Afazeres"}
+                  </button>
+                )}
+              </section>
+            )}
 
             <ServiceRequestHistory requestId={selectedRequest.id} dataset={dataset} />
           </section>

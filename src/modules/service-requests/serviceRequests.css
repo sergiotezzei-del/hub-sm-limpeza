@@ -15,33 +15,20 @@
   align-items: center;
   gap: 12px;
   margin-bottom: 18px;
+  flex-wrap: wrap;
 }
 
-.public-request-brand div {
-  display: grid;
-  gap: 2px;
+.public-request-brand-logo {
+  flex: 1 1 auto;
 }
 
-.public-request-brand strong {
-  font-size: 1rem;
-}
-
-.public-request-brand span:not(.public-request-logo) {
+.public-request-brand-context {
+  width: 100%;
   color: #667085;
-  font-size: .82rem;
-}
-
-.public-request-logo {
-  display: grid;
-  width: 44px;
-  height: 44px;
-  place-items: center;
-  border-radius: 14px;
-  background: #f97316;
-  color: #fff;
-  font-size: 1.4rem;
-  font-weight: 900;
-  box-shadow: 0 10px 24px rgba(249, 115, 22, .24);
+  font-size: .86rem;
+  font-weight: 800;
+  letter-spacing: .04em;
+  text-transform: uppercase;
 }
 
 .public-request-card,
@@ -215,6 +202,11 @@
   font-weight: 700;
   letter-spacing: .06em;
   text-align: center;
+}
+
+.public-request-footer::before {
+  content: none !important;
+  display: none !important;
 }
 
 .service-requests-screen {
@@ -484,6 +476,31 @@
   margin-top: 16px;
 }
 
+.service-request-task-link {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  margin-top: 16px;
+  padding: 14px;
+  border: 1px solid #fed7aa;
+  border-radius: 14px;
+  background: #fff7ed;
+}
+
+.service-request-task-link strong {
+  display: block;
+  color: #9a3412;
+  font-size: .92rem;
+}
+
+.service-request-task-link p {
+  margin: 4px 0 0;
+  color: #7c2d12;
+  font-size: .84rem;
+  line-height: 1.35;
+}
+
 .service-request-history {
   display: grid;
   gap: 10px;
@@ -576,6 +593,14 @@
   }
 
   .service-request-detail-actions button {
+    min-height: 46px;
+  }
+
+  .service-request-task-link {
+    grid-template-columns: 1fr;
+  }
+
+  .service-request-task-link button {
     min-height: 46px;
   }
 }
