@@ -146,70 +146,42 @@ footer {
   display: inline-flex;
   max-width: 100%;
   align-items: center;
-  gap: 10px;
+  justify-content: center;
   color: var(--ink);
 }
 
 .santa-maria-brand img {
-  width: 42px;
-  height: 42px;
+  display: block;
+  width: min(220px, 100%);
+  height: auto;
+  max-height: 128px;
   flex: 0 0 auto;
   object-fit: contain;
 }
 
-.santa-maria-brand div {
-  display: grid;
-  min-width: 0;
-  gap: 1px;
-}
-
-.santa-maria-brand strong {
-  color: var(--ink);
-  font-size: 1rem;
-  font-weight: 900;
-  line-height: 1.05;
-  text-transform: uppercase;
-}
-
-.santa-maria-brand span {
-  color: var(--muted);
-  font-size: 0.7rem;
-  font-weight: 800;
-  letter-spacing: 0.04em;
-  line-height: 1.15;
-  text-transform: uppercase;
-}
-
 .santa-maria-brand.compact img {
-  width: 34px;
-  height: 34px;
-}
-
-.santa-maria-brand.compact strong {
-  font-size: 0.9rem;
-}
-
-.santa-maria-brand.compact span {
-  font-size: 0.64rem;
+  width: 128px;
+  max-height: 96px;
 }
 
 .panel-corner-brand {
   justify-self: end;
-  padding: 7px 9px;
+  width: fit-content;
+  padding: 7px 10px;
   border: 1px solid rgba(216, 222, 232, 0.95);
-  border-radius: 999px;
+  border-radius: 14px;
   background: rgba(255, 255, 255, 0.94);
   box-shadow: 0 8px 20px rgba(31, 41, 51, 0.12);
 }
 
 .panel-corner-brand img {
-  width: 30px;
-  height: 30px;
+  width: clamp(96px, 13vw, 136px);
+  height: auto;
+  max-height: 104px;
 }
 
-.panel-corner-brand strong {
-  font-size: 0.78rem;
-  letter-spacing: 0;
+.login-panel-brand {
+  margin-left: auto;
 }
 
 .login-form,
@@ -521,7 +493,7 @@ button:focus-visible,
 
 .top-bar-actions {
   align-items: flex-end;
-  flex-direction: column;
+  flex-direction: row;
 }
 
 .profile-hero-side {
@@ -569,6 +541,20 @@ button:focus-visible,
 .profile-actions .photo-button,
 .profile-card-actions .photo-button {
   min-height: 48px;
+}
+
+.screen-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin: -2px 0 14px;
+}
+
+.screen-action-row .ghost-button,
+.screen-action-row .logout-button,
+.top-bar-actions .logout-button {
+  width: auto;
 }
 
 .info-grid,
@@ -6613,5 +6599,35 @@ button:focus-visible,
   .home-menu-meta {
     justify-content: center;
     margin-top: 0;
+  }
+}
+
+.top-bar-actions .logout-button {
+  width: auto;
+}
+
+.screen-action-row .ghost-button,
+.screen-action-row .logout-button {
+  flex: 0 1 auto;
+  width: auto;
+}
+
+@media (max-width: 680px) {
+  .screen-action-row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .screen-action-row .ghost-button,
+  .screen-action-row .logout-button {
+    width: 100%;
+  }
+
+  .top-bar-actions {
+    justify-content: flex-end;
+  }
+
+  .top-bar-actions .logout-button {
+    width: auto;
   }
 }

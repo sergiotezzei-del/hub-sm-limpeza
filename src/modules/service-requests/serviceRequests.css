@@ -23,6 +23,11 @@
   flex: 0 1 auto;
 }
 
+.public-request-brand-logo img {
+  width: min(220px, 64vw);
+  max-height: none;
+}
+
 .public-request-brand-context {
   width: 100%;
   color: #667085;
