@@ -2270,7 +2270,6 @@ function App() {
 function LoginScreen({ password, loginError, onPasswordChange, onSubmit }: { password: string; loginError: string; onPasswordChange: (value: string) => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void | Promise<void> }) {
   return (
     <section className="screen login-screen">
-      <div className="brand-mark" aria-hidden="true">SM</div>
       <div className="title-group center">
         <p className="eyebrow">Central Operacional HUB SM</p>
         <h1>{BRAND}</h1>
@@ -5944,7 +5943,7 @@ function CleaningDashboardScreen({ newOrdersCount, permissions, offlinePendingCo
   ];
   const visibleCards = cards.filter((card) => card.enabled);
 
-  return <section className="screen"><TopBar title="Gestão de Limpeza" subtitle="Neia, Selma, Helena, pedidos, estoque e auditoria" onLogout={onLogout} /><button className="ghost-button" type="button" onClick={onBack}><AppIcon name="back" size="sm" className="action-icon" />Voltar</button><OfflinePendingNotice count={offlinePendingCount} syncing={offlineSyncing} onSync={onSyncOffline} />{canCleaning && newOrdersCount > 0 && <button className="alert-banner cleaning-alert-banner" type="button" onClick={onOpenOrders}><AppIcon name="warning" size="sm" className="action-icon" />Pedido novo da Neia — precisa de atenção</button>}<section className="admin-grid cleaning-dashboard-grid">{visibleCards.map((card) => <ModuleCard key={card.key} title={card.title} detail={card.detail} enabled={card.enabled} onClick={card.onClick} className="cleaning-control-card" attention={card.attention} icon={card.icon} />)}</section>{visibleCards.length === 0 && <section className="empty-state"><h2>Você não tem acesso a este módulo.</h2><p>Solicite permissão ao admin.</p></section>}</section>;
+  return <section className="screen"><TopBar title="Gestão de Limpeza" subtitle="Neia, Selma, Helena, pedidos, estoque e auditoria" onLogout={onLogout} showLogout={false} /><div className="screen-action-row"><button className="ghost-button" type="button" onClick={onBack}><AppIcon name="back" size="sm" className="action-icon" />Voltar</button><button className="logout-button" type="button" onClick={onLogout}>Sair</button></div><OfflinePendingNotice count={offlinePendingCount} syncing={offlineSyncing} onSync={onSyncOffline} />{canCleaning && newOrdersCount > 0 && <button className="alert-banner cleaning-alert-banner" type="button" onClick={onOpenOrders}><AppIcon name="warning" size="sm" className="action-icon" />Pedido novo da Neia — precisa de atenção</button>}<section className="admin-grid cleaning-dashboard-grid">{visibleCards.map((card) => <ModuleCard key={card.key} title={card.title} detail={card.detail} enabled={card.enabled} onClick={card.onClick} className="cleaning-control-card" attention={card.attention} icon={card.icon} />)}</section>{visibleCards.length === 0 && <section className="empty-state"><h2>Você não tem acesso a este módulo.</h2><p>Solicite permissão ao admin.</p></section>}</section>;
 }
 
 function ProfilesScreen({ profiles, notice, onBack, onLogout, onPreviewEmployee, onProfilePhotoChange }: { profiles: Record<EmployeeId, EmployeeProfile>; notice: string; onBack: () => void; onLogout: () => void; onPreviewEmployee: (employeeId: EmployeeId) => void; onProfilePhotoChange: (employeeId: EmployeeId, file: File | null) => void }) {
@@ -5963,8 +5962,8 @@ function EditOrderItems({ items, onUpdateDraftItem, onRemoveDraftItem }: { items
   return <div className="edit-list">{items.map((item) => <section className="edit-row" key={item.id}><label>Produto<input type="text" value={item.productName} disabled={!item.manual} onChange={(event) => onUpdateDraftItem(item.id, "productName", event.target.value)} /></label><label>Quantidade<input type="number" inputMode="numeric" min="0" value={String(item.quantity)} onChange={(event) => onUpdateDraftItem(item.id, "quantity", event.target.value)} /></label>{item.manual && <label>Observação<input type="text" value={item.observation ?? ""} onChange={(event) => onUpdateDraftItem(item.id, "observation", event.target.value)} /></label>}<button className="danger-button" type="button" onClick={() => onRemoveDraftItem(item.id)}>Remover</button></section>)}</div>;
 }
 
-function TopBar({ title, subtitle, onLogout }: { title: string; subtitle: string; onLogout: () => void }) {
-  return <header className="top-bar"><div><p className="eyebrow">{BRAND}</p><h1>{title}</h1><p>{subtitle}</p></div><div className="top-bar-actions"><SantaMariaBrand compact showTagline={false} className="panel-corner-brand" /><button className="logout-button" type="button" onClick={onLogout}>Sair</button></div></header>;
+function TopBar({ title, subtitle, onLogout, showLogout = true }: { title: string; subtitle: string; onLogout: () => void; showLogout?: boolean }) {
+  return <header className="top-bar"><div><p className="eyebrow">{BRAND}</p><h1>{title}</h1><p>{subtitle}</p></div><div className="top-bar-actions"><SantaMariaBrand compact showTagline={false} className="panel-corner-brand" />{showLogout && <button className="logout-button" type="button" onClick={onLogout}>Sair</button>}</div></header>;
 }
 
 function OfflinePendingNotice({ count, syncing, onSync }: { count: number; syncing: boolean; onSync: () => void }) {

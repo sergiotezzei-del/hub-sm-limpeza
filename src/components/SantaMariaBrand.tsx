@@ -9,11 +9,7 @@ export function SantaMariaBrand({ compact = false, showTagline = true, className
 
   return (
     <div className={classes}>
-      <img src="/santa-maria-symbol.svg" alt="Santa Maria Soluções Imobiliárias" />
-      <div>
-        <strong>SANTA MARIA</strong>
-        {showTagline && <span>SOLUÇÕES IMOBILIÁRIAS</span>}
-      </div>
+      <img src="/santa-maria-logo.jpeg" alt={showTagline ? "Santa Maria Solucoes Imobiliarias" : "Santa Maria"} />
     </div>
   );
 }
