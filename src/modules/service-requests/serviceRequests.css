@@ -1,6 +1,6 @@
 .public-request-page {
   min-height: 100vh;
-  padding: 24px 16px;
+  padding: 72px 16px 24px;
   background: linear-gradient(180deg, #fff7ed 0%, #f8fafc 48%, #eef2f7 100%);
   color: #172033;
 }
@@ -545,7 +545,7 @@
 
 @media (max-width: 680px) {
   .public-request-page {
-    padding: 14px 10px 24px;
+    padding: 68px 10px 24px;
   }
 
   .public-request-card,
