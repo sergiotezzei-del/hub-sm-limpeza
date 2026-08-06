@@ -24,7 +24,7 @@
 }
 
 .public-request-brand-logo img {
-  width: min(220px, 64vw);
+  width: clamp(56px, 14vw, 76px);
   max-height: none;
 }
 
@@ -222,7 +222,7 @@
 
 .service-request-top-bar {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 18px;

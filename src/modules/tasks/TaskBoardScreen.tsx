@@ -494,11 +494,11 @@ export function TaskBoardScreen({
 function TaskTopBar({ onBack, onLogout }: { onBack: () => void; onLogout: () => void }) {
   return (
     <header className="task-top-bar">
-      <button type="button" className="back-button" onClick={onBack}><AppIcon name="back" size="sm" /> Voltar</button>
-      <div className="top-bar-actions">
-        <SantaMariaBrand compact showTagline={false} className="panel-corner-brand" />
+      <div className="module-top-actions">
+        <button type="button" className="ghost-button" onClick={onBack}><AppIcon name="back" size="sm" className="action-icon" />Voltar</button>
         <button type="button" className="logout-button" onClick={onLogout}>Sair</button>
       </div>
+      <SantaMariaBrand compact showTagline={false} className="panel-corner-brand" />
     </header>
   );
 }
