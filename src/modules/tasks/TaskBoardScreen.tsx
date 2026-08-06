@@ -11,6 +11,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties, FormEvent } from "react";
 import { AppIcon } from "../../components/AppIcon";
+import { SantaMariaBrand } from "../../components/SantaMariaBrand";
 import type { ManagedUser, UserPermission } from "../../types";
 import {
   archiveHubTask,
@@ -494,7 +495,10 @@ function TaskTopBar({ onBack, onLogout }: { onBack: () => void; onLogout: () => 
   return (
     <header className="task-top-bar">
       <button type="button" className="back-button" onClick={onBack}><AppIcon name="back" size="sm" /> Voltar</button>
-      <button type="button" className="logout-button" onClick={onLogout}>Sair</button>
+      <div className="top-bar-actions">
+        <SantaMariaBrand compact showTagline={false} className="panel-corner-brand" />
+        <button type="button" className="logout-button" onClick={onLogout}>Sair</button>
+      </div>
     </header>
   );
 }

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { type ReactFlowInstance } from "@xyflow/react";
 import { AppIcon } from "../../components/AppIcon";
+import { SantaMariaBrand } from "../../components/SantaMariaBrand";
 import { DynamicPageScreen } from "./DynamicPageScreen";
 import { MasterMapCreateNodeDialog, type MasterMapCreateNodeDraft } from "./MasterMapCreateNodeDialog";
 import { MasterMapCanvas } from "./MasterMapCanvas";
@@ -1651,7 +1652,10 @@ export function MasterMapScreen({
           <h1>Mapa Mestre</h1>
           <p>Visão geral dos módulos, projetos, dependências e andamento do HUB SM.</p>
         </div>
-        <button className="logout-button" type="button" onClick={onLogout}>Sair</button>
+        <div className="top-bar-actions">
+          <SantaMariaBrand compact showTagline={false} className="panel-corner-brand" />
+          <button className="logout-button" type="button" onClick={onLogout}>Sair</button>
+        </div>
       </header>
 
       <button className="ghost-button" type="button" onClick={onBack}><AppIcon name="back" size="sm" className="action-icon" />Voltar</button>

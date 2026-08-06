@@ -74,10 +74,9 @@ export function PublicServiceRequestPage() {
 
   return (
     <main className="public-request-page">
-      <SantaMariaBrand compact showTagline={false} className="global-corner-brand" />
       <section className="public-request-shell">
         <header className="public-request-brand">
-          <SantaMariaBrand className="public-request-brand-logo" />
+          <SantaMariaBrand className="public-request-brand-logo panel-corner-brand" />
           <span className="public-request-brand-context">Central de Chamados</span>
         </header>
 

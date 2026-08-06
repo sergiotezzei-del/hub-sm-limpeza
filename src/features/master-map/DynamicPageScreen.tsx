@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { AppIcon } from "../../components/AppIcon";
+import { SantaMariaBrand } from "../../components/SantaMariaBrand";
 import { DynamicPageBlockEditor } from "./DynamicPageBlockEditor";
 import {
   cloneDynamicPageBlock,
@@ -176,7 +177,10 @@ export function DynamicPageScreen({ pageId, canEdit, onBackToMap, onLogout, onNo
             <h1>Acesso restrito</h1>
             <p>Somente Admin/Tezzei pode acessar paginas dinamicas nesta versao.</p>
           </div>
-          <button className="logout-button" type="button" onClick={onLogout}>Sair</button>
+          <div className="top-bar-actions">
+            <SantaMariaBrand compact showTagline={false} className="panel-corner-brand" />
+            <button className="logout-button" type="button" onClick={onLogout}>Sair</button>
+          </div>
         </header>
         <button className="ghost-button" type="button" onClick={() => onBackToMap()}><AppIcon name="back" size="sm" className="action-icon" />Voltar ao mapa</button>
       </section>
@@ -192,7 +196,10 @@ export function DynamicPageScreen({ pageId, canEdit, onBackToMap, onLogout, onNo
             <h1>Pagina dinamica</h1>
             <p>Carregando conteudo vinculado ao quadro.</p>
           </div>
-          <button className="logout-button" type="button" onClick={onLogout}>Sair</button>
+          <div className="top-bar-actions">
+            <SantaMariaBrand compact showTagline={false} className="panel-corner-brand" />
+            <button className="logout-button" type="button" onClick={onLogout}>Sair</button>
+          </div>
         </header>
         <button className="ghost-button" type="button" onClick={() => onBackToMap()}><AppIcon name="back" size="sm" className="action-icon" />Voltar ao mapa</button>
         <section className="empty-state"><h2>Carregando...</h2></section>
@@ -208,7 +215,10 @@ export function DynamicPageScreen({ pageId, canEdit, onBackToMap, onLogout, onNo
           <h1>{page.title}</h1>
           <p>Pagina vinculada ao quadro do mapa. Edite, salve e recarregue para confirmar a persistencia.</p>
         </div>
-        <button className="logout-button" type="button" onClick={onLogout}>Sair</button>
+        <div className="top-bar-actions">
+          <SantaMariaBrand compact showTagline={false} className="panel-corner-brand" />
+          <button className="logout-button" type="button" onClick={onLogout}>Sair</button>
+        </div>
       </header>
 
       <div className="dynamic-page-actions">
