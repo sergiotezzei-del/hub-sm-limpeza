@@ -1,0 +1,305 @@
+.google-calendar-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 40px;
+  padding: 8px 13px;
+  border: 1px solid #c7d2fe;
+  border-radius: 12px;
+  background: #eef2ff;
+  color: #27366c;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 800;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.google-calendar-chip.is-connected {
+  border-color: #bbf7d0;
+  background: #ecfdf3;
+  color: #166534;
+}
+
+.google-calendar-day-strip {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: auto auto 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  border: 1px solid #dbeafe;
+  border-radius: 12px;
+  background: #f8fbff;
+  color: #334155;
+}
+
+.google-calendar-day-strip strong {
+  font-size: 0.86rem;
+}
+
+.google-calendar-day-strip small {
+  color: #64748b;
+  font-size: 0.78rem;
+}
+
+.google-calendar-day-strip button {
+  border: 0;
+  background: transparent;
+  color: #1d4ed8;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.google-calendar-alert-card {
+  border-color: #bfdbfe !important;
+  background: linear-gradient(180deg, #ffffff 0%, #f7fbff 100%);
+}
+
+.google-calendar-alert-card.is-happening {
+  animation: google-calendar-pulse 1.7s ease-in-out infinite;
+  border-color: #f59e0b !important;
+}
+
+.google-calendar-card-status span {
+  background: #2563eb !important;
+  color: #ffffff !important;
+}
+
+.google-calendar-alert-card.is-happening .google-calendar-card-status span {
+  background: #d97706 !important;
+}
+
+.google-calendar-open-button {
+  width: 100%;
+  min-height: 42px;
+  margin-top: auto;
+  border: 0;
+  border-radius: 10px;
+  background: #2563eb;
+  color: #ffffff;
+  font: inherit;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.google-calendar-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(15, 23, 42, 0.55);
+  overflow-y: auto;
+}
+
+.google-calendar-modal {
+  width: min(620px, 100%);
+  max-height: calc(100vh - 36px);
+  overflow-y: auto;
+  border-radius: 20px;
+  background: #ffffff;
+  box-shadow: 0 24px 80px rgba(15, 23, 42, 0.28);
+  padding: 22px;
+}
+
+.google-calendar-modal > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.google-calendar-modal > header p {
+  margin: 0 0 4px;
+  color: #64748b;
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+
+.google-calendar-modal > header h2 {
+  margin: 0;
+}
+
+.google-calendar-close {
+  width: 38px;
+  height: 38px;
+  border: 0;
+  border-radius: 50%;
+  background: #f1f5f9;
+  color: #334155;
+  font-size: 1.5rem;
+  cursor: pointer;
+}
+
+.google-calendar-message {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #fff7ed;
+  color: #9a3412;
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.google-calendar-config-form,
+.google-calendar-connected-box,
+.google-calendar-connect-box {
+  display: grid;
+  gap: 14px;
+}
+
+.google-calendar-config-form label {
+  display: grid;
+  gap: 6px;
+  color: #334155;
+  font-size: 0.84rem;
+  font-weight: 800;
+}
+
+.google-calendar-config-form input {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #0f172a;
+  font: inherit;
+  box-sizing: border-box;
+}
+
+.google-calendar-explainer,
+.google-calendar-connect-box p,
+.google-calendar-connected-box p {
+  margin: 0;
+  color: #475569;
+  line-height: 1.5;
+}
+
+.google-calendar-cloud-link {
+  justify-self: start;
+  color: #1d4ed8;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.google-calendar-copy-box {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 5px 10px;
+  padding: 10px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.google-calendar-copy-box small {
+  grid-column: 1 / -1;
+  color: #64748b;
+  font-weight: 800;
+}
+
+.google-calendar-copy-box code {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: #0f172a;
+  font-size: 0.77rem;
+}
+
+.google-calendar-copy-box button {
+  align-self: center;
+  border: 0;
+  background: transparent;
+  color: #1d4ed8;
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.google-calendar-primary,
+.google-calendar-secondary,
+.google-calendar-danger {
+  min-height: 44px;
+  border-radius: 10px;
+  padding: 10px 14px;
+  font: inherit;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.google-calendar-primary {
+  border: 0;
+  background: #2563eb;
+  color: #ffffff;
+}
+
+.google-calendar-secondary {
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #334155;
+}
+
+.google-calendar-danger {
+  border: 1px solid #fecaca;
+  background: #fff1f2;
+  color: #b91c1c;
+}
+
+.google-calendar-connected-box > strong {
+  color: #166534;
+  font-size: 1.04rem;
+}
+
+.google-calendar-connected-box > span {
+  color: #334155;
+  font-weight: 800;
+}
+
+.google-calendar-connected-box > div {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.google-calendar-security-note {
+  color: #64748b;
+  line-height: 1.4;
+}
+
+@keyframes google-calendar-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); }
+  50% { box-shadow: 0 0 0 5px rgba(245, 158, 11, 0.14); }
+}
+
+@media (max-width: 760px) {
+  .google-calendar-chip {
+    width: 100%;
+    order: 10;
+  }
+
+  .google-calendar-day-strip {
+    grid-template-columns: auto 1fr auto;
+  }
+
+  .google-calendar-day-strip small {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  .google-calendar-modal {
+    padding: 18px;
+    border-radius: 16px;
+  }
+
+  .google-calendar-connected-box > div {
+    grid-template-columns: 1fr;
+  }
+}
