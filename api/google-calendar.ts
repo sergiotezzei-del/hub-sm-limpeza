@@ -24,14 +24,11 @@ type GoogleCalendarListItem = {
   primary?: boolean;
 };
 
-const env = ((globalThis as typeof globalThis & {
-  process?: { env?: Record<string, string | undefined> };
-}).process?.env ?? {});
-
-const SUPABASE_URL = (env.VITE_DB_URL ?? env.SUPABASE_URL ?? "").replace(/\/+$/, "");
-const SUPABASE_PUBLIC_KEY = env.VITE_DB_PUBLIC_KEY ?? env.SUPABASE_PUBLISHABLE_KEY ?? "";
-const ADMIN_USER_ID = env.VITE_ADMIN_SUPABASE_USER_ID ?? "";
-const PUBLIC_ORIGIN = (env.HUB_PUBLIC_URL ?? "https://hubsantamariatem.vercel.app").replace(/\/+$/, "");
+// URL e publishable key são, por definição, configuração pública do cliente Supabase.
+// Toda autorização real continua protegida por JWT + is_hub_admin() + RLS.
+const SUPABASE_URL = "https://dtdepfpkyiqtnsjztjit.supabase.co";
+const SUPABASE_PUBLIC_KEY = "sb_publishable_ahFq0EsMxM-zGaqM7WJKig_2ikkb6NX";
+const PUBLIC_ORIGIN = "https://hubsantamariatem.vercel.app";
 const REDIRECT_URI = `${PUBLIC_ORIGIN}/`;
 const CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar.readonly";
 const TIME_ZONE = "America/Sao_Paulo";
@@ -52,9 +49,6 @@ export default {
   async fetch(request: Request) {
     try {
       if (request.method === "OPTIONS") return new Response(null, { status: 204 });
-      if (!SUPABASE_URL || !SUPABASE_PUBLIC_KEY || !ADMIN_USER_ID) {
-        throw new ApiError(503, "server_not_configured", "Integração segura do HUB indisponível.");
-      }
 
       const token = readBearerToken(request);
       const user = await verifyAdmin(token);
@@ -171,7 +165,15 @@ async function verifyAdmin(token: string) {
   });
   if (!response.ok) throw new ApiError(401, "invalid_session", "Sua sessão do HUB expirou. Entre novamente.");
   const user = await response.json() as { id?: string };
-  if (!user.id || user.id !== ADMIN_USER_ID) {
+  if (!user.id) throw new ApiError(401, "invalid_session", "Sua sessão do HUB expirou. Entre novamente.");
+
+  const adminResponse = await fetch(`${SUPABASE_URL}/rest/v1/rpc/is_hub_admin`, {
+    method: "POST",
+    headers: supabaseHeaders(token),
+    body: "{}",
+  });
+  const isAdmin = adminResponse.ok ? await adminResponse.json() as boolean : false;
+  if (isAdmin !== true) {
     throw new ApiError(403, "admin_only", "A Agenda Google está disponível somente para o Admin/Tezzei.");
   }
   return { id: user.id };
@@ -195,7 +197,8 @@ async function supabaseRpc<T = unknown>(token: string, functionName: string, bod
   const text = await response.text();
   if (!response.ok) {
     const parsed = safeJson(text) as { message?: string } | null;
-    throw new ApiError(response.status === 401 ? 401 : 500, "supabase_rpc_failed", parsed?.message ?? "Falha na integração segura com o banco.");
+    const status = response.status === 401 || response.status === 403 ? response.status : 500;
+    throw new ApiError(status, "supabase_rpc_failed", parsed?.message ?? "Falha na integração segura com o banco.");
   }
   return (text ? safeJson(text) : undefined) as T;
 }
