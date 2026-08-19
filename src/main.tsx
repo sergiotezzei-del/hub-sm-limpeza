@@ -6,6 +6,7 @@ import { GoogleCalendarAlertEnhancer } from "./modules/alerts/GoogleCalendarAler
 import { CleaningDeliveryFeature } from "./modules/cleaning/components/CleaningDeliveryFeature";
 import { PublicServiceRequestPage } from "./modules/service-requests/PublicServiceRequestPage";
 import "./styles.css";
+import "./modules/alerts/dashboardAlignment.css";
 
 const normalizedPath = window.location.pathname.replace(/\/+$/, "") || "/";
 const isPublicServiceRequestPage = normalizedPath === "/chamados";

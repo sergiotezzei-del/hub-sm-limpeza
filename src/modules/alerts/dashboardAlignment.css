@@ -1,0 +1,57 @@
+/* Ajuste fino do painel principal: cria uma régua visual única entre Menu, data e cards. */
+
+@media (min-width: 901px) {
+  .alerts-admin-home-screen::before {
+    content: "MENU";
+    grid-column: 1;
+    grid-row: calc(var(--alerts-start-row) - 1);
+    align-self: center;
+    padding-left: 12px;
+    color: inherit;
+    font-size: 0.7rem;
+    font-weight: 900;
+    letter-spacing: 0.13em;
+    line-height: 1.2;
+    opacity: 0.58;
+  }
+
+  /* O MENU passa a ocupar a mesma linha da data/hora. */
+  .alerts-admin-home-screen > .alerts-home-menu-section:first-of-type::before {
+    display: none;
+  }
+
+  .alerts-admin-home-screen > .home-menu-meta.alerts-home-top {
+    grid-column: 2;
+    grid-row: calc(var(--alerts-start-row) - 1);
+    align-self: center;
+    justify-self: stretch;
+    min-height: 0;
+    margin: 0 2px 0 0;
+  }
+
+  /*
+   * Operação começa com o título e, logo abaixo, o primeiro card (Limpeza).
+   * O Painel do Dia é deslocado apenas o necessário para que sua borda superior
+   * comece exatamente na mesma régua visual do primeiro card da coluna esquerda.
+   */
+  .alerts-admin-home-screen > .hub-alert-panel {
+    margin-top: 37px;
+  }
+
+  /* Todos os títulos da coluna de menu usam a mesma régua horizontal. */
+  .alerts-admin-home-screen > .alerts-home-menu-section h2 {
+    padding-left: 0;
+    text-align: left;
+  }
+}
+
+@media (max-width: 900px) {
+  /* No celular o fluxo continua vertical: Alertas primeiro e menus abaixo. */
+  .alerts-admin-home-screen::before {
+    display: none;
+  }
+
+  .alerts-admin-home-screen > .hub-alert-panel {
+    margin-top: 0;
+  }
+}
