@@ -2,6 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
 import { AlertDashboardEnhancer } from "./modules/alerts/AlertDashboardEnhancer";
+import { GoogleCalendarAlertEnhancer } from "./modules/alerts/GoogleCalendarAlertEnhancer";
 import { CleaningDeliveryFeature } from "./modules/cleaning/components/CleaningDeliveryFeature";
 import { PublicServiceRequestPage } from "./modules/service-requests/PublicServiceRequestPage";
 import "./styles.css";
@@ -17,6 +18,7 @@ createRoot(document.getElementById("root")!).render(
       <>
         <App />
         <AlertDashboardEnhancer />
+        <GoogleCalendarAlertEnhancer />
         <CleaningDeliveryFeature />
       </>
     )}
