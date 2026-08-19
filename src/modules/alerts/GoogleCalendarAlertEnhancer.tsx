@@ -83,7 +83,10 @@ function GoogleCalendarAlertPanel({ panelHost, cardsHost, headHost }: { panelHos
           setStatus(connectedStatus);
           setMessage("Agenda Google conectada ao HUB.");
           const day = await loadGoogleCalendarDay();
-          if (active) setEvents(day.events);
+          if (active) {
+            setEvents(day.events);
+            setLoading(false);
+          }
           return;
         } catch (error) {
           clearGoogleCalendarCallbackFromUrl();
