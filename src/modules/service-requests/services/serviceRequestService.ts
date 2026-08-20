@@ -112,7 +112,7 @@ export async function submitPublicServiceRequest(
 
 export async function loadServiceRequestDataset(): Promise<ServiceRequestDataset> {
   const [requests, events] = await Promise.all([
-    adminRequestJson<ServiceRequestRow[]>("service_requests?select=*&order=opened_at.desc&limit=500"),
+    adminRequestJson<ServiceRequestRow[]>("service_requests?select=*&status=neq.concluido&order=opened_at.desc&limit=500"),
     adminRequestJson<ServiceRequestEventRow[]>("service_request_events?select=*&order=created_at.desc&limit=1000"),
   ]);
 
@@ -130,6 +130,24 @@ export async function updateServiceRequest(
     actorName: string;
   },
 ): Promise<ServiceRequest> {
+  if (input.status === "concluido") {
+    const rows = await adminRequestJson<ServiceRequestRow[]>(
+      `service_requests?id=eq.${encodeURIComponent(requestId)}&select=*`,
+      {
+        method: "DELETE",
+        headers: { Prefer: "return=representation" },
+      },
+    );
+
+    if (!rows[0]) throw new ServiceRequestRemoteError(404, "Chamado não encontrado.");
+    return {
+      ...mapServiceRequest(rows[0]),
+      status: "concluido",
+      lastActorName: input.actorName,
+      completedAt: new Date().toISOString(),
+    };
+  }
+
   const payload: Record<string, unknown> = {
     last_actor_name: input.actorName,
   };
