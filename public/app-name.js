@@ -1,8 +1,9 @@
 (() => {
   const APP_NAME = "HUB Santa Maria";
+  const ATTENTION_ATTRIBUTE = "data-hub-alert-attention";
 
   function applyAppName() {
-    if (document.title !== APP_NAME) {
+    if (!document.documentElement.hasAttribute(ATTENTION_ATTRIBUTE) && document.title !== APP_NAME) {
       document.title = APP_NAME;
     }
 
