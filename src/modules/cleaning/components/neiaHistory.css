@@ -1,0 +1,175 @@
+.neia-history-enhancer-host {
+  width: 100%;
+}
+
+.neia-stock-history {
+  width: min(1180px, calc(100% - 32px));
+  margin: 22px auto 30px;
+}
+
+.neia-stock-history-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.neia-stock-history-heading div {
+  min-width: 0;
+}
+
+.neia-stock-history-heading > div > span {
+  display: block;
+  margin-bottom: 3px;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted, #64748b);
+}
+
+.neia-stock-history-heading h2 {
+  margin: 0;
+  font-size: clamp(1.15rem, 2vw, 1.45rem);
+}
+
+.neia-stock-history-heading p {
+  margin: 4px 0 0;
+  color: var(--muted, #64748b);
+  font-size: 0.9rem;
+}
+
+.neia-stock-history-heading > strong {
+  display: grid;
+  place-items: center;
+  min-width: 42px;
+  height: 42px;
+  padding: 0 10px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.82);
+  font-size: 1rem;
+}
+
+.neia-stock-history-list {
+  display: grid;
+  gap: 10px;
+}
+
+.neia-stock-history-card {
+  overflow: hidden;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 5px 18px rgba(15, 23, 42, 0.05);
+}
+
+.neia-stock-history-card summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px 16px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.neia-stock-history-card summary::-webkit-details-marker {
+  display: none;
+}
+
+.neia-stock-history-card summary > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.neia-stock-history-card summary strong {
+  font-size: 0.98rem;
+}
+
+.neia-stock-history-card summary span {
+  color: var(--muted, #64748b);
+  font-size: 0.84rem;
+}
+
+.neia-stock-history-count {
+  flex: 0 0 auto;
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.06);
+  font-weight: 700;
+}
+
+.neia-stock-history-items {
+  display: grid;
+  border-top: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+.neia-stock-history-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 11px 16px;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+}
+
+.neia-stock-history-item:last-child {
+  border-bottom: 0;
+}
+
+.neia-stock-history-item > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.neia-stock-history-item small {
+  color: var(--muted, #64748b);
+}
+
+.neia-stock-history-item > span {
+  flex: 0 0 auto;
+  font-weight: 800;
+  text-align: right;
+}
+
+.neia-stock-history-state {
+  margin: 0;
+  padding: 18px;
+  border: 1px dashed rgba(15, 23, 42, 0.18);
+  border-radius: 14px;
+  color: var(--muted, #64748b);
+  text-align: center;
+}
+
+.neia-stock-history-state.error {
+  color: #991b1b;
+}
+
+@media (max-width: 640px) {
+  .neia-stock-history {
+    width: min(100% - 20px, 1180px);
+    margin-top: 16px;
+  }
+
+  .neia-stock-history-heading {
+    align-items: flex-start;
+  }
+
+  .neia-stock-history-heading p {
+    font-size: 0.82rem;
+  }
+
+  .neia-stock-history-card summary,
+  .neia-stock-history-item {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  .neia-stock-history-item {
+    align-items: flex-start;
+  }
+}

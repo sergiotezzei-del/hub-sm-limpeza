@@ -4,6 +4,7 @@ import App from "./App";
 import { AlertDashboardEnhancer } from "./modules/alerts/AlertDashboardEnhancer";
 import { GoogleCalendarAlertEnhancer } from "./modules/alerts/GoogleCalendarAlertEnhancer";
 import { CleaningDeliveryFeature } from "./modules/cleaning/components/CleaningDeliveryFeature";
+import { NeiaHistoryEnhancer } from "./modules/cleaning/components/NeiaHistoryEnhancer";
 import { AirConditioningMapFeature } from "./modules/patrimony/AirConditioningMapFeature";
 import { PatrimonySpaceMapsFeature } from "./modules/patrimony/PatrimonySpaceMapsFeature";
 import { PublicServiceRequestPage } from "./modules/service-requests/PublicServiceRequestPage";
@@ -26,6 +27,7 @@ createRoot(document.getElementById("root")!).render(
         <AlertDashboardEnhancer />
         <GoogleCalendarAlertEnhancer />
         <CleaningDeliveryFeature />
+        <NeiaHistoryEnhancer />
         <AirConditioningMapFeature />
         <PatrimonySpaceMapsFeature />
       </>
