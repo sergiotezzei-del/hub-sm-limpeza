@@ -4,6 +4,7 @@ import App from "./App";
 import { AlertDashboardEnhancer } from "./modules/alerts/AlertDashboardEnhancer";
 import { CleaningActivityAlertEnhancer } from "./modules/alerts/CleaningActivityAlertEnhancer";
 import { GoogleCalendarAlertEnhancer } from "./modules/alerts/GoogleCalendarAlertEnhancer";
+import "./modules/alerts/browserAlertAttention";
 import { CleaningDeliveryFeature } from "./modules/cleaning/components/CleaningDeliveryFeature";
 import { NeiaDeliveryShortcutFeature } from "./modules/cleaning/components/NeiaDeliveryShortcutFeature";
 import { NeiaHistoryEnhancer } from "./modules/cleaning/components/NeiaHistoryEnhancer";
