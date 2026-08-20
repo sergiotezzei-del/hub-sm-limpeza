@@ -34,16 +34,17 @@ export function NeiaHistoryEnhancer() {
     if (!(root instanceof HTMLElement)) return;
 
     const updateTarget = () => {
+      if (currentView() !== "neia-history") {
+        setTarget(null);
+        return;
+      }
+
       const screens = Array.from(root.querySelectorAll<HTMLElement>(".screen"));
-      const sessionSaysHistory = currentView() === "neia-history";
       const historyScreen = screens.find((screen) => {
         const heading = Array.from(screen.querySelectorAll("h1, h2"))
           .map((node) => normalize(node.textContent ?? ""))
           .join(" ");
-        const text = normalize(screen.innerText);
-        if (heading.includes("GESTAO DE LIMPEZA")) return false;
-        return (sessionSaysHistory && text.includes("NEIA"))
-          || (text.includes("HISTORICO") && text.includes("NEIA"));
+        return heading.includes("HISTORICO DE PEDIDOS DA NEIA");
       });
 
       if (!historyScreen) {
