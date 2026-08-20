@@ -13,6 +13,7 @@ import type { CSSProperties, FormEvent } from "react";
 import { AppIcon } from "../../components/AppIcon";
 import { SantaMariaBrand } from "../../components/SantaMariaBrand";
 import type { ManagedUser, UserPermission } from "../../types";
+import { loadAlertTaskIds, setTaskAlertVisibility } from "../alerts/alertTaskService";
 import {
   archiveHubTask,
   getHubTaskErrorMessage,
@@ -94,6 +95,7 @@ export function TaskBoardScreen({
 }: TaskBoardScreenProps) {
   const canAccess = permissions.includes("afazeres");
   const [dataset, setDataset] = useState<HubTaskDataset>(emptyDataset);
+  const [alertTaskIds, setAlertTaskIds] = useState<string[]>([]);
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [notice, setNotice] = useState("");
   const [busyTaskId, setBusyTaskId] = useState("");
@@ -184,7 +186,12 @@ export function TaskBoardScreen({
     setLoadState("loading");
     setNotice("");
     try {
-      setDataset(await loadHubTaskDataset());
+      const [nextDataset, nextAlertTaskIds] = await Promise.all([
+        loadHubTaskDataset(),
+        loadAlertTaskIds(),
+      ]);
+      setDataset(nextDataset);
+      setAlertTaskIds(nextAlertTaskIds);
       setLoadState("ready");
     } catch (error) {
       setLoadState("error");
@@ -281,6 +288,24 @@ export function TaskBoardScreen({
     }
   }
 
+  async function toggleTaskAlert(task: HubTask) {
+    if (busyTaskId || task.status === "concluido") return;
+    const visible = !alertTaskIds.includes(task.id);
+    setBusyTaskId(task.id);
+    setNotice("");
+    try {
+      await setTaskAlertVisibility(task.id, visible, currentUser.name);
+      setAlertTaskIds((current) => visible
+        ? [...new Set([...current, task.id])]
+        : current.filter((id) => id !== task.id));
+      setNotice(visible ? "Afazer adicionado aos Alertas." : "Afazer retirado dos Alertas.");
+    } catch (error) {
+      setNotice(`Não foi possível alterar o alerta da tarefa. ${getHubTaskErrorMessage(error)}`);
+    } finally {
+      setBusyTaskId("");
+    }
+  }
+
   function handleDragEnd(event: DragEndEvent) {
     const taskId = String(event.active.id);
     const nextStatus = event.over?.id as HubTaskStatus | undefined;
@@ -300,6 +325,7 @@ export function TaskBoardScreen({
         ...current,
         tasks: current.tasks.filter((item) => item.id !== task.id),
       }));
+      setAlertTaskIds((current) => current.filter((id) => id !== task.id));
       setEditorOpen(false);
       void refreshEventsOnly();
     } catch (error) {
@@ -404,11 +430,13 @@ export function TaskBoardScreen({
                 tasks={filteredTasks.filter((task) => task.status === status)}
                 userById={userById}
                 busyTaskId={busyTaskId}
+                alertTaskIds={alertTaskIds}
                 mobileVisible={mobileStatus === status}
                 onOpen={openTask}
                 onMove={moveTask}
                 onMoveToStatus={moveTaskToStatus}
                 onArchive={archiveTask}
+                onToggleAlert={toggleTaskAlert}
               />
             ))}
           </section>
@@ -508,21 +536,25 @@ function TaskColumn({
   tasks,
   userById,
   busyTaskId,
+  alertTaskIds,
   mobileVisible,
   onOpen,
   onMove,
   onMoveToStatus,
   onArchive,
+  onToggleAlert,
 }: {
   status: HubTaskStatus;
   tasks: HubTask[];
   userById: Map<string, ManagedUser>;
   busyTaskId: string;
+  alertTaskIds: string[];
   mobileVisible: boolean;
   onOpen: (task: HubTask) => void;
   onMove: (task: HubTask, direction: -1 | 1) => void;
   onMoveToStatus: (task: HubTask, status: HubTaskStatus) => void;
   onArchive: (task: HubTask) => void;
+  onToggleAlert: (task: HubTask) => void;
 }) {
   const statusIndex = statusOrder.indexOf(status);
   const { setNodeRef, isOver } = useDroppable({
@@ -546,10 +578,12 @@ function TaskColumn({
             assignee={task.assigneeUserId ? userById.get(task.assigneeUserId) : undefined}
             busy={Boolean(busyTaskId)}
             statusIndex={statusIndex}
+            inAlerts={alertTaskIds.includes(task.id)}
             onOpen={onOpen}
             onMove={onMove}
             onMoveToStatus={onMoveToStatus}
             onArchive={onArchive}
+            onToggleAlert={onToggleAlert}
           />
         ))}
       </div>
@@ -562,19 +596,23 @@ function TaskCard({
   assignee,
   busy,
   statusIndex,
+  inAlerts,
   onOpen,
   onMove,
   onMoveToStatus,
   onArchive,
+  onToggleAlert,
 }: {
   task: HubTask;
   assignee?: ManagedUser;
   busy: boolean;
   statusIndex: number;
+  inAlerts: boolean;
   onOpen: (task: HubTask) => void;
   onMove: (task: HubTask, direction: -1 | 1) => void;
   onMoveToStatus: (task: HubTask, status: HubTaskStatus) => void;
   onArchive: (task: HubTask) => void;
+  onToggleAlert: (task: HubTask) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const overdue = isTaskOverdue(task);
@@ -621,6 +659,7 @@ function TaskCard({
           <div className="task-card-detail-topline">
             <span className="task-card-priority">{priorityLabels[task.priority]}</span>
             {overdue && <span className="task-card-overdue-label">Atrasada</span>}
+            {inAlerts && <span className="task-card-overdue-label">Nos alertas</span>}
           </div>
           {task.description && <p className="task-card-description">{task.description}</p>}
           <div className="task-card-information">
@@ -634,7 +673,10 @@ function TaskCard({
             {task.status === "concluido" ? (
               <button type="button" onClick={() => onArchive(task)} disabled={busy}>Arquivar</button>
             ) : (
-              <button type="button" onClick={() => onMove(task, 1)} disabled={busy}>{nextButtonLabel}</button>
+              <>
+                <button type="button" onClick={() => onMove(task, 1)} disabled={busy}>{nextButtonLabel}</button>
+                <button type="button" onClick={() => onToggleAlert(task)} disabled={busy}>{inAlerts ? "Tirar dos alertas" : "Alertar"}</button>
+              </>
             )}
             <button type="button" className="task-card-edit" onClick={() => onOpen(task)} disabled={busy}>Editar tarefa</button>
           </div>

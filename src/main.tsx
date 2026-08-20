@@ -8,6 +8,7 @@ import { AirConditioningMapFeature } from "./modules/patrimony/AirConditioningMa
 import { PatrimonySpaceMapsFeature } from "./modules/patrimony/PatrimonySpaceMapsFeature";
 import { PublicServiceRequestPage } from "./modules/service-requests/PublicServiceRequestPage";
 import "./styles.css";
+import "./modules/alerts/alertsExtensions.css";
 import "./modules/alerts/dashboardAlignment.css";
 import "./modules/alerts/dashboardAlignmentRuntime";
 

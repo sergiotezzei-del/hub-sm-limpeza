@@ -3,12 +3,14 @@ import { createPortal } from "react-dom";
 import {
   completeAlertOccurrence,
   createAlertRule,
+  deleteAlertRule,
   HubAlertCompletion,
   HubAlertRule,
   loadAlertDataset,
   setAlertRuleActive,
   type AlertRecurrenceType,
 } from "./alertService";
+import { completeAlertTask, loadAlertTasks, type AlertTask } from "./alertTaskService";
 import "./alerts.css";
 
 const ACTOR_NAME = "Admin Tezzei";
@@ -37,6 +39,7 @@ type RuleDraft = {
   recurrenceType: AlertRecurrenceType;
   weekdays: number[];
   anchorDate: string;
+  monthlyDay: string;
 };
 
 const EMPTY_DRAFT: RuleDraft = {
@@ -45,6 +48,7 @@ const EMPTY_DRAFT: RuleDraft = {
   recurrenceType: "weekly",
   weekdays: [],
   anchorDate: "",
+  monthlyDay: "20",
 };
 
 export function AlertDashboardEnhancer() {
@@ -81,6 +85,7 @@ export function AlertDashboardEnhancer() {
 function AlertDashboardPanel() {
   const [rules, setRules] = useState<HubAlertRule[]>([]);
   const [completions, setCompletions] = useState<HubAlertCompletion[]>([]);
+  const [alertTasks, setAlertTasks] = useState<AlertTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
   const [managerOpen, setManagerOpen] = useState(false);
@@ -88,16 +93,18 @@ function AlertDashboardPanel() {
   const [saving, setSaving] = useState(false);
   const [markingKey, setMarkingKey] = useState("");
   const [togglingId, setTogglingId] = useState("");
+  const [deletingId, setDeletingId] = useState("");
   const today = getTodayIso();
 
   useEffect(() => {
     let active = true;
     setLoading(true);
-    loadAlertDataset()
-      .then((dataset) => {
+    Promise.all([loadAlertDataset(), loadAlertTasks()])
+      .then(([dataset, tasks]) => {
         if (!active) return;
         setRules(dataset.rules);
         setCompletions(dataset.completions);
+        setAlertTasks(tasks);
         setMessage("");
       })
       .catch(() => {
@@ -115,7 +122,9 @@ function AlertDashboardPanel() {
     [rules, completions, today],
   );
 
-  const overdueCount = pendingAlerts.filter((alert) => !alert.isToday).length;
+  const overdueCount = pendingAlerts.filter((alert) => !alert.isToday).length
+    + alertTasks.filter((task) => Boolean(task.dueDate && task.dueDate < today)).length;
+  const totalPending = pendingAlerts.length + alertTasks.length;
 
   async function markDone(alert: PendingAlert) {
     const key = `${alert.rule.id}:${alert.occurrenceDate}`;
@@ -142,6 +151,22 @@ function AlertDashboardPanel() {
     }
   }
 
+  async function markTaskDone(task: AlertTask) {
+    const key = `task:${task.id}`;
+    if (markingKey) return;
+    setMarkingKey(key);
+    setMessage("");
+    try {
+      await completeAlertTask(task.id, ACTOR_NAME);
+      setAlertTasks((current) => current.filter((item) => item.id !== task.id));
+      setMessage(`${task.title} concluído nos Afazeres.`);
+    } catch {
+      setMessage("Não foi possível concluir o Afazer.");
+    } finally {
+      setMarkingKey("");
+    }
+  }
+
   async function saveRule(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const title = draft.title.trim();
@@ -153,7 +178,13 @@ function AlertDashboardPanel() {
       setMessage("Escolha pelo menos um dia da semana.");
       return;
     }
-    if (draft.recurrenceType !== "weekly" && !draft.anchorDate) {
+    if (draft.recurrenceType === "monthly") {
+      const day = Number(draft.monthlyDay);
+      if (!Number.isInteger(day) || day < 1 || day > 31) {
+        setMessage("Informe um dia do mês entre 1 e 31.");
+        return;
+      }
+    } else if (draft.recurrenceType !== "weekly" && !draft.anchorDate) {
       setMessage(draft.recurrenceType === "biweekly" ? "Informe a primeira data da rotina." : "Informe a data do alerta.");
       return;
     }
@@ -161,12 +192,15 @@ function AlertDashboardPanel() {
     setSaving(true);
     setMessage("");
     try {
+      const anchorDate = draft.recurrenceType === "monthly"
+        ? `2000-01-${String(Number(draft.monthlyDay)).padStart(2, "0")}`
+        : draft.anchorDate;
       const created = await createAlertRule({
         title,
         description: draft.description,
         recurrenceType: draft.recurrenceType,
         weekdays: draft.weekdays,
-        anchorDate: draft.anchorDate,
+        anchorDate,
       }, ACTOR_NAME);
       setRules((current) => [...current, created]);
       setDraft(EMPTY_DRAFT);
@@ -179,7 +213,7 @@ function AlertDashboardPanel() {
   }
 
   async function toggleRule(rule: HubAlertRule) {
-    if (togglingId) return;
+    if (togglingId || deletingId) return;
     setTogglingId(rule.id);
     setMessage("");
     try {
@@ -193,27 +227,69 @@ function AlertDashboardPanel() {
     }
   }
 
+  async function removeRule(rule: HubAlertRule) {
+    if (togglingId || deletingId) return;
+    if (!window.confirm(`Excluir o alerta “${rule.title}”? O histórico de marcações desta rotina também será removido.`)) return;
+    setDeletingId(rule.id);
+    setMessage("");
+    try {
+      await deleteAlertRule(rule.id);
+      setRules((current) => current.filter((item) => item.id !== rule.id));
+      setCompletions((current) => current.filter((item) => item.ruleId !== rule.id));
+      setMessage("Alerta excluído.");
+    } catch {
+      setMessage("Não foi possível excluir o alerta.");
+    } finally {
+      setDeletingId("");
+    }
+  }
+
   return (
     <section className="hub-alert-panel" aria-label="Alertas e rotinas recorrentes">
       <header className="hub-alert-panel-head">
         <div>
           <p className="hub-alert-kicker">ROTINAS DO DIA</p>
           <h2>ALERTAS</h2>
-          <small>{loading ? "Carregando..." : pendingAlerts.length === 0 ? "Nenhuma pendência hoje" : `${pendingAlerts.length} alerta(s) pendente(s)${overdueCount ? ` · ${overdueCount} atrasado(s)` : ""}`}</small>
+          <small>{loading ? "Carregando..." : totalPending === 0 ? "Nenhuma pendência hoje" : `${totalPending} alerta(s) pendente(s)${overdueCount ? ` · ${overdueCount} atrasado(s)` : ""}`}</small>
         </div>
         <button className="hub-alert-create-button" type="button" onClick={() => setManagerOpen(true)}>+ Criar alerta</button>
       </header>
 
       {message && <p className="hub-alert-message" role="status">{message}</p>}
 
-      {!loading && pendingAlerts.length === 0 && (
+      {!loading && totalPending === 0 && (
         <article className="hub-alert-empty">
           <strong>✓ Nenhum alerta pendente hoje.</strong>
-          <span>As próximas rotinas aparecerão automaticamente na data certa.</span>
+          <span>As próximas rotinas e Afazeres marcados aparecerão aqui.</span>
         </article>
       )}
 
       <div className="hub-alert-cards">
+        {alertTasks.map((task) => {
+          const key = `task:${task.id}`;
+          const overdue = Boolean(task.dueDate && task.dueDate < today);
+          const dueToday = task.dueDate === today;
+          return (
+            <article className={`hub-alert-card ${overdue ? "is-overdue" : dueToday ? "is-today" : "is-task"}`} key={key}>
+              <div className="hub-alert-card-status">
+                <span>{overdue ? "ATRASADO" : dueToday ? "HOJE" : "AFAZER"}</span>
+                <time dateTime={task.dueDate || today}>{task.dueDate ? `Prazo · ${formatDateShort(task.dueDate)}` : "Sem prazo"}</time>
+              </div>
+              <h3>{task.title}</h3>
+              {task.description && <p>{task.description}</p>}
+              <small>Afazeres · {task.department}</small>
+              <button
+                className="hub-alert-done-button"
+                type="button"
+                disabled={Boolean(markingKey)}
+                onClick={() => { void markTaskDone(task); }}
+              >
+                {markingKey === key ? "Salvando..." : "FEITO"}
+              </button>
+            </article>
+          );
+        })}
+
         {pendingAlerts.map((alert) => {
           const key = `${alert.rule.id}:${alert.occurrenceDate}`;
           const overdue = !alert.isToday;
@@ -255,7 +331,7 @@ function AlertDashboardPanel() {
             <form className="hub-alert-form" onSubmit={saveRule}>
               <label>
                 Nome da rotina
-                <input type="text" value={draft.title} placeholder="Ex.: Pagamento dos guardas" onChange={(event) => setDraft({ ...draft, title: event.target.value })} />
+                <input type="text" value={draft.title} placeholder="Ex.: Fechamento da fatura do cartão" onChange={(event) => setDraft({ ...draft, title: event.target.value })} />
               </label>
               <label>
                 Observação <small>(opcional)</small>
@@ -266,6 +342,7 @@ function AlertDashboardPanel() {
                 <select value={draft.recurrenceType} onChange={(event) => setDraft({ ...draft, recurrenceType: event.target.value as AlertRecurrenceType, weekdays: [], anchorDate: "" })}>
                   <option value="weekly">Dias da semana</option>
                   <option value="biweekly">A cada 2 semanas</option>
+                  <option value="monthly">Uma vez por mês</option>
                   <option value="once">Uma única data</option>
                 </select>
               </label>
@@ -296,7 +373,15 @@ function AlertDashboardPanel() {
                 </fieldset>
               )}
 
-              {draft.recurrenceType !== "weekly" && (
+              {draft.recurrenceType === "monthly" && (
+                <label>
+                  Dia do mês
+                  <input type="number" min="1" max="31" value={draft.monthlyDay} onChange={(event) => setDraft({ ...draft, monthlyDay: event.target.value })} />
+                  <small>O HUB repetirá todo mês nesse dia. Se escolher 29, 30 ou 31 e o mês for menor, usará o último dia daquele mês.</small>
+                </label>
+              )}
+
+              {(draft.recurrenceType === "biweekly" || draft.recurrenceType === "once") && (
                 <label>
                   {draft.recurrenceType === "biweekly" ? "Primeira data da rotina" : "Data"}
                   <input type="date" value={draft.anchorDate} onChange={(event) => setDraft({ ...draft, anchorDate: event.target.value })} />
@@ -316,9 +401,14 @@ function AlertDashboardPanel() {
                     <strong>{rule.title}</strong>
                     <small>{formatRuleSchedule(rule)}</small>
                   </div>
-                  <button type="button" disabled={Boolean(togglingId)} onClick={() => { void toggleRule(rule); }}>
-                    {togglingId === rule.id ? "Salvando..." : rule.active ? "Pausar" : "Ativar"}
-                  </button>
+                  <div className="hub-alert-rule-actions">
+                    <button type="button" disabled={Boolean(togglingId || deletingId)} onClick={() => { void toggleRule(rule); }}>
+                      {togglingId === rule.id ? "Salvando..." : rule.active ? "Pausar" : "Ativar"}
+                    </button>
+                    <button className="hub-alert-delete-rule" type="button" disabled={Boolean(togglingId || deletingId)} onClick={() => { void removeRule(rule); }}>
+                      {deletingId === rule.id ? "Excluindo..." : "Excluir"}
+                    </button>
+                  </div>
                 </article>
               ))}
             </section>
@@ -401,6 +491,12 @@ function buildPendingAlerts(rules: HubAlertRule[], completions: HubAlertCompleti
 function isRuleDueOn(rule: HubAlertRule, dateIso: string) {
   const date = parseIsoDate(dateIso);
   if (rule.recurrenceType === "weekly") return rule.weekdays.includes(date.getDay());
+  if (rule.recurrenceType === "monthly") {
+    if (!rule.anchorDate) return false;
+    const anchorDay = parseIsoDate(rule.anchorDate).getDate();
+    const lastDay = new Date(date.getFullYear(), date.getMonth() + 1, 0, 12).getDate();
+    return date.getDate() === Math.min(anchorDay, lastDay);
+  }
   if (!rule.anchorDate || dateIso < rule.anchorDate) return false;
   if (rule.recurrenceType === "once") return dateIso === rule.anchorDate;
   const anchor = parseIsoDate(rule.anchorDate);
@@ -411,6 +507,7 @@ function isRuleDueOn(rule: HubAlertRule, dateIso: string) {
 function formatRuleSchedule(rule: HubAlertRule) {
   if (rule.recurrenceType === "once") return rule.anchorDate ? `Uma vez · ${formatDateShort(rule.anchorDate)}` : "Uma vez";
   if (rule.recurrenceType === "biweekly") return rule.anchorDate ? `A cada 2 semanas · início ${formatDateShort(rule.anchorDate)}` : "A cada 2 semanas";
+  if (rule.recurrenceType === "monthly") return rule.anchorDate ? `Todo mês · dia ${parseIsoDate(rule.anchorDate).getDate()}` : "Todo mês";
   const labels = WEEKDAYS.filter((weekday) => rule.weekdays.includes(weekday.value)).map((weekday) => weekday.short);
   return labels.length ? labels.join(" · ") : "Dias da semana";
 }

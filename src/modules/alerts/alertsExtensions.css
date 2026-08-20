@@ -1,0 +1,43 @@
+.hub-alert-card.is-task {
+  border-color: #2563eb;
+  background: #f7faff;
+}
+
+.is-task .hub-alert-card-status span {
+  background: #2563eb;
+  color: #fff;
+}
+
+.hub-alert-form input[type="number"] {
+  width: 100%;
+  min-height: 44px;
+  box-sizing: border-box;
+  padding: 9px 11px;
+  border: 1px solid rgba(15, 23, 42, 0.2);
+  border-radius: 10px;
+  background: #fff;
+  font: inherit;
+}
+
+.hub-alert-rules-list .hub-alert-rule-actions {
+  display: flex !important;
+  flex-direction: row;
+  align-items: center;
+  gap: 7px;
+}
+
+.hub-alert-rules-list .hub-alert-delete-rule {
+  border-color: rgba(220, 38, 38, 0.28);
+  color: #b91c1c;
+}
+
+@media (max-width: 560px) {
+  .hub-alert-rules-list article {
+    align-items: flex-start;
+  }
+
+  .hub-alert-rules-list .hub-alert-rule-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
