@@ -30,12 +30,12 @@
   }
 
   /*
-   * Operação começa com o título e, logo abaixo, o primeiro card (Limpeza).
-   * O Painel do Dia é deslocado apenas o necessário para que sua borda superior
-   * comece exatamente na mesma régua visual do primeiro card da coluna esquerda.
+   * O deslocamento não é mais um número fixo.
+   * O runtime mede a borda superior real do card Limpeza e aplica aqui
+   * exatamente a diferença necessária para alinhar o Painel do Dia.
    */
   .alerts-admin-home-screen > .hub-alert-panel {
-    margin-top: 37px;
+    margin-top: var(--hub-alert-panel-offset, 0px);
   }
 
   /* Todos os títulos da coluna de menu usam a mesma régua horizontal. */
