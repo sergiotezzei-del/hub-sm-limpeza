@@ -7,6 +7,7 @@ import { CleaningDeliveryFeature } from "./modules/cleaning/components/CleaningD
 import { PublicServiceRequestPage } from "./modules/service-requests/PublicServiceRequestPage";
 import "./styles.css";
 import "./modules/alerts/dashboardAlignment.css";
+import "./modules/alerts/dashboardAlignmentRuntime";
 
 const normalizedPath = window.location.pathname.replace(/\/+$/, "") || "/";
 const isPublicServiceRequestPage = normalizedPath === "/chamados";
