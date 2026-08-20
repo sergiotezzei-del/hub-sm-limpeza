@@ -1,6 +1,6 @@
 import { getSupabaseClient } from "../security/services/supabaseClient";
 
-export type AlertRecurrenceType = "weekly" | "biweekly" | "once";
+export type AlertRecurrenceType = "weekly" | "biweekly" | "monthly" | "once";
 
 export type HubAlertRule = {
   id: string;
@@ -104,6 +104,16 @@ export async function setAlertRuleActive(ruleId: string, active: boolean) {
   const result = await supabase
     .from("hub_alert_rules")
     .update({ active })
+    .eq("id", ruleId);
+
+  if (result.error) throw result.error;
+}
+
+export async function deleteAlertRule(ruleId: string) {
+  const supabase = await getRequiredSupabaseClient();
+  const result = await supabase
+    .from("hub_alert_rules")
+    .delete()
     .eq("id", ruleId);
 
   if (result.error) throw result.error;
