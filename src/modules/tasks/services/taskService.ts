@@ -63,7 +63,7 @@ export class HubTaskRemoteError extends Error {
 
 export async function loadHubTaskDataset(): Promise<HubTaskDataset> {
   const [tasks, events] = await Promise.all([
-    requestJson<TaskRow[]>("hub_tasks?select=*&archived_at=is.null&order=status.asc,sort_order.asc,created_at.desc"),
+    requestJson<TaskRow[]>("hub_tasks?select=*&archived_at=is.null&status=neq.concluido&order=status.asc,sort_order.asc,created_at.desc"),
     requestJson<TaskEventRow[]>("hub_task_events?select=*&order=created_at.desc&limit=300"),
   ]);
 
@@ -139,7 +139,7 @@ export async function saveHubTask(
 
 export async function loadActiveHubTaskByServiceRequestId(requestId: string): Promise<HubTask | null> {
   const rows = await requestJson<TaskRow[]>(
-    `hub_tasks?source_service_request_id=eq.${encodeURIComponent(requestId)}&archived_at=is.null&select=*&limit=1`,
+    `hub_tasks?source_service_request_id=eq.${encodeURIComponent(requestId)}&archived_at=is.null&status=neq.concluido&select=*&limit=1`,
   );
   return rows[0] ? mapTask(rows[0]) : null;
 }
@@ -156,6 +156,14 @@ export async function moveHubTask(
   });
   if (!rows[0]) throw new HubTaskRemoteError(404, "Tarefa não encontrada.");
   return mapTask(rows[0]);
+}
+
+export async function deleteHubTask(taskId: string): Promise<void> {
+  const rows = await requestJson<TaskRow[]>(`hub_tasks?id=eq.${encodeURIComponent(taskId)}&select=*`, {
+    method: "DELETE",
+    headers: { Prefer: "return=representation" },
+  });
+  if (!rows[0]) throw new HubTaskRemoteError(404, "Tarefa não encontrada ou já excluída.");
 }
 
 export async function archiveHubTask(taskId: string, actorName: string): Promise<void> {

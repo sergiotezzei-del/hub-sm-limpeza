@@ -67,15 +67,11 @@ export async function setTaskAlertVisibility(taskId: string, visible: boolean, a
   if (result.error) throw result.error;
 }
 
-export async function completeAlertTask(taskId: string, actorName: string) {
+export async function completeAlertTask(taskId: string, _actorName: string) {
   const supabase = await getRequiredSupabaseClient();
   const result = await supabase
     .from("hub_tasks")
-    .update({
-      status: "concluido",
-      show_in_alerts: false,
-      last_actor_name: actorName,
-    })
+    .delete()
     .eq("id", taskId)
     .is("archived_at", null);
 
