@@ -4,6 +4,7 @@ import App from "./App";
 import { AlertDashboardEnhancer } from "./modules/alerts/AlertDashboardEnhancer";
 import { GoogleCalendarAlertEnhancer } from "./modules/alerts/GoogleCalendarAlertEnhancer";
 import { CleaningDeliveryFeature } from "./modules/cleaning/components/CleaningDeliveryFeature";
+import { AirConditioningMapFeature } from "./modules/patrimony/AirConditioningMapFeature";
 import { PublicServiceRequestPage } from "./modules/service-requests/PublicServiceRequestPage";
 import "./styles.css";
 import "./modules/alerts/dashboardAlignment.css";
@@ -22,6 +23,7 @@ createRoot(document.getElementById("root")!).render(
         <AlertDashboardEnhancer />
         <GoogleCalendarAlertEnhancer />
         <CleaningDeliveryFeature />
+        <AirConditioningMapFeature />
       </>
     )}
   </StrictMode>,
