@@ -1,0 +1,42 @@
+.patrimony-tabs .space-maps-source-tab {
+  display: none !important;
+}
+
+.patrimony-screen.space-map-view-tables .space-map-lockers-section,
+.patrimony-screen.space-map-view-tables .space-map-keys-section {
+  display: none !important;
+}
+
+.patrimony-screen.space-map-view-lockers .space-map-tables-section {
+  display: none !important;
+}
+
+.patrimony-screen.space-map-view-tables .space-map-tables-section,
+.patrimony-screen.space-map-view-lockers .space-map-lockers-section {
+  border-color: #cbd5e1;
+}
+
+.patrimony-screen.space-map-view-tables .space-map-tables-section::before,
+.patrimony-screen.space-map-view-lockers .space-map-lockers-section::before {
+  display: block;
+  margin-bottom: 14px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.patrimony-screen.space-map-view-tables .space-map-tables-section::before {
+  content: "Mapa exclusivo de mesas";
+}
+
+.patrimony-screen.space-map-view-lockers .space-map-lockers-section::before {
+  content: "Mapa exclusivo de lockers";
+}
+
+@media (max-width: 700px) {
+  .patrimony-tabs [data-space-map-tab] {
+    min-width: 0;
+  }
+}
