@@ -12,7 +12,6 @@ export type HubTask = {
   assigneeUserId?: string;
   dueDate?: string;
   sortOrder: number;
-  showInAlerts: boolean;
   sourceModule?: string;
   sourceServiceRequestId?: string;
   createdByUserId?: string;
@@ -44,7 +43,6 @@ export type HubTaskDraft = {
   department: string;
   assigneeUserId: string;
   dueDate: string;
-  showInAlerts?: boolean;
   sourceModule?: string;
   sourceServiceRequestId?: string;
   sourceServiceRequestProtocol?: string;
