@@ -11,6 +11,7 @@ import "./styles.css";
 import "./modules/alerts/alertsExtensions.css";
 import "./modules/alerts/dashboardAlignment.css";
 import "./modules/alerts/dashboardAlignmentRuntime";
+import "./modules/tasks/taskBoardSimplified.css";
 
 const normalizedPath = window.location.pathname.replace(/\/+$/, "") || "/";
 const isPublicServiceRequestPage = normalizedPath === "/chamados";
