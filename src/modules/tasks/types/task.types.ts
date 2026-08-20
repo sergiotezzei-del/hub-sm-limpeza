@@ -44,7 +44,7 @@ export type HubTaskDraft = {
   department: string;
   assigneeUserId: string;
   dueDate: string;
-  showInAlerts: boolean;
+  showInAlerts?: boolean;
   sourceModule?: string;
   sourceServiceRequestId?: string;
   sourceServiceRequestProtocol?: string;
