@@ -15,7 +15,7 @@ import { SantaMariaBrand } from "../../components/SantaMariaBrand";
 import type { ManagedUser, UserPermission } from "../../types";
 import { loadAlertTaskIds, setTaskAlertVisibility } from "../alerts/alertTaskService";
 import {
-  archiveHubTask,
+  deleteHubTask,
   getHubTaskErrorMessage,
   isServiceRequestTaskDuplicateError,
   loadActiveHubTaskByServiceRequestId,
@@ -48,7 +48,7 @@ type TaskBoardScreenProps = {
 type FilterMode = "all" | "mine" | "overdue";
 type LoadState = "loading" | "ready" | "error";
 
-const statusOrder: HubTaskStatus[] = ["a_fazer", "em_andamento", "aguardando", "concluido"];
+const statusOrder: HubTaskStatus[] = ["a_fazer", "em_andamento", "aguardando"];
 const statusLabels: Record<HubTaskStatus, string> = {
   a_fazer: "A fazer",
   em_andamento: "Em andamento",
@@ -133,9 +133,8 @@ export function TaskBoardScreen({
   }, [assigneeFilter, currentUser.id, dataset.tasks, departmentFilter, filterMode]);
 
   const metrics = useMemo(() => ({
-    pending: dataset.tasks.filter((task) => task.status !== "concluido").length,
+    pending: dataset.tasks.length,
     overdue: dataset.tasks.filter(isTaskOverdue).length,
-    completed: dataset.tasks.filter((task) => task.status === "concluido").length,
   }), [dataset.tasks]);
 
   useEffect(() => {
@@ -149,7 +148,7 @@ export function TaskBoardScreen({
       ...createDraft(currentUser),
       ...initialDraft,
       id: undefined,
-      status: initialDraft.status || "a_fazer",
+      status: initialDraft.status === "concluido" ? "a_fazer" : initialDraft.status || "a_fazer",
       priority: initialDraft.priority || "media",
       assigneeUserId: initialDraft.assigneeUserId || currentUser.id,
       department: initialDraft.department || "Geral",
@@ -172,7 +171,7 @@ export function TaskBoardScreen({
     if (!pendingFocusTaskId || loadState !== "ready") return;
     const linkedTask = dataset.tasks.find((task) => task.id === pendingFocusTaskId);
     if (!linkedTask) {
-      setNotice("A tarefa vinculada nao esta ativa nos Afazeres.");
+      setNotice("A tarefa vinculada não está ativa nos Afazeres.");
       setPendingFocusTaskId("");
       return;
     }
@@ -203,7 +202,7 @@ export function TaskBoardScreen({
     setFilterMode("all");
     setAssigneeFilter("all");
     setDepartmentFilter("all");
-    setMobileStatus(status);
+    setMobileStatus(status === "concluido" ? "a_fazer" : status);
   }
 
   function openNewTask() {
@@ -217,7 +216,7 @@ export function TaskBoardScreen({
       id: task.id,
       title: task.title,
       description: task.description || "",
-      status: task.status,
+      status: task.status === "concluido" ? "a_fazer" : task.status,
       priority: task.priority,
       department: task.department,
       assigneeUserId: task.assigneeUserId || "",
@@ -245,7 +244,7 @@ export function TaskBoardScreen({
         if (existingTask) {
           await refresh();
           openTask(existingTask);
-          setNotice("Este chamado ja estava nos Afazeres. Abri a tarefa vinculada.");
+          setNotice("Este chamado já estava nos Afazeres. Abri a tarefa vinculada.");
           return;
         }
       }
@@ -255,15 +254,66 @@ export function TaskBoardScreen({
     }
   }
 
+  async function completeTask(task: HubTask) {
+    if (busyTaskId) return;
+    setBusyTaskId(task.id);
+    setNotice("");
+    try {
+      await deleteHubTask(task.id);
+      setDataset((current) => ({
+        ...current,
+        tasks: current.tasks.filter((item) => item.id !== task.id),
+        events: current.events.filter((event) => event.taskId !== task.id),
+      }));
+      setAlertTaskIds((current) => current.filter((id) => id !== task.id));
+      if (draft.id === task.id) setEditorOpen(false);
+      setNotice(`${task.title} concluído e removido dos Afazeres.`);
+    } catch (error) {
+      setNotice(`Não foi possível concluir a tarefa. ${getHubTaskErrorMessage(error)}`);
+    } finally {
+      setBusyTaskId("");
+    }
+  }
+
+  async function deleteTask(task: HubTask) {
+    if (!window.confirm(`Excluir a tarefa “${task.title}” definitivamente?`)) return;
+    if (busyTaskId) return;
+    setBusyTaskId(task.id);
+    setNotice("");
+    try {
+      await deleteHubTask(task.id);
+      setDataset((current) => ({
+        ...current,
+        tasks: current.tasks.filter((item) => item.id !== task.id),
+        events: current.events.filter((event) => event.taskId !== task.id),
+      }));
+      setAlertTaskIds((current) => current.filter((id) => id !== task.id));
+      if (draft.id === task.id) setEditorOpen(false);
+      setNotice("Tarefa excluída.");
+    } catch (error) {
+      setNotice(getHubTaskErrorMessage(error));
+    } finally {
+      setBusyTaskId("");
+    }
+  }
+
   async function moveTask(task: HubTask, direction: -1 | 1) {
     const currentIndex = statusOrder.indexOf(task.status);
+    if (direction === 1 && currentIndex === statusOrder.length - 1) {
+      await completeTask(task);
+      return;
+    }
     const nextStatus = statusOrder[currentIndex + direction];
     if (!nextStatus) return;
     await moveTaskToStatus(task, nextStatus);
   }
 
   async function moveTaskToStatus(task: HubTask, nextStatus: HubTaskStatus) {
-    if (busyTaskId || task.status === nextStatus) return;
+    if (nextStatus === "concluido") {
+      await completeTask(task);
+      return;
+    }
+    if (busyTaskId || task.status === nextStatus || !statusOrder.includes(nextStatus)) return;
     const previousTasks = dataset.tasks;
     setBusyTaskId(task.id);
     setNotice("");
@@ -289,7 +339,7 @@ export function TaskBoardScreen({
   }
 
   async function toggleTaskAlert(task: HubTask) {
-    if (busyTaskId || task.status === "concluido") return;
+    if (busyTaskId) return;
     const visible = !alertTaskIds.includes(task.id);
     setBusyTaskId(task.id);
     setNotice("");
@@ -313,26 +363,6 @@ export function TaskBoardScreen({
     const task = dataset.tasks.find((item) => item.id === taskId);
     if (!task) return;
     void moveTaskToStatus(task, nextStatus);
-  }
-
-  async function archiveTask(task: HubTask) {
-    if (!window.confirm(`Arquivar a tarefa “${task.title}”? Ela continuará no histórico.`)) return;
-    setBusyTaskId(task.id);
-    setNotice("");
-    try {
-      await archiveHubTask(task.id, currentUser.name);
-      setDataset((current) => ({
-        ...current,
-        tasks: current.tasks.filter((item) => item.id !== task.id),
-      }));
-      setAlertTaskIds((current) => current.filter((id) => id !== task.id));
-      setEditorOpen(false);
-      void refreshEventsOnly();
-    } catch (error) {
-      setNotice(getHubTaskErrorMessage(error));
-    } finally {
-      setBusyTaskId("");
-    }
   }
 
   async function refreshEventsOnly() {
@@ -364,7 +394,7 @@ export function TaskBoardScreen({
         <div>
           <p className="task-board-eyebrow">Organização diária</p>
           <h1>Afazeres</h1>
-          <p>Veja o que precisa ser feito, o que está parado e o que já foi concluído.</p>
+          <p>Veja o que precisa ser feito e o que está parado.</p>
         </div>
         <button className="primary-button task-new-button" type="button" onClick={openNewTask}>
           + Nova tarefa
@@ -374,7 +404,6 @@ export function TaskBoardScreen({
       <section className="task-metrics" aria-label="Resumo dos afazeres">
         <article><strong>{metrics.pending}</strong><span>Pendentes</span></article>
         <article className={metrics.overdue > 0 ? "task-metric-danger" : ""}><strong>{metrics.overdue}</strong><span>Atrasadas</span></article>
-        <article><strong>{metrics.completed}</strong><span>Concluídas</span></article>
       </section>
 
       <section className="task-filters" aria-label="Filtros do quadro">
@@ -435,7 +464,7 @@ export function TaskBoardScreen({
                 onOpen={openTask}
                 onMove={moveTask}
                 onMoveToStatus={moveTaskToStatus}
-                onArchive={archiveTask}
+                onDelete={deleteTask}
                 onToggleAlert={toggleTaskAlert}
               />
             ))}
@@ -503,9 +532,9 @@ export function TaskBoardScreen({
                 {draft.id && (
                   <button type="button" className="danger-button" onClick={() => {
                     const task = dataset.tasks.find((item) => item.id === draft.id);
-                    if (task) void archiveTask(task);
+                    if (task) void deleteTask(task);
                   }} disabled={Boolean(busyTaskId)}>
-                    Arquivar
+                    Excluir
                   </button>
                 )}
                 <button type="button" className="secondary-button" onClick={() => setEditorOpen(false)} disabled={Boolean(busyTaskId)}>Cancelar</button>
@@ -541,7 +570,7 @@ function TaskColumn({
   onOpen,
   onMove,
   onMoveToStatus,
-  onArchive,
+  onDelete,
   onToggleAlert,
 }: {
   status: HubTaskStatus;
@@ -553,7 +582,7 @@ function TaskColumn({
   onOpen: (task: HubTask) => void;
   onMove: (task: HubTask, direction: -1 | 1) => void;
   onMoveToStatus: (task: HubTask, status: HubTaskStatus) => void;
-  onArchive: (task: HubTask) => void;
+  onDelete: (task: HubTask) => void;
   onToggleAlert: (task: HubTask) => void;
 }) {
   const statusIndex = statusOrder.indexOf(status);
@@ -582,7 +611,7 @@ function TaskColumn({
             onOpen={onOpen}
             onMove={onMove}
             onMoveToStatus={onMoveToStatus}
-            onArchive={onArchive}
+            onDelete={onDelete}
             onToggleAlert={onToggleAlert}
           />
         ))}
@@ -600,7 +629,7 @@ function TaskCard({
   onOpen,
   onMove,
   onMoveToStatus,
-  onArchive,
+  onDelete,
   onToggleAlert,
 }: {
   task: HubTask;
@@ -611,7 +640,7 @@ function TaskCard({
   onOpen: (task: HubTask) => void;
   onMove: (task: HubTask, direction: -1 | 1) => void;
   onMoveToStatus: (task: HubTask, status: HubTaskStatus) => void;
-  onArchive: (task: HubTask) => void;
+  onDelete: (task: HubTask) => void;
   onToggleAlert: (task: HubTask) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -626,7 +655,7 @@ function TaskCard({
     zIndex: isDragging ? 30 : undefined,
   };
   const nextButtonLabel = task.status === "aguardando" ? "Concluir" : "Avançar";
-  const previousButtonLabel = task.status === "concluido" ? "Reabrir" : "Voltar";
+  const previousButtonLabel = "Voltar";
 
   return (
     <section ref={setNodeRef} style={style} className={`task-card priority-${task.priority} ${overdue ? "task-card-overdue" : ""} ${isDragging ? "task-card-dragging" : ""} ${expanded ? "task-card-expanded" : "task-card-collapsed"}`}>
@@ -670,14 +699,9 @@ function TaskCard({
 
           <div className="task-card-actions" role="group" aria-label={`Ações da tarefa ${task.title}`}>
             <button type="button" onClick={() => onMove(task, -1)} disabled={busy || statusIndex === 0}>{previousButtonLabel}</button>
-            {task.status === "concluido" ? (
-              <button type="button" onClick={() => onArchive(task)} disabled={busy}>Arquivar</button>
-            ) : (
-              <>
-                <button type="button" onClick={() => onMove(task, 1)} disabled={busy}>{nextButtonLabel}</button>
-                <button type="button" onClick={() => onToggleAlert(task)} disabled={busy}>{inAlerts ? "Tirar dos alertas" : "Alertar"}</button>
-              </>
-            )}
+            <button type="button" onClick={() => onMove(task, 1)} disabled={busy}>{nextButtonLabel}</button>
+            <button type="button" onClick={() => onToggleAlert(task)} disabled={busy}>{inAlerts ? "Tirar dos alertas" : "Alertar"}</button>
+            <button type="button" onClick={() => onDelete(task)} disabled={busy}>Excluir</button>
             <button type="button" className="task-card-edit" onClick={() => onOpen(task)} disabled={busy}>Editar tarefa</button>
           </div>
 
@@ -716,7 +740,7 @@ function TaskHistory({ taskId, dataset }: { taskId: string; dataset: HubTaskData
 }
 
 function isTaskOverdue(task: HubTask) {
-  if (!task.dueDate || task.status === "concluido") return false;
+  if (!task.dueDate) return false;
   return task.dueDate < localDateKey(new Date());
 }
 
