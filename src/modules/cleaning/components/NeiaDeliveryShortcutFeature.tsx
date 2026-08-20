@@ -48,7 +48,11 @@ export function NeiaDeliveryShortcutFeature() {
     sync();
     const observer = new MutationObserver(sync);
     observer.observe(root, { childList: true, subtree: true });
-    return () => observer.disconnect();
+    const interval = window.setInterval(sync, 1000);
+    return () => {
+      observer.disconnect();
+      window.clearInterval(interval);
+    };
   }, []);
 
   function openDelivery() {
