@@ -1,0 +1,225 @@
+import { SUPABASE_KEY_HEADER, SUPABASE_PUBLIC_KEY, SUPABASE_URL, supabaseConfigured } from "../security/services/supabaseClient";
+
+export type MarketingRole = "admin" | "marketing" | "sales_manager";
+export type MarketingRequestStatus =
+  | "solicitado"
+  | "agendado"
+  | "aguardando_edicao"
+  | "em_edicao"
+  | "em_aprovacao"
+  | "revisao"
+  | "pronto"
+  | "bloqueado"
+  | "cancelado";
+
+export type MarketingContext = {
+  userId: string;
+  userName: string;
+  role: MarketingRole;
+  teamId?: string | null;
+  teamName?: string | null;
+};
+
+export type MarketingTeam = {
+  id: string;
+  managerName: string;
+  active: boolean;
+  sortOrder: number;
+};
+
+export type MarketingBroker = {
+  id: string;
+  teamId: string;
+  name: string;
+  active: boolean;
+};
+
+export type MarketingRequest = {
+  id: string;
+  requestNumber: number;
+  teamId: string;
+  managerName: string;
+  brokerId?: string | null;
+  brokerName: string;
+  hasPropertyCode: boolean;
+  propertyReference: string;
+  requestKind: "capture_edit" | "edit_only";
+  contentTypes: string[];
+  captureLocation?: string | null;
+  preferredCaptureAt?: string | null;
+  confirmedCaptureAt?: string | null;
+  assetLink?: string | null;
+  paidTraffic: boolean;
+  requesterNotes?: string | null;
+  marketingNotes?: string | null;
+  status: MarketingRequestStatus;
+  assignedMarketingName?: string | null;
+  promisedAt?: string | null;
+  urgencyRequested: boolean;
+  urgencyReason?: string | null;
+  urgencyApproved: boolean;
+  urgencyDecidedByName?: string | null;
+  urgencyDecidedAt?: string | null;
+  createdByUserId: string;
+  createdByName: string;
+  completedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type MarketingAccess = {
+  managedUserId: string;
+  userName: string;
+  role: MarketingRole;
+  teamId?: string | null;
+  active: boolean;
+};
+
+export type MarketingAvailableUser = {
+  id: string;
+  name: string;
+  jobTitle?: string | null;
+  department?: string | null;
+  active: boolean;
+};
+
+export type MarketingDashboard = {
+  context: MarketingContext;
+  teams: MarketingTeam[];
+  brokers: MarketingBroker[];
+  requests: MarketingRequest[];
+  access: MarketingAccess[];
+  availableUsers: MarketingAvailableUser[];
+};
+
+export type MarketingRequestDraft = {
+  teamId: string;
+  brokerName: string;
+  hasPropertyCode: boolean;
+  propertyReference: string;
+  requestKind: "capture_edit" | "edit_only";
+  contentTypes: string[];
+  captureLocation?: string;
+  preferredCaptureAt?: string;
+  assetLink?: string;
+  paidTraffic: boolean;
+  requesterNotes?: string;
+  urgencyRequested: boolean;
+  urgencyReason?: string;
+};
+
+const REQUEST_TIMEOUT_MS = 12000;
+
+export class MarketingRemoteError extends Error {
+  constructor(public readonly status: number, message: string) {
+    super(message);
+    this.name = "MarketingRemoteError";
+  }
+}
+
+export async function getMarketingDashboard(accessCode: string): Promise<MarketingDashboard> {
+  return rpc<MarketingDashboard>("marketing_get_dashboard", { p_access_code: accessCode });
+}
+
+export async function createMarketingRequest(accessCode: string, draft: MarketingRequestDraft) {
+  return rpc<Array<{ request_id: string; request_number: number }>>("marketing_create_request", {
+    p_access_code: accessCode,
+    p_team_id: draft.teamId,
+    p_broker_name: draft.brokerName,
+    p_has_property_code: draft.hasPropertyCode,
+    p_property_reference: draft.propertyReference,
+    p_request_kind: draft.requestKind,
+    p_content_types: draft.contentTypes,
+    p_capture_location: draft.captureLocation || null,
+    p_preferred_capture_at: toIsoOrNull(draft.preferredCaptureAt),
+    p_asset_link: draft.assetLink || null,
+    p_paid_traffic: draft.paidTraffic,
+    p_requester_notes: draft.requesterNotes || null,
+    p_urgency_requested: draft.urgencyRequested,
+    p_urgency_reason: draft.urgencyReason || null,
+  });
+}
+
+export async function updateMarketingRequest(
+  accessCode: string,
+  requestId: string,
+  action: "save_management" | "approve_urgency" | "reject_urgency" | "cancel",
+  payload: Record<string, unknown> = {},
+) {
+  await rpc<unknown>("marketing_update_request", {
+    p_access_code: accessCode,
+    p_request_id: requestId,
+    p_action: action,
+    p_payload: payload,
+  });
+}
+
+export async function saveMarketingAccess(
+  accessCode: string,
+  input: { managedUserId: string; role: MarketingRole; teamId?: string | null; active?: boolean },
+) {
+  await rpc<unknown>("marketing_save_access", {
+    p_access_code: accessCode,
+    p_managed_user_id: input.managedUserId,
+    p_role: input.role,
+    p_team_id: input.role === "sales_manager" ? input.teamId || null : null,
+    p_active: input.active ?? true,
+  });
+}
+
+export function getMarketingErrorMessage(error: unknown) {
+  const raw = error instanceof Error ? error.message : String(error ?? "");
+  const normalized = raw.toUpperCase();
+  if (normalized.includes("MARKETING_ACCESS_DENIED")) return "Este usuário ainda não tem acesso ao Marketing.";
+  if (normalized.includes("MARKETING_CREATE_DENIED")) return "Seu acesso permite acompanhar o Marketing, mas não criar pedidos.";
+  if (normalized.includes("MARKETING_TEAM_DENIED")) return "O gerente só pode abrir pedidos para a própria equipe.";
+  if (normalized.includes("MARKETING_BROKER_REQUIRED")) return "Informe o nome do corretor.";
+  if (normalized.includes("MARKETING_PROPERTY_REQUIRED")) return "Informe o código ou a descrição do imóvel.";
+  if (normalized.includes("MARKETING_CONTENT_REQUIRED")) return "Selecione pelo menos um tipo de conteúdo.";
+  if (normalized.includes("MARKETING_URGENCY_REASON_REQUIRED")) return "Explique o motivo do pedido de urgência.";
+  if (normalized.includes("MARKETING_ADMIN_REQUIRED")) return "Somente o administrador do Marketing pode alterar acessos.";
+  if (normalized.includes("MARKETING_TEAM_REQUIRED")) return "Escolha a equipe deste gerente.";
+  if (normalized.includes("MARKETING_USER_NOT_FOUND")) return "O usuário do HUB não foi encontrado ou está inativo.";
+  if (normalized.includes("MARKETING_REQUEST_NOT_FOUND")) return "Este pedido não foi encontrado.";
+  if (normalized.includes("MARKETING_UPDATE_DENIED") || normalized.includes("MARKETING_REQUEST_DENIED")) return "Você não tem permissão para alterar este pedido.";
+  if (error instanceof MarketingRemoteError && error.status === 0) return "Não foi possível conectar ao Marketing. Verifique a internet.";
+  return "Não foi possível concluir a operação no Marketing.";
+}
+
+function toIsoOrNull(value?: string) {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+async function rpc<T>(name: string, body: Record<string, unknown>): Promise<T> {
+  if (!supabaseConfigured) throw new MarketingRemoteError(0, "Supabase não configurado.");
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${name}`, {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        [SUPABASE_KEY_HEADER]: SUPABASE_PUBLIC_KEY,
+        Authorization: `Bearer ${SUPABASE_PUBLIC_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) {
+      const details = await response.text();
+      throw new MarketingRemoteError(response.status, details);
+    }
+    const text = await response.text();
+    return (text ? JSON.parse(text) : null) as T;
+  } catch (error) {
+    if (error instanceof MarketingRemoteError) throw error;
+    const message = error instanceof DOMException && error.name === "AbortError"
+      ? "Timeout na conexão com o Marketing."
+      : error instanceof Error ? error.message : "Falha de rede.";
+    throw new MarketingRemoteError(0, message);
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
