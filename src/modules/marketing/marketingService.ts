@@ -1,4 +1,4 @@
-import { SUPABASE_KEY_HEADER, SUPABASE_PUBLIC_KEY, SUPABASE_URL, supabaseConfigured } from "../security/services/supabaseClient";
+import { getSupabaseAccessToken, SUPABASE_KEY_HEADER, SUPABASE_PUBLIC_KEY, SUPABASE_URL, supabaseConfigured } from "../security/services/supabaseClient";
 
 export type MarketingRole = "admin" | "marketing" | "sales_manager";
 export type MarketingRequestStatus =
@@ -92,6 +92,12 @@ export type MarketingDashboard = {
   availableUsers: MarketingAvailableUser[];
 };
 
+export type MarketingSession = {
+  sessionToken: string;
+  userId: string;
+  expiresAt: string;
+};
+
 export type MarketingRequestDraft = {
   teamId: string;
   brokerName: string;
@@ -117,13 +123,34 @@ export class MarketingRemoteError extends Error {
   }
 }
 
-export async function getMarketingDashboard(accessCode: string): Promise<MarketingDashboard> {
-  return rpc<MarketingDashboard>("marketing_get_dashboard", { p_access_code: accessCode });
+export async function startMarketingSession(accessCode: string): Promise<MarketingSession> {
+  const rows = await rpc<Array<{ session_token: string; user_id: string; expires_at: string }>>(
+    "marketing_start_session",
+    { p_access_code: accessCode },
+  );
+  const session = rows?.[0];
+  if (!session?.session_token || !session.user_id) {
+    throw new MarketingRemoteError(403, "MARKETING_ACCESS_DENIED");
+  }
+  return {
+    sessionToken: session.session_token,
+    userId: session.user_id,
+    expiresAt: session.expires_at,
+  };
 }
 
-export async function createMarketingRequest(accessCode: string, draft: MarketingRequestDraft) {
+export async function endMarketingSession(sessionToken: string) {
+  if (!sessionToken) return;
+  await rpc<unknown>("marketing_end_session", { p_session_token: sessionToken });
+}
+
+export async function getMarketingDashboard(sessionToken: string): Promise<MarketingDashboard> {
+  return rpc<MarketingDashboard>("marketing_get_dashboard", { p_session_token: sessionToken });
+}
+
+export async function createMarketingRequest(sessionToken: string, draft: MarketingRequestDraft) {
   return rpc<Array<{ request_id: string; request_number: number }>>("marketing_create_request", {
-    p_access_code: accessCode,
+    p_session_token: sessionToken,
     p_team_id: draft.teamId,
     p_broker_name: draft.brokerName,
     p_has_property_code: draft.hasPropertyCode,
@@ -141,13 +168,13 @@ export async function createMarketingRequest(accessCode: string, draft: Marketin
 }
 
 export async function updateMarketingRequest(
-  accessCode: string,
+  sessionToken: string,
   requestId: string,
   action: "save_management" | "approve_urgency" | "reject_urgency" | "cancel",
   payload: Record<string, unknown> = {},
 ) {
   await rpc<unknown>("marketing_update_request", {
-    p_access_code: accessCode,
+    p_session_token: sessionToken,
     p_request_id: requestId,
     p_action: action,
     p_payload: payload,
@@ -155,11 +182,11 @@ export async function updateMarketingRequest(
 }
 
 export async function saveMarketingAccess(
-  accessCode: string,
+  sessionToken: string,
   input: { managedUserId: string; role: MarketingRole; teamId?: string | null; active?: boolean },
 ) {
   await rpc<unknown>("marketing_save_access", {
-    p_access_code: accessCode,
+    p_session_token: sessionToken,
     p_managed_user_id: input.managedUserId,
     p_role: input.role,
     p_team_id: input.role === "sales_manager" ? input.teamId || null : null,
@@ -171,6 +198,9 @@ export function getMarketingErrorMessage(error: unknown) {
   const raw = error instanceof Error ? error.message : String(error ?? "");
   const normalized = raw.toUpperCase();
   if (normalized.includes("MARKETING_ACCESS_DENIED")) return "Este usuário ainda não tem acesso ao Marketing.";
+  if (normalized.includes("MARKETING_SESSION_EXPIRED")) return "Sua sessão do Marketing expirou. Entre novamente no HUB.";
+  if (normalized.includes("MARKETING_SESSION_MISMATCH")) return "A sessão do Marketing não corresponde ao usuário atual.";
+  if (normalized.includes("MARKETING_AUTH_REQUIRED")) return "A sessão segura do administrador não está disponível. Entre novamente no HUB.";
   if (normalized.includes("MARKETING_CREATE_DENIED")) return "Seu acesso permite acompanhar o Marketing, mas não criar pedidos.";
   if (normalized.includes("MARKETING_TEAM_DENIED")) return "O gerente só pode abrir pedidos para a própria equipe.";
   if (normalized.includes("MARKETING_BROKER_REQUIRED")) return "Informe o nome do corretor.";
@@ -202,7 +232,7 @@ async function rpc<T>(name: string, body: Record<string, unknown>): Promise<T> {
       signal: controller.signal,
       headers: {
         [SUPABASE_KEY_HEADER]: SUPABASE_PUBLIC_KEY,
-        Authorization: `Bearer ${SUPABASE_PUBLIC_KEY}`,
+        Authorization: `Bearer ${getSupabaseAccessToken() ?? SUPABASE_PUBLIC_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify(body),

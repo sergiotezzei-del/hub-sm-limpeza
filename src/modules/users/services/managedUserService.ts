@@ -239,11 +239,11 @@ function mapManagedUserRow(row: ManagedUserRow): ManagedUser {
   };
 }
 
-function mapManagedUserLoginRow(row: ManagedUserLoginRow, accessCode: string): ManagedUser {
+function mapManagedUserLoginRow(row: ManagedUserLoginRow, _accessCode: string): ManagedUser {
   return {
     id: row.id,
     name: row.name,
-    accessCode,
+    accessCode: "",
     userType: (row.user_type || "Consulta") as ManagedUser["userType"],
     jobTitle: row.job_title || row.user_type || "Consulta",
     department: (row.department || "Administração") as ManagedUser["department"],

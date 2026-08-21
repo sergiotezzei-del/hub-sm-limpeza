@@ -37,6 +37,7 @@ export type UserPermission =
   | "manutencao"
   | "chaves"
   | "patrimonio"
+  | "marketing"
   | "afazeres"
   | "chamados"
   | "relatorios";

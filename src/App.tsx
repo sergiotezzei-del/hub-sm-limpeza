@@ -1,4 +1,4 @@
-import { ChangeEvent, FormEvent, lazy, ReactNode, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { ChangeEvent, FormEvent, lazy, ReactNode, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { AppIcon, type AppIconName } from "./components/AppIcon";
 import { HomeMenuMeta } from "./components/HomeMenuMeta";
@@ -6,6 +6,8 @@ import { ProfileAvatarMenu } from "./components/ProfileAvatarMenu";
 import { SantaMariaBrand } from "./components/SantaMariaBrand";
 import { activities, employees } from "./data";
 import type { MasterMapTargetScreen } from "./features/master-map/masterMapTypes";
+import { MarketingFeature, type MarketingSummary } from "./modules/marketing/MarketingFeature";
+import { endMarketingSession, startMarketingSession } from "./modules/marketing/marketingService";
 import { GuardShiftPanel, GuardSyncDiagnosticPanel } from "./modules/security/components/GuardShift";
 import { signInAdminSupabaseAuth, signInGuardSupabaseAuth } from "./modules/security/services/guardAuthBridge";
 import { loadGuardPaymentData, saveGuardPaymentProfile, saveGuardPaymentRecords, updateGuardPaymentRecordStatus } from "./modules/security/services/paymentService";
@@ -78,6 +80,7 @@ type View =
   | "order-form"
   | "admin"
   | "tasks-board"
+  | "marketing"
   | "service-requests"
   | "cleaning-dashboard"
   | "orders"
@@ -250,6 +253,7 @@ type SavedSession = {
   currentUser: UserRole | null;
   previewEmployeeId: EmployeeId | null;
   selectedGuardName?: GuardName | null;
+  marketingSessionToken?: string | null;
 };
 
 const BRAND = "SANTA MARIA SOLUÇÕES IMOBILIÁRIAS";
@@ -329,6 +333,7 @@ const permissionOptions: Array<{ id: UserPermission; label: string }> = [
   { id: "manutencao", label: "Manutenção" },
   { id: "chaves", label: "Chaves" },
   { id: "patrimonio", label: "Patrimônio" },
+  { id: "marketing", label: "Marketing" },
   { id: "afazeres", label: "Afazeres" },
   { id: "chamados", label: "Chamados" },
   { id: "relatorios", label: "Relatórios" },
@@ -478,6 +483,8 @@ function App() {
   const [currentUser, setCurrentUser] = useState<UserRole | null>(initialSession.currentUser);
   const [previewEmployeeId, setPreviewEmployeeId] = useState<EmployeeId | null>(initialSession.previewEmployeeId);
   const [selectedGuardName, setSelectedGuardName] = useState<GuardName | null>(initialSession.selectedGuardName ?? null);
+  const [marketingSessionToken, setMarketingSessionToken] = useState<string | null>(initialSession.marketingSessionToken ?? null);
+  const [marketingSummary, setMarketingSummary] = useState<MarketingSummary>({ newCount: 0, urgencyCount: 0 });
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState("");
   const [orders, setOrders] = useState<CleaningOrder[]>(() => getLocalOrders().filter((order) => !order.deletedAt));
@@ -563,10 +570,10 @@ function App() {
 
   useEffect(() => {
     if (currentUser) {
-      const session: SavedSession = { view, currentUser, previewEmployeeId, selectedGuardName };
+      const session: SavedSession = { view, currentUser, previewEmployeeId, selectedGuardName, marketingSessionToken };
       window.sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
     }
-  }, [view, currentUser, previewEmployeeId, selectedGuardName]);
+  }, [view, currentUser, previewEmployeeId, selectedGuardName, marketingSessionToken]);
 
   useEffect(() => {
     const resetScroll = () => {
@@ -612,6 +619,20 @@ function App() {
   function hasAnyCurrentPermission(permissions: UserPermission[]) {
     return permissions.some((permission) => hasCurrentPermission(permission));
   }
+
+  function openMarketing() {
+    if (!hasCurrentPermission("marketing")) {
+      setNotice("Sem permissão para acessar Marketing.");
+      return;
+    }
+    setNotice("");
+    setView("marketing");
+  }
+
+  const handleMarketingSessionInvalid = useCallback(() => {
+    setMarketingSessionToken(null);
+    setMarketingSummary({ newCount: 0, urgencyCount: 0 });
+  }, []);
 
   async function refreshOrders() {
     const currentOrders = await getOrders();
@@ -753,8 +774,11 @@ function App() {
   }
 
   function goToLogin() {
+    if (marketingSessionToken) void endMarketingSession(marketingSessionToken).catch(() => undefined);
     void signOutSupabaseAuth();
     window.sessionStorage.removeItem(SESSION_KEY);
+    setMarketingSessionToken(null);
+    setMarketingSummary({ newCount: 0, urgencyCount: 0 });
     setCurrentUser(null);
     setPreviewEmployeeId(null);
     setSelectedGuardName(null);
@@ -822,13 +846,30 @@ function App() {
       await signInAdminSupabaseAuth(cleanPassword);
       void refreshManagedUsersFromCloud({ showNotice: false });
     } else {
-      void signOutSupabaseAuth();
+      await signOutSupabaseAuth();
     }
 
+    let nextMarketingSessionToken: string | null = null;
+    const userPermissions = getNormalizedManagedUserPermissions(user, user.permissions);
+    if (userPermissions.includes("marketing")) {
+      try {
+        const marketingSession = await startMarketingSession(cleanPassword);
+        if (marketingSession.userId !== user.id) {
+          void endMarketingSession(marketingSession.sessionToken).catch(() => undefined);
+          throw new Error("MARKETING_SESSION_MISMATCH");
+        }
+        nextMarketingSessionToken = marketingSession.sessionToken;
+      } catch {
+        loginNotice = [loginNotice, "Sessão do Marketing indisponível."].filter(Boolean).join(" ");
+      }
+    }
+
+    setMarketingSessionToken(nextMarketingSessionToken);
     setCurrentUser(user.id);
     setPreviewEmployeeId(null);
     setSelectedGuardName(user.linkedGuardId ? guardUserMap[user.linkedGuardId] : null);
     setLoginError("");
+    setPassword("");
     setNotice(loginNotice);
     void refreshOrders();
     void refreshProfiles();
@@ -1851,6 +1892,8 @@ function App() {
           onOpenAssetsMaterials={openAssetsMaterialsMenu}
           onOpenHubAdministration={openHubAdministrationMenu}
           onOpenSecurity={openSecurityMenu}
+          onOpenMarketing={openMarketing}
+          marketingAttention={marketingSummary.newCount + marketingSummary.urgencyCount > 0}
           onProfilePhotoChange={handleCurrentUserPhoto}
         />
       )}
@@ -1999,6 +2042,8 @@ function App() {
           onOpenServiceRequests={openServiceRequests}
           onOpenAssetsMaterials={openAssetsMaterialsMenu}
           onOpenHubAdministration={openHubAdministrationMenu}
+          onOpenMarketing={openMarketing}
+          marketingAttention={marketingSummary.newCount + marketingSummary.urgencyCount > 0}
         />
       )}
 
@@ -2249,6 +2294,18 @@ function App() {
           onCopyOrder={copyOrder}
           onDownloadWord={downloadOrderWord}
           canDownloadWord={hasCurrentPermission("painel-admin")}
+        />
+      )}
+
+      {currentUser && hasCurrentPermission("marketing") && (
+        <MarketingFeature
+          active={view === "marketing"}
+          currentUserId={currentUser}
+          sessionToken={marketingSessionToken}
+          onBack={goToMainMenu}
+          onOpen={openMarketing}
+          onSessionInvalid={handleMarketingSessionInvalid}
+          onSummaryChange={setMarketingSummary}
         />
       )}
 
@@ -2927,7 +2984,7 @@ function AccessDeniedScreen({ onBack, onLogout }: { onBack: () => void; onLogout
   );
 }
 
-function UserSectorHomeScreen({ user, permissions, notice, onLogout, onOpenCleaningDashboard, onOpenStockExit, onOpenCopaCafe, onOpenMaintenance, onOpenAssetsMaterials, onOpenHubAdministration, onOpenSecurity, onProfilePhotoChange }: { user: ManagedUser; permissions: UserPermission[]; notice: string; onLogout: () => void; onOpenCleaningDashboard: () => void; onOpenStockExit: () => void; onOpenCopaCafe: () => void; onOpenMaintenance: () => void; onOpenAssetsMaterials: () => void; onOpenHubAdministration: () => void; onOpenSecurity: () => void; onProfilePhotoChange: (file: File | null) => void | Promise<void> }) {
+function UserSectorHomeScreen({ user, permissions, notice, onLogout, onOpenCleaningDashboard, onOpenStockExit, onOpenCopaCafe, onOpenMaintenance, onOpenAssetsMaterials, onOpenHubAdministration, onOpenSecurity, onOpenMarketing, marketingAttention, onProfilePhotoChange }: { user: ManagedUser; permissions: UserPermission[]; notice: string; onLogout: () => void; onOpenCleaningDashboard: () => void; onOpenStockExit: () => void; onOpenCopaCafe: () => void; onOpenMaintenance: () => void; onOpenAssetsMaterials: () => void; onOpenHubAdministration: () => void; onOpenSecurity: () => void; onOpenMarketing: () => void; marketingAttention: boolean; onProfilePhotoChange: (file: File | null) => void | Promise<void> }) {
   const canCleaning = permissions.includes("limpeza") || permissions.includes("saida-estoque");
   const operationCards: SectorModuleCard[] = [
     { key: "limpeza", title: "Limpeza", detail: "Rotinas, produtos, pedidos e histórico da equipe.", enabled: canCleaning, onClick: permissions.includes("limpeza") ? onOpenCleaningDashboard : onOpenStockExit, icon: "cleaning" },
@@ -2936,6 +2993,7 @@ function UserSectorHomeScreen({ user, permissions, notice, onLogout, onOpenClean
     { key: "manutencao", title: "Manutenção", detail: "Chamados, obras, fornecedores e pendências prediais.", enabled: permissions.includes("manutencao"), onClick: onOpenMaintenance, icon: "settings" },
   ];
   const managementCards: SectorModuleCard[] = [
+    { key: "marketing", title: "Marketing", detail: "Pedidos de Vendas, agenda, fila de produção e aprovações.", enabled: permissions.includes("marketing"), onClick: onOpenMarketing, attention: marketingAttention ? "Precisa de atenção" : undefined, icon: "camera" },
     { key: "bens-materiais", title: "Bens e Materiais", detail: "Patrimônio, alocações, ferramentas e suprimentos.", enabled: permissions.includes("estoque") || permissions.includes("patrimonio"), onClick: onOpenAssetsMaterials, icon: "stock" },
     { key: "administracao-hub", title: "Administração do HUB", detail: "Relatórios e ferramentas administrativas liberadas.", enabled: permissions.includes("relatorios") || permissions.includes("painel-admin"), onClick: onOpenHubAdministration, className: "users-card", icon: "users" },
   ];
@@ -2977,7 +3035,7 @@ function UserSectorHomeScreen({ user, permissions, notice, onLogout, onOpenClean
   );
 }
 
-function AdminSectorHomeScreen({ user, notice, newOrdersCount, onlineEnabled, permissions, onLogout, onProfilePhotoChange, onOpenCleaningDashboard, onOpenCopaCafe, onOpenSecurity, onOpenMaintenance, onOpenTasks, onOpenServiceRequests, onOpenAssetsMaterials, onOpenHubAdministration }: { user: ManagedUser; notice: string; newOrdersCount: number; onlineEnabled: boolean; permissions: UserPermission[]; onLogout: () => void; onProfilePhotoChange: (file: File | null) => void | Promise<void>; onOpenCleaningDashboard: () => void; onOpenCopaCafe: () => void; onOpenSecurity: () => void; onOpenMaintenance: () => void; onOpenTasks: () => void; onOpenServiceRequests: () => void; onOpenAssetsMaterials: () => void; onOpenHubAdministration: () => void }) {
+function AdminSectorHomeScreen({ user, notice, newOrdersCount, onlineEnabled, permissions, onLogout, onProfilePhotoChange, onOpenCleaningDashboard, onOpenCopaCafe, onOpenSecurity, onOpenMaintenance, onOpenTasks, onOpenServiceRequests, onOpenAssetsMaterials, onOpenHubAdministration, onOpenMarketing, marketingAttention }: { user: ManagedUser; notice: string; newOrdersCount: number; onlineEnabled: boolean; permissions: UserPermission[]; onLogout: () => void; onProfilePhotoChange: (file: File | null) => void | Promise<void>; onOpenCleaningDashboard: () => void; onOpenCopaCafe: () => void; onOpenSecurity: () => void; onOpenMaintenance: () => void; onOpenTasks: () => void; onOpenServiceRequests: () => void; onOpenAssetsMaterials: () => void; onOpenHubAdministration: () => void; onOpenMarketing: () => void; marketingAttention: boolean }) {
   const operationCards: SectorModuleCard[] = [
     { key: "limpeza", title: "Limpeza", detail: "Rotinas, produtos, pedidos e histórico da equipe.", enabled: permissions.includes("limpeza"), onClick: onOpenCleaningDashboard, icon: "cleaning" },
     { key: "copa-cafe", title: "Copa & Café", detail: "Café, água, bebidas e insumos da copa.", enabled: permissions.includes("cafe") || permissions.includes("agua"), onClick: onOpenCopaCafe, icon: "coffee" },
@@ -2985,6 +3043,7 @@ function AdminSectorHomeScreen({ user, notice, newOrdersCount, onlineEnabled, pe
     { key: "manutencao", title: "Manutenção", detail: "Chamados, obras, fornecedores e pendências prediais.", enabled: permissions.includes("manutencao"), onClick: onOpenMaintenance, icon: "settings" },
   ];
   const managementCards: SectorModuleCard[] = [
+    { key: "marketing", title: "Marketing", detail: "Pedidos de Vendas, agenda, fila de produção e aprovações.", enabled: permissions.includes("marketing"), onClick: onOpenMarketing, attention: marketingAttention ? "Precisa de atenção" : undefined, icon: "camera" },
     { key: "chamados", title: "Chamados", detail: "Solicitações internas, atendimento e histórico.", enabled: permissions.includes("chamados"), onClick: onOpenServiceRequests, icon: "reports" },
     { key: "afazeres", title: "Afazeres", detail: "Tarefas, prazos, prioridades e acompanhamento diário.", enabled: permissions.includes("afazeres"), onClick: onOpenTasks, icon: "reports" },
     { key: "bens-materiais", title: "Bens e Materiais", detail: "Patrimônio, alocações, ferramentas e suprimentos.", enabled: permissions.includes("estoque") || permissions.includes("patrimonio"), onClick: onOpenAssetsMaterials, icon: "stock" },
@@ -6305,14 +6364,21 @@ function getLocalManagedUsers(): ManagedUser[] {
   try {
     const parsed = JSON.parse(rawUsers);
     if (!Array.isArray(parsed)) return defaultManagedUsers.map(cloneManagedUser);
-    return mergeManagedUsers(parsed);
+    const sanitizedStoredUsers = parsed.map((user) => (
+      user && typeof user === "object" ? { ...user, accessCode: "" } : user
+    ));
+    window.localStorage.setItem(USERS_KEY, JSON.stringify(sanitizedStoredUsers));
+    const users = mergeManagedUsers(parsed);
+    saveLocalManagedUsers(users);
+    return users;
   } catch {
     return defaultManagedUsers.map(cloneManagedUser);
   }
 }
 
 function saveLocalManagedUsers(users: ManagedUser[]) {
-  window.localStorage.setItem(USERS_KEY, JSON.stringify(users));
+  const usersWithoutAccessCodes = users.map((user) => ({ ...user, accessCode: "" }));
+  window.localStorage.setItem(USERS_KEY, JSON.stringify(usersWithoutAccessCodes));
 }
 
 function mergeManagedUsers(storedUsers: unknown[]) {
@@ -6325,6 +6391,7 @@ function mergeManagedUsers(storedUsers: unknown[]) {
       ...defaultUser,
       ...storedUser,
       id: defaultUser.id,
+      accessCode: defaultUser.accessCode,
       linkedEmployeeId: defaultUser.linkedEmployeeId,
       linkedGuardId: defaultUser.linkedGuardId,
       protected: defaultUser.protected,
