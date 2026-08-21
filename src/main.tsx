@@ -8,6 +8,7 @@ import "./modules/alerts/browserAlertAttention";
 import { CleaningDeliveryFeature } from "./modules/cleaning/components/CleaningDeliveryFeature";
 import { NeiaDeliveryShortcutFeature } from "./modules/cleaning/components/NeiaDeliveryShortcutFeature";
 import { NeiaHistoryEnhancer } from "./modules/cleaning/components/NeiaHistoryEnhancer";
+import { MarketingFeature } from "./modules/marketing/MarketingFeature";
 import { AirConditioningMapFeature } from "./modules/patrimony/AirConditioningMapFeature";
 import { PatrimonyPeopleEquipmentFeature } from "./modules/patrimony/PatrimonyPeopleEquipmentFeature";
 import { PatrimonySpaceMapsFeature } from "./modules/patrimony/PatrimonySpaceMapsFeature";
@@ -34,6 +35,7 @@ createRoot(document.getElementById("root")!).render(
         <CleaningDeliveryFeature />
         <NeiaDeliveryShortcutFeature />
         <NeiaHistoryEnhancer />
+        <MarketingFeature />
         <AirConditioningMapFeature />
         <PatrimonyPeopleEquipmentFeature />
         <PatrimonySpaceMapsFeature />
