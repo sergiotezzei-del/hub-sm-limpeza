@@ -145,11 +145,11 @@ export async function endMarketingSession(sessionToken: string) {
 }
 
 export async function getMarketingDashboard(sessionToken: string): Promise<MarketingDashboard> {
-  return rpc<MarketingDashboard>("marketing_get_dashboard", { p_session_token: sessionToken });
+  return rpc<MarketingDashboard>("marketing_session_get_dashboard", { p_session_token: sessionToken });
 }
 
 export async function createMarketingRequest(sessionToken: string, draft: MarketingRequestDraft) {
-  return rpc<Array<{ request_id: string; request_number: number }>>("marketing_create_request", {
+  return rpc<Array<{ request_id: string; request_number: number }>>("marketing_session_create_request", {
     p_session_token: sessionToken,
     p_team_id: draft.teamId,
     p_broker_name: draft.brokerName,
@@ -173,7 +173,7 @@ export async function updateMarketingRequest(
   action: "save_management" | "approve_urgency" | "reject_urgency" | "cancel",
   payload: Record<string, unknown> = {},
 ) {
-  await rpc<unknown>("marketing_update_request", {
+  await rpc<unknown>("marketing_session_update_request", {
     p_session_token: sessionToken,
     p_request_id: requestId,
     p_action: action,
@@ -185,7 +185,7 @@ export async function saveMarketingAccess(
   sessionToken: string,
   input: { managedUserId: string; role: MarketingRole; teamId?: string | null; active?: boolean },
 ) {
-  await rpc<unknown>("marketing_save_access", {
+  await rpc<unknown>("marketing_session_save_access", {
     p_session_token: sessionToken,
     p_managed_user_id: input.managedUserId,
     p_role: input.role,

@@ -58,6 +58,49 @@ $$;
 
 revoke all on function private.marketing_resolve_session(text) from public, anon, authenticated;
 
+create or replace function private.marketing_sync_official_permission()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_managed_user_id text;
+  v_active boolean;
+begin
+  if tg_op = 'DELETE' then
+    v_managed_user_id := old.managed_user_id;
+    v_active := false;
+  else
+    v_managed_user_id := new.managed_user_id;
+    v_active := new.active;
+  end if;
+
+  update public.managed_users u
+  set permissions = case
+    when v_active then
+      case
+        when 'marketing' = any(coalesce(u.permissions, '{}'::text[])) then coalesce(u.permissions, '{}'::text[])
+        else array_append(coalesce(u.permissions, '{}'::text[]), 'marketing')
+      end
+    when u.id = 'tezzei' or u.protected is true then coalesce(u.permissions, '{}'::text[])
+    else array_remove(coalesce(u.permissions, '{}'::text[]), 'marketing')
+  end
+  where u.id = v_managed_user_id;
+
+  if tg_op = 'DELETE' then
+    return old;
+  end if;
+  return new;
+end;
+$$;
+
+revoke all on function private.marketing_sync_official_permission() from public, anon, authenticated;
+
+create trigger marketing_access_sync_official_permission
+after insert or update or delete on public.marketing_access
+for each row execute function private.marketing_sync_official_permission();
+
 create or replace function public.marketing_start_session(p_access_code text)
 returns table (
   session_token text,
@@ -122,13 +165,7 @@ as $$
     and (s.auth_user_id is null or s.auth_user_id = (select auth.uid()));
 $$;
 
-drop function if exists public.marketing_get_dashboard(text);
-drop function if exists public.marketing_create_request(text, uuid, text, boolean, text, text, text[], text, timestamptz, text, boolean, text, boolean, text);
-drop function if exists public.marketing_update_request(text, uuid, text, jsonb);
-drop function if exists public.marketing_save_access(text, text, text, uuid, boolean);
-drop function if exists public.marketing_resolve_actor(text);
-
-create function public.marketing_get_dashboard(p_session_token text)
+create or replace function public.marketing_session_get_dashboard(p_session_token text)
 returns jsonb
 language plpgsql
 stable
@@ -249,7 +286,7 @@ begin
 end;
 $$;
 
-create function public.marketing_create_request(
+create or replace function public.marketing_session_create_request(
   p_session_token text,
   p_team_id uuid,
   p_broker_name text,
@@ -355,7 +392,7 @@ begin
 end;
 $$;
 
-create function public.marketing_update_request(
+create or replace function public.marketing_session_update_request(
   p_session_token text,
   p_request_id uuid,
   p_action text,
@@ -451,7 +488,7 @@ begin
 end;
 $$;
 
-create function public.marketing_save_access(
+create or replace function public.marketing_session_save_access(
   p_session_token text,
   p_managed_user_id text,
   p_role text,
@@ -489,16 +526,16 @@ $$;
 revoke all on function public.touch_marketing_updated_at() from public, anon, authenticated;
 revoke all on function public.marketing_start_session(text) from public, anon, authenticated;
 revoke all on function public.marketing_end_session(text) from public, anon, authenticated;
-revoke all on function public.marketing_get_dashboard(text) from public, anon, authenticated;
-revoke all on function public.marketing_create_request(text, uuid, text, boolean, text, text, text[], text, timestamptz, text, boolean, text, boolean, text) from public, anon, authenticated;
-revoke all on function public.marketing_update_request(text, uuid, text, jsonb) from public, anon, authenticated;
-revoke all on function public.marketing_save_access(text, text, text, uuid, boolean) from public, anon, authenticated;
+revoke all on function public.marketing_session_get_dashboard(text) from public, anon, authenticated;
+revoke all on function public.marketing_session_create_request(text, uuid, text, boolean, text, text, text[], text, timestamptz, text, boolean, text, boolean, text) from public, anon, authenticated;
+revoke all on function public.marketing_session_update_request(text, uuid, text, jsonb) from public, anon, authenticated;
+revoke all on function public.marketing_session_save_access(text, text, text, uuid, boolean) from public, anon, authenticated;
 
 grant execute on function public.marketing_start_session(text) to anon, authenticated;
 grant execute on function public.marketing_end_session(text) to anon, authenticated;
-grant execute on function public.marketing_get_dashboard(text) to anon, authenticated;
-grant execute on function public.marketing_create_request(text, uuid, text, boolean, text, text, text[], text, timestamptz, text, boolean, text, boolean, text) to anon, authenticated;
-grant execute on function public.marketing_update_request(text, uuid, text, jsonb) to anon, authenticated;
-grant execute on function public.marketing_save_access(text, text, text, uuid, boolean) to anon, authenticated;
+grant execute on function public.marketing_session_get_dashboard(text) to anon, authenticated;
+grant execute on function public.marketing_session_create_request(text, uuid, text, boolean, text, text, text[], text, timestamptz, text, boolean, text, boolean, text) to anon, authenticated;
+grant execute on function public.marketing_session_update_request(text, uuid, text, jsonb) to anon, authenticated;
+grant execute on function public.marketing_session_save_access(text, text, text, uuid, boolean) to anon, authenticated;
 
 notify pgrst, 'reload schema';
