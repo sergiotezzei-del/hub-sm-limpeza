@@ -101,6 +101,13 @@ create trigger marketing_access_sync_official_permission
 after insert or update or delete on public.marketing_access
 for each row execute function private.marketing_sync_official_permission();
 
+update public.managed_users u
+set permissions = array_append(coalesce(u.permissions, '{}'::text[]), 'marketing')
+from public.marketing_access a
+where a.managed_user_id = u.id
+  and a.active is true
+  and not ('marketing' = any(coalesce(u.permissions, '{}'::text[])));
+
 create or replace function public.marketing_start_session(p_access_code text)
 returns table (
   session_token text,
