@@ -14,8 +14,6 @@ import {
 } from "./marketingService";
 import "./marketing.css";
 
-const SESSION_KEY = "hub-sm-active-session";
-const USERS_KEY = "hub-sm-users-permissions";
 const REFRESH_MS = 20000;
 
 const statusOrder: MarketingRequestStatus[] = [
@@ -50,12 +48,6 @@ const contentLabels: Record<string, string> = {
 
 type MarketingTab = "central" | "agenda" | "request" | "mine" | "access";
 
-type StoredManagedUser = {
-  id: string;
-  name: string;
-  accessCode: string;
-};
-
 type RequestFormState = {
   teamId: string;
   brokerName: string;
@@ -70,6 +62,21 @@ type RequestFormState = {
   requesterNotes: string;
   urgencyRequested: boolean;
   urgencyReason: string;
+};
+
+export type MarketingSummary = {
+  newCount: number;
+  urgencyCount: number;
+};
+
+type MarketingFeatureProps = {
+  active: boolean;
+  currentUserId: string;
+  sessionToken: string | null;
+  onBack: () => void;
+  onOpen: () => void;
+  onSessionInvalid: () => void;
+  onSummaryChange: (summary: MarketingSummary) => void;
 };
 
 const emptyRequestForm = (): RequestFormState => ({
@@ -88,13 +95,9 @@ const emptyRequestForm = (): RequestFormState => ({
   urgencyReason: "",
 });
 
-export function MarketingFeature() {
-  const [menuHost, setMenuHost] = useState<HTMLElement | null>(null);
+export function MarketingFeature(props: MarketingFeatureProps) {
   const [alertHost, setAlertHost] = useState<HTMLElement | null>(null);
-  const [hubUser, setHubUser] = useState<StoredManagedUser | null>(() => readCurrentHubUser());
   const [dashboard, setDashboard] = useState<MarketingDashboard | null>(null);
-  const [authorized, setAuthorized] = useState(false);
-  const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -103,32 +106,23 @@ export function MarketingFeature() {
 
   useEffect(() => {
     const sync = () => {
-      const sections = Array.from(document.querySelectorAll<HTMLElement>(".section-block.hub-home-section"));
-      const management = sections.find((section) => normalize(section.querySelector(":scope > h2")?.textContent ?? "") === "gestao");
-      setMenuHost(management?.querySelector<HTMLElement>(".admin-grid.module-grid") ?? null);
       setAlertHost(document.querySelector<HTMLElement>(".hub-alert-panel .hub-alert-cards"));
-      setHubUser((current) => {
-        const next = readCurrentHubUser();
-        if (current?.id === next?.id && current?.accessCode === next?.accessCode) return current;
-        return next;
-      });
     };
     sync();
     const root = document.getElementById("root");
     if (!root) return;
     const observer = new MutationObserver(sync);
     observer.observe(root, { childList: true, subtree: true });
-    const interval = window.setInterval(sync, 1500);
     return () => {
       observer.disconnect();
-      window.clearInterval(interval);
     };
   }, []);
 
   useEffect(() => {
-    if (!hubUser?.accessCode) {
-      setAuthorized(false);
+    const sessionToken = props.sessionToken;
+    if (!sessionToken) {
       setDashboard(null);
+      setError(props.active ? "Sua sessão do Marketing não está disponível. Entre novamente no HUB." : "");
       return;
     }
     let active = true;
@@ -138,16 +132,18 @@ export function MarketingFeature() {
       busy = true;
       if (showLoader) setLoading(true);
       try {
-        const next = await getMarketingDashboard(hubUser.accessCode);
+        const next = await getMarketingDashboard(sessionToken);
         if (!active) return;
+        if (next.context.userId !== props.currentUserId) {
+          props.onSessionInvalid();
+          throw new Error("MARKETING_SESSION_MISMATCH");
+        }
         setDashboard(next);
-        setAuthorized(true);
         setError("");
       } catch (refreshError) {
         if (!active) return;
-        setAuthorized(false);
         setDashboard(null);
-        if (open) setError(getMarketingErrorMessage(refreshError));
+        setError(getMarketingErrorMessage(refreshError));
       } finally {
         busy = false;
         if (active && showLoader) setLoading(false);
@@ -159,14 +155,21 @@ export function MarketingFeature() {
       active = false;
       window.clearInterval(interval);
     };
-  }, [hubUser?.id, hubUser?.accessCode, open]);
+  }, [props.currentUserId, props.onSessionInvalid, props.sessionToken]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!props.active) return;
     const previous = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => { document.body.style.overflow = previous; };
-  }, [open]);
+  }, [props.active]);
+
+  useEffect(() => {
+    if (!props.active || !dashboard) return;
+    setNotice("");
+    setError("");
+    setTab(defaultTab(dashboard.context.role));
+  }, [dashboard?.context.role, props.active]);
 
   const openRequests = useMemo(
     () => dashboard?.requests.filter((request) => !["pronto", "cancelado"].includes(request.status)) ?? [],
@@ -175,21 +178,20 @@ export function MarketingFeature() {
   const newCount = openRequests.filter((request) => request.status === "solicitado").length;
   const urgencyCount = openRequests.filter((request) => request.urgencyRequested && !request.urgencyDecidedAt).length;
 
-  function openMarketing() {
-    if (!dashboard) return;
-    setNotice("");
-    setError("");
-    setTab(defaultTab(dashboard.context.role));
-    setOpen(true);
-  }
+  useEffect(() => {
+    props.onSummaryChange({ newCount, urgencyCount });
+  }, [newCount, props.onSummaryChange, urgencyCount]);
 
   async function refreshDashboard() {
-    if (!hubUser?.accessCode) return;
+    if (!props.sessionToken) return;
     setLoading(true);
     try {
-      const next = await getMarketingDashboard(hubUser.accessCode);
+      const next = await getMarketingDashboard(props.sessionToken);
+      if (next.context.userId !== props.currentUserId) {
+        props.onSessionInvalid();
+        throw new Error("MARKETING_SESSION_MISMATCH");
+      }
       setDashboard(next);
-      setAuthorized(true);
       if (selected) setSelected(next.requests.find((request) => request.id === selected.id) ?? null);
       setError("");
     } catch (refreshError) {
@@ -199,38 +201,25 @@ export function MarketingFeature() {
     }
   }
 
-  if (!authorized || !dashboard || !hubUser) return null;
-
-  const marketingCard = menuHost ? createPortal(
-    <button className={`admin-card module-card has-access action-card marketing-module-card ${newCount || urgencyCount ? "needs-attention" : ""}`} type="button" onClick={openMarketing}>
-      <span className="marketing-module-icon" aria-hidden="true"><AppIcon name="camera" size="lg" /></span>
-      <strong>Marketing</strong>
-      <span>Pedidos de Vendas, agenda, fila de produção e aprovações.</span>
-      {(newCount > 0 || urgencyCount > 0) && <small>{newCount ? `${newCount} novo(s)` : ""}{newCount && urgencyCount ? " · " : ""}{urgencyCount ? `${urgencyCount} urgência(s)` : ""}</small>}
-    </button>,
-    menuHost,
-  ) : null;
-
-  const adminAlerts = dashboard.context.role === "admin" && alertHost
+  const adminAlerts = dashboard?.context.role === "admin" && alertHost
     ? dashboard.requests.filter((request) => request.status === "solicitado" || (request.urgencyRequested && !request.urgencyDecidedAt)).slice(0, 8)
     : [];
 
   return (
     <>
-      {marketingCard}
       {alertHost && adminAlerts.map((request) => createPortal(
         <article className={`hub-alert-card marketing-day-alert ${request.urgencyRequested && !request.urgencyDecidedAt ? "is-urgent" : ""}`} key={`marketing-alert-${request.id}`} data-marketing-request-id={request.id}>
           <div className="hub-alert-card-status"><span>{request.urgencyRequested && !request.urgencyDecidedAt ? "URGÊNCIA" : "MARKETING"}</span><time>{formatTime(request.createdAt)}</time></div>
           <h3>{request.urgencyRequested && !request.urgencyDecidedAt ? "Pedido de urgência" : "Novo pedido de Marketing"}</h3>
           <p>{request.managerName} · {request.brokerName} · {request.propertyReference}</p>
           <small>{contentSummary(request)} · {statusLabels[request.status]}</small>
-          <button className="hub-alert-done-button marketing-alert-open" type="button" onClick={() => { setSelected(request); setTab("central"); setOpen(true); }}>VER PEDIDO</button>
+          <button className="hub-alert-done-button marketing-alert-open" type="button" onClick={() => { setSelected(request); setTab("central"); props.onOpen(); }}>VER PEDIDO</button>
         </article>,
         alertHost,
       ))}
-      {open && createPortal(
+      {props.active && dashboard && props.sessionToken && (
         <MarketingScreen
-          accessCode={hubUser.accessCode}
+          sessionToken={props.sessionToken}
           dashboard={dashboard}
           loading={loading}
           error={error}
@@ -239,19 +228,31 @@ export function MarketingFeature() {
           selected={selected}
           onTab={setTab}
           onSelect={setSelected}
-          onBack={() => { setOpen(false); setSelected(null); }}
+          onBack={() => { setSelected(null); props.onBack(); }}
           onRefresh={refreshDashboard}
           onError={setError}
           onNotice={setNotice}
-        />,
-        document.body,
+        />
       )}
+      {props.active && (!dashboard || !props.sessionToken) && <MarketingUnavailableScreen loading={loading} error={error} onBack={props.onBack} />}
     </>
   );
 }
 
+function MarketingUnavailableScreen({ loading, error, onBack }: { loading: boolean; error: string; onBack: () => void }) {
+  return (
+    <section className="marketing-screen">
+      <header className="marketing-topbar">
+        <button type="button" className="marketing-back" onClick={onBack}><AppIcon name="back" size="sm" /> Voltar ao HUB</button>
+        <div><small>SANTA MARIA · OPERAÇÃO</small><h1>Marketing</h1><p>{loading ? "Carregando acesso..." : "Acesso indisponível"}</p></div>
+      </header>
+      <main className="marketing-content"><div className="marketing-message error">{error || "Não foi possível carregar o Marketing."}</div></main>
+    </section>
+  );
+}
+
 function MarketingScreen(props: {
-  accessCode: string;
+  sessionToken: string;
   dashboard: MarketingDashboard;
   loading: boolean;
   error: string;
@@ -291,7 +292,7 @@ function MarketingScreen(props: {
         {props.tab === "agenda" && <AgendaView dashboard={props.dashboard} onSelect={props.onSelect} />}
         {props.tab === "request" && (
           <RequestView
-            accessCode={props.accessCode}
+            sessionToken={props.sessionToken}
             dashboard={props.dashboard}
             onSaved={async (message) => { props.onNotice(message); await props.onRefresh(); props.onTab(role === "sales_manager" ? "mine" : "central"); }}
             onError={props.onError}
@@ -299,13 +300,13 @@ function MarketingScreen(props: {
         )}
         {props.tab === "mine" && <MyTeamView dashboard={props.dashboard} onSelect={props.onSelect} />}
         {props.tab === "access" && (
-          <AccessView accessCode={props.accessCode} dashboard={props.dashboard} onSaved={props.onRefresh} onError={props.onError} onNotice={props.onNotice} />
+          <AccessView sessionToken={props.sessionToken} dashboard={props.dashboard} onSaved={props.onRefresh} onError={props.onError} onNotice={props.onNotice} />
         )}
       </main>
 
       {props.selected && (
         <RequestDetail
-          accessCode={props.accessCode}
+          sessionToken={props.sessionToken}
           request={props.selected}
           role={role}
           onClose={() => props.onSelect(null)}
@@ -397,7 +398,7 @@ function MyTeamView({ dashboard, onSelect }: { dashboard: MarketingDashboard; on
   );
 }
 
-function RequestView(props: { accessCode: string; dashboard: MarketingDashboard; onSaved: (message: string) => Promise<void>; onError: (message: string) => void }) {
+function RequestView(props: { sessionToken: string; dashboard: MarketingDashboard; onSaved: (message: string) => Promise<void>; onError: (message: string) => void }) {
   const role = props.dashboard.context.role;
   const initialTeam = role === "sales_manager" ? props.dashboard.context.teamId || "" : props.dashboard.teams[0]?.id || "";
   const [form, setForm] = useState<RequestFormState>(() => ({ ...emptyRequestForm(), teamId: initialTeam }));
@@ -418,7 +419,7 @@ function RequestView(props: { accessCode: string; dashboard: MarketingDashboard;
     }
     setBusy(true);
     try {
-      const result = await createMarketingRequest(props.accessCode, form);
+      const result = await createMarketingRequest(props.sessionToken, form);
       const number = result?.[0]?.request_number;
       setForm({ ...emptyRequestForm(), teamId: initialTeam });
       await props.onSaved(number ? `Pedido #${number} enviado ao Marketing.` : "Pedido enviado ao Marketing.");
@@ -457,7 +458,7 @@ function RequestView(props: { accessCode: string; dashboard: MarketingDashboard;
   );
 }
 
-function AccessView(props: { accessCode: string; dashboard: MarketingDashboard; onSaved: () => Promise<void>; onError: (message: string) => void; onNotice: (message: string) => void }) {
+function AccessView(props: { sessionToken: string; dashboard: MarketingDashboard; onSaved: () => Promise<void>; onError: (message: string) => void; onNotice: (message: string) => void }) {
   const [userId, setUserId] = useState("");
   const [role, setRole] = useState<MarketingRole>("sales_manager");
   const [teamId, setTeamId] = useState(props.dashboard.teams[0]?.id || "");
@@ -470,7 +471,7 @@ function AccessView(props: { accessCode: string; dashboard: MarketingDashboard; 
     setBusy(true);
     props.onError("");
     try {
-      await saveMarketingAccess(props.accessCode, { managedUserId: userId, role, teamId: role === "sales_manager" ? teamId : null });
+      await saveMarketingAccess(props.sessionToken, { managedUserId: userId, role, teamId: role === "sales_manager" ? teamId : null });
       props.onNotice("Acesso do Marketing atualizado.");
       await props.onSaved();
       setUserId("");
@@ -505,7 +506,7 @@ function AccessView(props: { accessCode: string; dashboard: MarketingDashboard; 
   );
 }
 
-function RequestDetail(props: { accessCode: string; request: MarketingRequest; role: MarketingRole; onClose: () => void; onChanged: () => Promise<void>; onError: (message: string) => void; onNotice: (message: string) => void }) {
+function RequestDetail(props: { sessionToken: string; request: MarketingRequest; role: MarketingRole; onClose: () => void; onChanged: () => Promise<void>; onError: (message: string) => void; onNotice: (message: string) => void }) {
   const [status, setStatus] = useState<MarketingRequestStatus>(props.request.status);
   const [confirmed, setConfirmed] = useState(toLocalDateTime(props.request.confirmedCaptureAt));
   const [promised, setPromised] = useState(toLocalDateTime(props.request.promisedAt));
@@ -518,7 +519,7 @@ function RequestDetail(props: { accessCode: string; request: MarketingRequest; r
     setBusy(true);
     props.onError("");
     try {
-      await updateMarketingRequest(props.accessCode, props.request.id, action, payload);
+      await updateMarketingRequest(props.sessionToken, props.request.id, action, payload);
       props.onNotice(action === "approve_urgency" ? "Urgência aprovada." : action === "reject_urgency" ? "Pedido mantido na fila normal." : action === "cancel" ? "Pedido cancelado." : "Pedido atualizado pelo Marketing.");
       await props.onChanged();
       if (action === "cancel") props.onClose();
@@ -597,23 +598,6 @@ function roleLabel(role: MarketingRole) {
 
 function contentSummary(request: MarketingRequest) {
   return request.contentTypes.map((item) => contentLabels[item] || item).join(" + ");
-}
-
-function readCurrentHubUser(): StoredManagedUser | null {
-  try {
-    const session = JSON.parse(localStorage.getItem(SESSION_KEY) || "null") as { currentUser?: string | null } | null;
-    const userId = session?.currentUser;
-    if (!userId) return null;
-    const users = JSON.parse(localStorage.getItem(USERS_KEY) || "[]") as StoredManagedUser[];
-    const user = Array.isArray(users) ? users.find((item) => item.id === userId) : undefined;
-    return user?.accessCode ? { id: user.id, name: user.name, accessCode: user.accessCode } : null;
-  } catch {
-    return null;
-  }
-}
-
-function normalize(value: string) {
-  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
 }
 
 function formatTime(value: string) {
