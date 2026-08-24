@@ -135,8 +135,11 @@ export function getPublicMarketingErrorMessage(error: unknown) {
   if (normalized.includes("MARKETING_EXCLUSIVITY_REQUIRED")) return "Informe se o imóvel é exclusividade.";
   if (normalized.includes("MARKETING_CONTENT_INVALID")) return "Selecione pelo menos um tipo de conteúdo válido.";
   if (normalized.includes("MARKETING_CAPTURE_LOCATION_REQUIRED")) return "Informe o local da captação.";
-  if (normalized.includes("MARKETING_CAPTURE_CONFLICT")) return "Este horário acabou de ser ocupado. Escolha outro horário disponível.";
-  if (normalized.includes("MARKETING_CAPTURE_WINDOW_INVALID")) return "Escolha uma data, horário e duração disponíveis.";
+  if (normalized.includes("MARKETING_CAPTURE_GROUP_CAPACITY_EXCEEDED")) return "Esta saída já atingiu o tempo disponível. Envie este imóvel em uma nova saída de captação.";
+  if (normalized.includes("MARKETING_CAPTURE_GROUP_SLOT_MISMATCH")) return "Os imóveis desta saída precisam permanecer na mesma data e no mesmo período.";
+  if (normalized.includes("MARKETING_CAPTURE_GROUP_MISMATCH")) return "Os dados desta saída não correspondem ao primeiro imóvel. Inicie uma nova saída.";
+  if (normalized.includes("MARKETING_CAPTURE_CONFLICT")) return "Este período acabou de ser ocupado. Escolha outro período disponível.";
+  if (normalized.includes("MARKETING_CAPTURE_WINDOW_INVALID")) return "Escolha uma data, um período e uma duração disponíveis.";
   if (normalized.includes("MARKETING_EDIT_ONLY_CAPTURE_DENIED")) return "Pedidos de somente edição não podem incluir captação.";
   if (normalized.includes("MARKETING_URGENCY_REASON_REQUIRED")) return "Explique o motivo da solicitação de urgência.";
   if (normalized.includes("MARKETING_ASSET_LINK_INVALID")) return "Informe um link válido iniciado por http:// ou https://.";
