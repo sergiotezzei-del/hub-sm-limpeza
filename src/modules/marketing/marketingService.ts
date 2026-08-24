@@ -44,6 +44,7 @@ export type MarketingRequest = {
   brokerName: string;
   hasPropertyCode: boolean;
   propertyReference: string;
+  isExclusive: boolean | null;
   requestKind: "capture_edit" | "edit_only";
   contentTypes: string[];
   captureLocation?: string | null;
@@ -179,6 +180,7 @@ export type MarketingRequestDraft = {
   brokerName: string;
   hasPropertyCode: boolean;
   propertyReference: string;
+  isExclusive: boolean;
   requestKind: "capture_edit" | "edit_only";
   contentTypes: string[];
   captureLocation?: string;
@@ -232,6 +234,7 @@ export async function createMarketingRequest(sessionToken: string, draft: Market
     p_broker_name: draft.brokerName,
     p_has_property_code: draft.hasPropertyCode,
     p_property_reference: draft.propertyReference,
+    p_is_exclusive: draft.isExclusive,
     p_request_kind: draft.requestKind,
     p_content_types: draft.contentTypes,
     p_capture_location: draft.captureLocation || null,
@@ -340,6 +343,7 @@ export function getMarketingErrorMessage(error: unknown) {
   if (normalized.includes("MARKETING_TEAM_DENIED")) return "O gerente só pode abrir pedidos para a própria equipe.";
   if (normalized.includes("MARKETING_BROKER_REQUIRED")) return "Informe o nome do corretor.";
   if (normalized.includes("MARKETING_PROPERTY_REQUIRED")) return "Informe o código ou a descrição do imóvel.";
+  if (normalized.includes("MARKETING_EXCLUSIVITY_REQUIRED")) return "Informe se o imóvel é exclusividade.";
   if (normalized.includes("MARKETING_CONTENT_REQUIRED")) return "Selecione pelo menos um tipo de conteúdo.";
   if (normalized.includes("MARKETING_URGENCY_REASON_REQUIRED")) return "Explique o motivo do pedido de urgência.";
   if (normalized.includes("MARKETING_ADMIN_REQUIRED")) return "Somente o administrador do Marketing pode alterar acessos.";

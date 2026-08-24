@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { AppIcon } from "../../components/AppIcon";
 import { CaptureSchedulePicker } from "./CaptureSchedulePicker";
+import { ExclusiveChoice } from "./ExclusiveChoice";
 import {
   formatCaptureRange,
   formatDuration,
@@ -69,6 +70,7 @@ type RequestFormState = {
   brokerName: string;
   hasPropertyCode: boolean;
   propertyReference: string;
+  isExclusive: boolean | null;
   requestKind: "capture_edit" | "edit_only";
   contentTypes: string[];
   captureLocation: string;
@@ -105,6 +107,7 @@ const emptyRequestForm = (): RequestFormState => ({
   brokerName: "",
   hasPropertyCode: true,
   propertyReference: "",
+  isExclusive: null,
   requestKind: "capture_edit",
   contentTypes: ["video"],
   captureLocation: "",
@@ -618,15 +621,17 @@ function ManagerReviewsView(props: {
         <div className="marketing-empty"><h3>Nenhuma pendência.</h3><p>Os pedidos da equipe continuam entrando diretamente na fila do Marketing.</p></div>
       ) : (
         <div className="marketing-review-list">
-          {pending.map((review) => (
-            <article key={review.id} className="pending">
+          {pending.map((review) => {
+            const request = props.dashboard.requests.find((item) => item.id === review.requestId);
+            return <article key={review.id} className="pending">
               <header><strong>PEDIDO #{review.requestNumber}</strong><span>AGUARDANDO CONFERÊNCIA</span></header>
               <h3>Marketing pediu sua conferência</h3>
               <p><strong>Corretor:</strong> {review.brokerName}</p>
+              <p><strong>Exclusividade:</strong> {exclusiveLabel(request?.isExclusive ?? null)}</p>
               <p><strong>Motivo:</strong> {review.details}</p>
               <button type="button" onClick={() => setSelected(review)}>ANALISAR</button>
-            </article>
-          ))}
+            </article>;
+          })}
         </div>
       )}
       {answered.length > 0 && <div className="marketing-review-history"><h3>Respondidas recentemente</h3>{answered.map((review) => <article key={review.id}><strong>Pedido #{review.requestNumber} · {review.brokerName}</strong><span>{managerReviewStatusLabel(review.status)}</span><small>{formatDateTime(review.updatedAt)}</small></article>)}</div>}
@@ -720,6 +725,7 @@ function ManagerReviewModal(props: {
           <label>Corretor<input value={form.brokerName} onChange={(event) => setForm({ ...form, brokerName: event.target.value })} required /></label>
           <fieldset><legend>O imóvel já tem código?</legend><label><input type="radio" checked={form.hasPropertyCode} onChange={() => setForm({ ...form, hasPropertyCode: true })} /> Sim</label><label><input type="radio" checked={!form.hasPropertyCode} onChange={() => setForm({ ...form, hasPropertyCode: false, propertyReference: "" })} /> Ainda não</label></fieldset>
           <label className={!form.hasPropertyCode ? "marketing-field-disabled" : ""}>Código do imóvel<input value={form.propertyReference} onChange={(event) => setForm({ ...form, propertyReference: event.target.value })} required={form.hasPropertyCode} disabled={!form.hasPropertyCode} placeholder={form.hasPropertyCode ? "Ex.: 78119" : "Sem código informado"} /></label>
+          <ExclusiveChoice name="manager-review-exclusive" value={form.isExclusive} onChange={(isExclusive) => setForm({ ...form, isExclusive })} />
           <fieldset><legend>Tipo de solicitação</legend><label><input type="radio" checked={form.requestKind === "capture_edit"} onChange={() => setForm({ ...form, requestKind: "capture_edit" })} /> Captação + edição</label><label><input type="radio" checked={form.requestKind === "edit_only"} onChange={() => { setForm({ ...form, requestKind: "edit_only", captureLocation: "", capturePreference: "marketing", preferredCaptureAt: "", preferredCaptureDurationMinutes: null }); setPickerOpen(false); }} /> Somente edição</label></fieldset>
           <fieldset className="span-2"><legend>Tipo de conteúdo</legend>{MARKETING_CONTENT_OPTIONS.map((option) => <label key={option.value}><input type="checkbox" checked={form.contentTypes.includes(option.value)} onChange={() => toggleContent(option.value)} /> {option.label}</label>)}</fieldset>
           {form.requestKind === "capture_edit" && <>
@@ -747,6 +753,7 @@ function requestToForm(request: MarketingRequest): RequestFormState {
     brokerName: request.brokerName,
     hasPropertyCode: request.hasPropertyCode,
     propertyReference: request.hasPropertyCode ? request.propertyReference : "",
+    isExclusive: request.isExclusive,
     requestKind: request.requestKind,
     contentTypes: [...request.contentTypes],
     captureLocation: request.captureLocation || "",
@@ -769,6 +776,7 @@ function buildManagerReviewCorrections(request: MarketingRequest, form: RequestF
   setIfChanged("brokerName", request.brokerName, form.brokerName.trim());
   setIfChanged("hasPropertyCode", request.hasPropertyCode, form.hasPropertyCode);
   setIfChanged("propertyReference", request.hasPropertyCode ? request.propertyReference : "", form.hasPropertyCode ? form.propertyReference.trim() : "");
+  setIfChanged("isExclusive", request.isExclusive, form.isExclusive);
   setIfChanged("requestKind", request.requestKind, form.requestKind);
   setIfChanged("contentTypes", request.contentTypes, form.contentTypes);
   setIfChanged("captureLocation", request.captureLocation || "", form.requestKind === "capture_edit" ? form.captureLocation.trim() : "");
@@ -794,8 +802,13 @@ function RequestView(props: { sessionToken: string; dashboard: MarketingDashboar
     event.preventDefault();
     if (busy) return;
     props.onError("");
+    const isExclusive = form.isExclusive;
     if (!form.teamId || !form.brokerName.trim() || (form.hasPropertyCode && !form.propertyReference.trim()) || form.contentTypes.length === 0) {
       props.onError("Preencha equipe, corretor, imóvel e tipo de conteúdo.");
+      return;
+    }
+    if (isExclusive === null) {
+      props.onError("Informe se o imóvel é exclusividade.");
       return;
     }
     if (form.requestKind === "capture_edit" && form.capturePreference === "choose" && (!form.preferredCaptureAt || !form.preferredCaptureDurationMinutes)) {
@@ -808,7 +821,7 @@ function RequestView(props: { sessionToken: string; dashboard: MarketingDashboar
     }
     setBusy(true);
     try {
-      const result = await createMarketingRequest(props.sessionToken, form);
+      const result = await createMarketingRequest(props.sessionToken, { ...form, isExclusive });
       const number = result?.[0]?.request_number;
       setForm({ ...emptyRequestForm(), teamId: initialTeam });
       setCapturePickerOpen(false);
@@ -834,6 +847,7 @@ function RequestView(props: { sessionToken: string; dashboard: MarketingDashboar
         <datalist id="marketing-brokers">{teamBrokers.map((broker) => <option key={broker.id} value={broker.name} />)}</datalist>
         <fieldset><legend>O imóvel já tem código?</legend><label><input type="radio" checked={form.hasPropertyCode} onChange={() => setForm({ ...form, hasPropertyCode: true })} /> Sim</label><label><input type="radio" checked={!form.hasPropertyCode} onChange={() => setForm({ ...form, hasPropertyCode: false, propertyReference: "" })} /> Ainda não</label></fieldset>
         <label className={`span-2 ${!form.hasPropertyCode ? "marketing-field-disabled" : ""}`}>Código do imóvel<input value={form.propertyReference} onChange={(event) => setForm({ ...form, propertyReference: event.target.value })} placeholder={form.hasPropertyCode ? "Ex.: 78119" : "Sem código informado"} required={form.hasPropertyCode} disabled={!form.hasPropertyCode} /></label>
+        <ExclusiveChoice name="internal-marketing-exclusive" value={form.isExclusive} onChange={(isExclusive) => setForm({ ...form, isExclusive })} className="span-2" />
         <fieldset className="span-2"><legend>O que precisa?</legend><label><input type="radio" checked={form.requestKind === "capture_edit"} onChange={() => setForm({ ...form, requestKind: "capture_edit" })} /> Captação + edição</label><label><input type="radio" checked={form.requestKind === "edit_only"} onChange={() => { setForm({ ...form, requestKind: "edit_only", captureLocation: "", capturePreference: "marketing", preferredCaptureAt: "", preferredCaptureDurationMinutes: null }); setCapturePickerOpen(false); }} /> Somente edição</label></fieldset>
         <fieldset className="span-2"><legend>Tipo de conteúdo</legend>{Object.entries(contentLabels).map(([value, label]) => <label key={value}><input type="checkbox" checked={form.contentTypes.includes(value)} onChange={() => toggleContent(value)} /> {label}</label>)}</fieldset>
         {form.requestKind === "capture_edit" && <>
@@ -1024,6 +1038,7 @@ function RequestDetail(props: { sessionToken: string; dashboard: MarketingDashbo
           <Detail label="Entrada" value={formatDateTime(props.request.createdAt)} />
           <Detail label="Status" value={statusLabels[props.request.status]} />
           <Detail label="Origem" value={props.request.requestSource === "public" ? "Link público" : "HUB"} />
+          <Detail label="Exclusividade" value={exclusiveLabel(props.request.isExclusive)} />
           {props.request.requestSource === "public" && props.request.publicRequesterName && <Detail label="Solicitado por" value={props.request.publicRequesterName} />}
           {props.request.requestKind === "capture_edit" && props.request.preferredCaptureAt && <Detail label="Data solicitada" value={props.request.preferredCaptureDurationMinutes ? formatCaptureRange(props.request.preferredCaptureAt, props.request.preferredCaptureDurationMinutes, props.dashboard.scheduleConfig.timezone) : formatDateTime(props.request.preferredCaptureAt)} />}
           {props.request.requestKind === "capture_edit" && !props.request.preferredCaptureAt && <Detail label="Data solicitada" value="Aguardando definição do Marketing" />}
@@ -1101,9 +1116,10 @@ function RequestCard({ request, onClick, showCaptureStatus = false, timezone }: 
   return (
     <button type="button" className={`marketing-request-card ${request.urgencyApproved ? "priority" : ""}`} onClick={onClick}>
       <div><small>#{request.requestNumber} · {request.managerName}</small>{request.urgencyApproved && <em>PRIORIDADE</em>}</div>
-      <div className="marketing-card-tags">{request.requestSource === "public" && <em className="public">LINK PÚBLICO</em>}{request.managerReviewStatus === "pending" && <em className="review-pending">AGUARDANDO GERENTE</em>}{request.managerReviewStatus && request.managerReviewStatus !== "pending" && <em className="review-answered">AUDITORIA RESPONDIDA</em>}</div>
+      <div className="marketing-card-tags">{request.isExclusive === true && <em className="exclusive">EXCLUSIVO</em>}{request.requestSource === "public" && <em className="public">LINK PÚBLICO</em>}{request.managerReviewStatus === "pending" && <em className="review-pending">AGUARDANDO GERENTE</em>}{request.managerReviewStatus && request.managerReviewStatus !== "pending" && <em className="review-answered">AUDITORIA RESPONDIDA</em>}</div>
       <strong>{request.brokerName}</strong>
       <span>{propertyLabel(request)}</span>
+      <small className="marketing-card-exclusive">Exclusividade: {exclusiveLabel(request.isExclusive)}</small>
       <p>{contentSummary(request)}</p>
       {showCaptureStatus && timezone && request.requestKind === "capture_edit" && (
         <div className={`marketing-card-capture ${request.confirmedCaptureAt && request.confirmedCaptureDurationMinutes ? "confirmed" : "pending"}`}>
@@ -1140,6 +1156,11 @@ function contentSummary(request: MarketingRequest) {
 
 function propertyLabel(request: MarketingRequest) {
   return request.hasPropertyCode ? request.propertyReference : "Sem código informado";
+}
+
+function exclusiveLabel(value: boolean | null) {
+  if (value === null) return "Não informado";
+  return value ? "SIM" : "NÃO";
 }
 
 function reviewReasonLabel(reason: MarketingManagerReviewReason) {

@@ -29,6 +29,7 @@ export type PublicMarketingRequestDraft = {
   brokerName: string;
   hasPropertyCode: boolean;
   propertyReference: string;
+  isExclusive: boolean;
   requestKind: "capture_edit" | "edit_only";
   contentTypes: string[];
   captureLocation?: string;
@@ -79,6 +80,7 @@ export async function submitPublicMarketingRequest(draft: PublicMarketingRequest
     p_broker_name: draft.brokerName,
     p_has_property_code: draft.hasPropertyCode,
     p_property_reference: draft.hasPropertyCode ? draft.propertyReference : null,
+    p_is_exclusive: draft.isExclusive,
     p_request_kind: draft.requestKind,
     p_content_types: draft.contentTypes,
     p_capture_location: draft.requestKind === "capture_edit" ? draft.captureLocation || null : null,
@@ -107,6 +109,7 @@ export function getPublicMarketingErrorMessage(error: unknown) {
   if (normalized.includes("MARKETING_TEAM_NOT_FOUND")) return "Selecione uma equipe ativa.";
   if (normalized.includes("MARKETING_BROKER_REQUIRED")) return "Informe o nome do corretor.";
   if (normalized.includes("MARKETING_PROPERTY_REQUIRED")) return "Informe o código do imóvel.";
+  if (normalized.includes("MARKETING_EXCLUSIVITY_REQUIRED")) return "Informe se o imóvel é exclusividade.";
   if (normalized.includes("MARKETING_CONTENT_INVALID")) return "Selecione pelo menos um tipo de conteúdo válido.";
   if (normalized.includes("MARKETING_CAPTURE_LOCATION_REQUIRED")) return "Informe o local da captação.";
   if (normalized.includes("MARKETING_CAPTURE_CONFLICT")) return "Este horário acabou de ser ocupado. Escolha outro horário disponível.";

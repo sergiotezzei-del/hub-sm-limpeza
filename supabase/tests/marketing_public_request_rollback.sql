@@ -53,6 +53,7 @@ begin
     p_property_reference => null,
     p_request_kind => 'capture_edit',
     p_content_types => array['video', 'fotos']::text[],
+    p_is_exclusive => true,
     p_capture_location => 'Empreendimento de teste',
     p_preferred_capture_at => '2026-09-02 09:00:00-03'::timestamptz,
     p_preferred_capture_duration_minutes => 60,
@@ -102,6 +103,7 @@ begin
     p_property_reference => null,
     p_request_kind => 'capture_edit',
     p_content_types => array['video', 'fotos']::text[],
+    p_is_exclusive => true,
     p_capture_location => 'Empreendimento de teste',
     p_preferred_capture_at => '2026-09-02 09:00:00-03'::timestamptz,
     p_preferred_capture_duration_minutes => 60
@@ -121,7 +123,7 @@ begin
     or not has_function_privilege('anon', 'public.marketing_public_get_availability()', 'execute')
     or not has_function_privilege(
       'anon',
-      'public.marketing_public_create_request(uuid,text,uuid,text,boolean,text,text,text[],text,timestamptz,integer,text,boolean,text,boolean,text,text)',
+      'public.marketing_public_create_request(uuid,text,uuid,text,boolean,text,text,text[],boolean,text,timestamptz,integer,text,boolean,text,boolean,text,text)',
       'execute'
     ) then raise exception 'TEST_PUBLIC_RPC_GRANTS_FAILED'; end if;
 
@@ -133,7 +135,8 @@ begin
     p_has_property_code => true,
     p_property_reference => 'PUB-103',
     p_request_kind => 'edit_only',
-    p_content_types => array['video']::text[]
+    p_content_types => array['video']::text[],
+    p_is_exclusive => false
   );
   select id into v_later_id from public.marketing_requests where broker_name = 'Corretor Posterior' order by created_at desc limit 1;
   begin
@@ -154,6 +157,7 @@ begin
     p_property_reference => 'PUB-104',
     p_request_kind => 'edit_only',
     p_content_types => array['video']::text[],
+    p_is_exclusive => false,
     p_urgency_requested => true,
     p_urgency_reason => 'Campanha de teste ainda sem decisão do Tezzei.'
   );
@@ -174,6 +178,7 @@ begin
     p_property_reference => 'PUB-105',
     p_request_kind => 'capture_edit',
     p_content_types => array['video']::text[],
+    p_is_exclusive => false,
     p_capture_location => 'Local base',
     p_preferred_capture_at => null,
     p_preferred_capture_duration_minutes => null
@@ -199,6 +204,7 @@ begin
       p_property_reference => 'PUB-106',
       p_request_kind => 'capture_edit',
       p_content_types => array['video']::text[],
+      p_is_exclusive => false,
       p_capture_location => 'Local conflito',
       p_preferred_capture_at => '2026-09-03 09:30:00-03'::timestamptz,
       p_preferred_capture_duration_minutes => 60
@@ -218,6 +224,7 @@ begin
       p_property_reference => 'PUB-107',
       p_request_kind => 'edit_only',
       p_content_types => array['video']::text[],
+      p_is_exclusive => false,
       p_capture_location => 'Não deveria existir',
       p_preferred_capture_at => '2026-09-04 09:00:00-03'::timestamptz,
       p_preferred_capture_duration_minutes => 60

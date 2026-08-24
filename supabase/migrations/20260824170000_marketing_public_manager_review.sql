@@ -100,6 +100,7 @@ begin
     item || jsonb_build_object(
       'requestSource', q.request_source,
       'publicRequesterName', q.public_requester_name,
+      'isExclusive', q.is_exclusive,
       'managerReviewStatus', latest_review.status,
       'managerReviewUpdatedAt', latest_review.updated_at
     )
@@ -313,6 +314,7 @@ declare
   v_broker_id uuid;
   v_has_property_code boolean;
   v_property_reference text;
+  v_is_exclusive boolean;
   v_request_kind text;
   v_content_types text[];
   v_capture_location text;
@@ -369,6 +371,7 @@ begin
         'brokerName',
         'hasPropertyCode',
         'propertyReference',
+        'isExclusive',
         'requestKind',
         'contentTypes',
         'captureLocation',
@@ -388,6 +391,7 @@ begin
     v_broker_id := v_request.broker_id;
     v_has_property_code := v_request.has_property_code;
     v_property_reference := v_request.property_reference;
+    v_is_exclusive := v_request.is_exclusive;
     v_request_kind := v_request.request_kind;
     v_content_types := v_request.content_types;
     v_capture_location := v_request.capture_location;
@@ -439,6 +443,13 @@ begin
       end if;
     else
       v_property_reference := 'SEM CÓDIGO';
+    end if;
+
+    if v_corrections ? 'isExclusive' then
+      if jsonb_typeof(v_corrections->'isExclusive') <> 'boolean' then
+        raise exception 'MARKETING_EXCLUSIVITY_REQUIRED';
+      end if;
+      v_is_exclusive := (v_corrections->>'isExclusive')::boolean;
     end if;
 
     if v_corrections ? 'requestKind' then
@@ -553,6 +564,17 @@ begin
     if v_request.property_reference is distinct from v_property_reference then
       v_changes := v_changes || jsonb_build_object('propertyReference', jsonb_build_object('from', case when v_request.has_property_code then v_request.property_reference else 'Sem código informado' end, 'to', case when v_has_property_code then v_property_reference else 'Sem código informado' end));
     end if;
+    if v_request.is_exclusive is distinct from v_is_exclusive then
+      v_changes := v_changes || jsonb_build_object(
+        'isExclusive',
+        jsonb_build_object(
+          'from', v_request.is_exclusive,
+          'to', v_is_exclusive,
+          'fromLabel', case when v_request.is_exclusive is null then 'Não informado' when v_request.is_exclusive then 'Sim' else 'Não' end,
+          'toLabel', case when v_is_exclusive then 'Sim' else 'Não' end
+        )
+      );
+    end if;
     if v_request.request_kind is distinct from v_request_kind then
       v_changes := v_changes || jsonb_build_object('requestKind', jsonb_build_object('from', v_request.request_kind, 'to', v_request_kind));
     end if;
@@ -592,6 +614,7 @@ begin
         broker_name = v_broker_name,
         has_property_code = v_has_property_code,
         property_reference = v_property_reference,
+        is_exclusive = v_is_exclusive,
         request_kind = v_request_kind,
         content_types = v_content_types,
         capture_location = v_capture_location,
@@ -884,6 +907,7 @@ create or replace function public.marketing_public_create_request(
   p_property_reference text,
   p_request_kind text,
   p_content_types text[],
+  p_is_exclusive boolean,
   p_capture_location text default null,
   p_preferred_capture_at timestamptz default null,
   p_preferred_capture_duration_minutes integer default null,
@@ -939,6 +963,9 @@ begin
     )
     or (select count(*) from unnest(p_content_types)) <> (select count(distinct value) from unnest(p_content_types) value) then
     raise exception 'MARKETING_CONTENT_INVALID';
+  end if;
+  if p_is_exclusive is null then
+    raise exception 'MARKETING_EXCLUSIVITY_REQUIRED';
   end if;
 
   select t.manager_name into v_manager_name
@@ -1013,6 +1040,7 @@ begin
     broker_name,
     has_property_code,
     property_reference,
+    is_exclusive,
     request_kind,
     content_types,
     capture_location,
@@ -1036,6 +1064,7 @@ begin
     v_broker_name,
     v_has_property_code,
     v_property_reference,
+    p_is_exclusive,
     p_request_kind,
     p_content_types,
     case when p_request_kind = 'capture_edit' then v_capture_location else null end,
@@ -1087,6 +1116,7 @@ begin
         'requesterName', v_requester_name,
         'teamId', p_team_id,
         'origin', 'public',
+        'isExclusive', p_is_exclusive,
         'urgencyRequested', coalesce(p_urgency_requested, false),
         'preferredCaptureAt', case when p_request_kind = 'capture_edit' then p_preferred_capture_at else null end,
         'preferredCaptureDurationMinutes', case when p_request_kind = 'capture_edit' then p_preferred_capture_duration_minutes else null end
@@ -1137,14 +1167,14 @@ $$;
 
 revoke all on function public.marketing_public_get_options() from public, anon, authenticated;
 revoke all on function public.marketing_public_get_availability() from public, anon, authenticated;
-revoke all on function public.marketing_public_create_request(uuid, text, uuid, text, boolean, text, text, text[], text, timestamptz, integer, text, boolean, text, boolean, text, text) from public, anon, authenticated;
+revoke all on function public.marketing_public_create_request(uuid, text, uuid, text, boolean, text, text, text[], boolean, text, timestamptz, integer, text, boolean, text, boolean, text, text) from public, anon, authenticated;
 revoke all on function public.marketing_v2_get_dashboard_review(text) from public, anon, authenticated;
 revoke all on function public.marketing_v2_open_manager_review(text, uuid, text, text) from public, anon, authenticated;
 revoke all on function public.marketing_v2_resolve_manager_review(text, uuid, text, text, jsonb) from public, anon, authenticated;
 
 grant execute on function public.marketing_public_get_options() to anon, authenticated;
 grant execute on function public.marketing_public_get_availability() to anon, authenticated;
-grant execute on function public.marketing_public_create_request(uuid, text, uuid, text, boolean, text, text, text[], text, timestamptz, integer, text, boolean, text, boolean, text, text) to anon, authenticated;
+grant execute on function public.marketing_public_create_request(uuid, text, uuid, text, boolean, text, text, text[], boolean, text, timestamptz, integer, text, boolean, text, boolean, text, text) to anon, authenticated;
 grant execute on function public.marketing_v2_get_dashboard_review(text) to anon, authenticated;
 grant execute on function public.marketing_v2_open_manager_review(text, uuid, text, text) to anon, authenticated;
 grant execute on function public.marketing_v2_resolve_manager_review(text, uuid, text, text, jsonb) to anon, authenticated;

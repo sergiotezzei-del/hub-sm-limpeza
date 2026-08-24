@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { SantaMariaBrand } from "../../components/SantaMariaBrand";
 import { CaptureSchedulePicker } from "./CaptureSchedulePicker";
+import { ExclusiveChoice } from "./ExclusiveChoice";
 import {
   formatCaptureRange,
   MARKETING_CONTENT_OPTIONS,
@@ -23,6 +24,7 @@ type PublicFormState = {
   brokerName: string;
   hasPropertyCode: boolean;
   propertyReference: string;
+  isExclusive: boolean | null;
   requestKind: "capture_edit" | "edit_only";
   contentTypes: string[];
   captureLocation: string;
@@ -42,6 +44,7 @@ const emptyForm = (): PublicFormState => ({
   brokerName: "",
   hasPropertyCode: true,
   propertyReference: "",
+  isExclusive: null,
   requestKind: "capture_edit",
   contentTypes: ["video"],
   captureLocation: "",
@@ -106,6 +109,10 @@ export function PublicMarketingRequestPage() {
       setMessage("Informe o código do imóvel ou marque Ainda não.");
       return;
     }
+    if (form.isExclusive === null) {
+      setMessage("Informe se o imóvel é exclusividade.");
+      return;
+    }
     if (form.contentTypes.length === 0) {
       setMessage("Selecione pelo menos um tipo de conteúdo.");
       return;
@@ -132,6 +139,7 @@ export function PublicMarketingRequestPage() {
         brokerName: form.brokerName,
         hasPropertyCode: form.hasPropertyCode,
         propertyReference: form.propertyReference,
+        isExclusive: form.isExclusive,
         requestKind: form.requestKind,
         contentTypes: form.contentTypes,
         captureLocation: form.requestKind === "capture_edit" ? form.captureLocation : undefined,
@@ -187,6 +195,7 @@ export function PublicMarketingRequestPage() {
 
                 <fieldset><legend>O imóvel já tem código?</legend><label><input type="radio" checked={form.hasPropertyCode} onChange={() => setForm({ ...form, hasPropertyCode: true })} /> Sim</label><label><input type="radio" checked={!form.hasPropertyCode} onChange={() => setForm({ ...form, hasPropertyCode: false, propertyReference: "" })} /> Ainda não</label></fieldset>
                 <label className={!form.hasPropertyCode ? "marketing-public-field-disabled" : ""}>Código do imóvel<input value={form.propertyReference} onChange={(event) => setForm({ ...form, propertyReference: event.target.value })} maxLength={80} placeholder={form.hasPropertyCode ? "Ex.: 78119" : "Sem código informado"} required={form.hasPropertyCode} disabled={!form.hasPropertyCode} /></label>
+                <ExclusiveChoice name="public-marketing-exclusive" value={form.isExclusive} onChange={(isExclusive) => setForm({ ...form, isExclusive })} />
 
                 <fieldset><legend>O que precisa?</legend><label><input type="radio" checked={form.requestKind === "capture_edit"} onChange={() => setForm({ ...form, requestKind: "capture_edit" })} /> Captação + edição</label><label><input type="radio" checked={form.requestKind === "edit_only"} onChange={() => { setForm({ ...form, requestKind: "edit_only", captureLocation: "", capturePreference: "marketing", preferredCapture: null }); setPickerOpen(false); }} /> Somente edição</label></fieldset>
                 <fieldset className="marketing-public-content"><legend>Tipo de conteúdo *</legend>{MARKETING_CONTENT_OPTIONS.map((option) => <label key={option.value}><input type="checkbox" checked={form.contentTypes.includes(option.value)} onChange={() => toggleContent(option.value)} /> {option.label}</label>)}</fieldset>

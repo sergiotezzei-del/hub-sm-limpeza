@@ -886,6 +886,18 @@
   color: #31596d;
 }
 
+.marketing-card-tags .exclusive {
+  background: #e3f0ea;
+  color: #245f45;
+}
+
+.marketing-card-exclusive {
+  color: #50625a;
+  display: block;
+  font-weight: 800;
+  margin-top: 5px;
+}
+
 .marketing-card-tags .review-pending {
   background: #fff0ce;
   color: #80570b;

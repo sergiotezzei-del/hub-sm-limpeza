@@ -25,7 +25,8 @@ begin
     p_has_property_code => true,
     p_property_reference => 'REV-100',
     p_request_kind => 'edit_only',
-    p_content_types => array['video']::text[]
+    p_content_types => array['video']::text[],
+    p_is_exclusive => true
   );
   select id into v_request_confirm from public.marketing_requests where broker_name = 'Corretor Confirmação' order by created_at desc limit 1;
 
@@ -72,7 +73,8 @@ begin
     p_has_property_code => true,
     p_property_reference => 'REV-101',
     p_request_kind => 'edit_only',
-    p_content_types => array['video']::text[]
+    p_content_types => array['video']::text[],
+    p_is_exclusive => false
   );
   select id into v_request_modify from public.marketing_requests where broker_name = 'Corretor Antes' order by created_at desc limit 1;
   v_review_id := public.marketing_v2_open_manager_review(
@@ -108,7 +110,8 @@ begin
     p_has_property_code => true,
     p_property_reference => 'REV-102',
     p_request_kind => 'edit_only',
-    p_content_types => array['fotos']::text[]
+    p_content_types => array['fotos']::text[],
+    p_is_exclusive => false
   );
   select id into v_request_forbidden from public.marketing_requests where broker_name = 'Corretor Interno' order by created_at desc limit 1;
   v_review_id := public.marketing_v2_open_manager_review(
@@ -138,7 +141,8 @@ begin
     p_has_property_code => true,
     p_property_reference => 'REV-103',
     p_request_kind => 'edit_only',
-    p_content_types => array['carrossel']::text[]
+    p_content_types => array['carrossel']::text[],
+    p_is_exclusive => true
   );
   select id into v_request_decline from public.marketing_requests where broker_name = 'Corretor Declínio' order by created_at desc limit 1;
   v_review_id := public.marketing_v2_open_manager_review(

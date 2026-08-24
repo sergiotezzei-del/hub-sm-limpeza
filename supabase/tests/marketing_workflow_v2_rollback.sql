@@ -34,7 +34,8 @@ begin
     p_has_property_code => true,
     p_property_reference => 'V2-100',
     p_request_kind => 'edit_only',
-    p_content_types => array['video']::text[]
+    p_content_types => array['video']::text[],
+    p_is_exclusive => true
   );
   if not exists (
     select 1 from public.marketing_requests
@@ -49,7 +50,8 @@ begin
     p_has_property_code => false,
     p_property_reference => null,
     p_request_kind => 'edit_only',
-    p_content_types => array['fotos']::text[]
+    p_content_types => array['fotos']::text[],
+    p_is_exclusive => false
   );
   if not exists (
     select 1 from public.marketing_requests
@@ -65,6 +67,7 @@ begin
     p_property_reference => 'V2-200',
     p_request_kind => 'capture_edit',
     p_content_types => array['video']::text[],
+    p_is_exclusive => true,
     p_capture_location => 'Local de teste',
     p_preferred_capture_at => '2026-08-26 10:00:00-03'::timestamptz,
     p_preferred_capture_duration_minutes => 60
@@ -89,6 +92,7 @@ begin
     p_property_reference => 'V2-201',
     p_request_kind => 'capture_edit',
     p_content_types => array['video']::text[],
+    p_is_exclusive => false,
     p_preferred_capture_at => null,
     p_preferred_capture_duration_minutes => null
   );
@@ -125,7 +129,8 @@ begin
     p_has_property_code => true,
     p_property_reference => 'V2-202',
     p_request_kind => 'capture_edit',
-    p_content_types => array['video']::text[]
+    p_content_types => array['video']::text[],
+    p_is_exclusive => false
   );
   begin
     perform public.marketing_v2_update_request(
@@ -160,7 +165,8 @@ begin
     p_has_property_code => true,
     p_property_reference => 'V2-203',
     p_request_kind => 'edit_only',
-    p_content_types => array['carrossel']::text[]
+    p_content_types => array['carrossel']::text[],
+    p_is_exclusive => false
   );
   begin
     perform public.marketing_v2_update_request(

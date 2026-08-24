@@ -1,7 +1,11 @@
 alter table public.marketing_requests
   add column if not exists preferred_capture_duration_minutes integer,
   add column if not exists confirmed_capture_duration_minutes integer,
-  add column if not exists confirmed_capture_end_at timestamptz;
+  add column if not exists confirmed_capture_end_at timestamptz,
+  add column if not exists is_exclusive boolean;
+
+comment on column public.marketing_requests.is_exclusive is
+  'Informação declarada sobre exclusividade do imóvel. NULL identifica pedidos legados sem resposta.';
 
 create or replace function private.marketing_sync_capture_end_at()
 returns trigger
@@ -390,6 +394,7 @@ begin
         'brokerName', q.broker_name,
         'hasPropertyCode', q.has_property_code,
         'propertyReference', case when q.has_property_code then q.property_reference else 'Sem código informado' end,
+        'isExclusive', q.is_exclusive,
         'requestKind', q.request_kind,
         'contentTypes', q.content_types,
         'captureLocation', case when q.request_kind = 'capture_edit' then q.capture_location else null end,
@@ -494,6 +499,7 @@ create or replace function public.marketing_v2_create_request(
   p_property_reference text,
   p_request_kind text,
   p_content_types text[],
+  p_is_exclusive boolean,
   p_capture_location text default null,
   p_preferred_capture_at timestamptz default null,
   p_preferred_capture_duration_minutes integer default null,
@@ -539,6 +545,9 @@ begin
   end if;
   if coalesce(cardinality(p_content_types), 0) = 0 then
     raise exception 'MARKETING_CONTENT_REQUIRED';
+  end if;
+  if p_is_exclusive is null then
+    raise exception 'MARKETING_EXCLUSIVITY_REQUIRED';
   end if;
   if p_urgency_requested and nullif(btrim(coalesce(p_urgency_reason, '')), '') is null then
     raise exception 'MARKETING_URGENCY_REASON_REQUIRED';
@@ -594,6 +603,7 @@ begin
     broker_name,
     has_property_code,
     property_reference,
+    is_exclusive,
     request_kind,
     content_types,
     capture_location,
@@ -613,6 +623,7 @@ begin
     btrim(p_broker_name),
     v_has_property_code,
     v_property_reference,
+    p_is_exclusive,
     p_request_kind,
     p_content_types,
     case when p_request_kind = 'capture_edit' then nullif(btrim(coalesce(p_capture_location, '')), '') else null end,
@@ -646,7 +657,8 @@ begin
       'urgencyRequested', coalesce(p_urgency_requested, false),
       'preferredCaptureAt', v_preferred_capture_at,
       'preferredCaptureDurationMinutes', v_preferred_duration,
-      'hasPropertyCode', v_has_property_code
+      'hasPropertyCode', v_has_property_code,
+      'isExclusive', p_is_exclusive
     )
   );
 
@@ -1192,14 +1204,14 @@ end;
 $$;
 
 revoke all on function public.marketing_v2_get_dashboard(text) from public, anon, authenticated;
-revoke all on function public.marketing_v2_create_request(text, uuid, text, boolean, text, text, text[], text, timestamptz, integer, text, boolean, text, boolean, text) from public, anon, authenticated;
+revoke all on function public.marketing_v2_create_request(text, uuid, text, boolean, text, text, text[], boolean, text, timestamptz, integer, text, boolean, text, boolean, text) from public, anon, authenticated;
 revoke all on function public.marketing_v2_update_request(text, uuid, text, jsonb) from public, anon, authenticated;
 revoke all on function public.marketing_v2_request_queue_override(text, uuid, text) from public, anon, authenticated;
 revoke all on function public.marketing_v2_decide_queue_override(text, uuid, text) from public, anon, authenticated;
 revoke all on function public.marketing_v2_mark_notifications_read(text, uuid[]) from public, anon, authenticated;
 
 grant execute on function public.marketing_v2_get_dashboard(text) to anon, authenticated;
-grant execute on function public.marketing_v2_create_request(text, uuid, text, boolean, text, text, text[], text, timestamptz, integer, text, boolean, text, boolean, text) to anon, authenticated;
+grant execute on function public.marketing_v2_create_request(text, uuid, text, boolean, text, text, text[], boolean, text, timestamptz, integer, text, boolean, text, boolean, text) to anon, authenticated;
 grant execute on function public.marketing_v2_update_request(text, uuid, text, jsonb) to anon, authenticated;
 grant execute on function public.marketing_v2_request_queue_override(text, uuid, text) to anon, authenticated;
 grant execute on function public.marketing_v2_decide_queue_override(text, uuid, text) to anon, authenticated;
