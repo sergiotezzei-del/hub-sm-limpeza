@@ -4,6 +4,8 @@ import { CaptureSchedulePicker } from "./CaptureSchedulePicker";
 import { ExclusiveChoice } from "./ExclusiveChoice";
 import {
   formatCaptureRange,
+  formatDuration,
+  formatMarketingDateTime,
   MARKETING_CONTENT_OPTIONS,
   type MarketingCaptureSelection,
 } from "./marketingConfig";
@@ -143,7 +145,6 @@ export function PublicMarketingRequestPage() {
       const nextCaptureGroupId = form.requestKind === "capture_edit" && form.hasMultipleProperties
         ? captureGroupId || createSubmissionId()
         : null;
-      if (nextCaptureGroupId && !captureGroupId) setCaptureGroupId(nextCaptureGroupId);
       const nextReceipt = await submitPublicMarketingRequest({
         submissionId,
         requesterName: form.requesterName,
@@ -165,6 +166,7 @@ export function PublicMarketingRequestPage() {
         website: form.website,
         captureGroupId: nextCaptureGroupId,
       });
+      if (nextReceipt.captureGroupId && !captureGroupId) setCaptureGroupId(nextReceipt.captureGroupId);
       setReceipt(nextReceipt);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (error) {
@@ -255,7 +257,23 @@ export function PublicMarketingRequestPage() {
                   <fieldset className="marketing-public-capture-choice"><legend>Data da captação</legend>
                     {continuingCaptureGroup ? (
                       form.capturePreference === "choose" && form.preferredCapture
-                        ? <div><strong>{formatCaptureRange(form.preferredCapture.startAt, form.preferredCapture.durationMinutes, availability.scheduleConfig.timezone)}</strong><small> Data/período mantidos do primeiro imóvel.</small></div>
+                        ? <div>
+                            <strong>{formatMarketingDateTime(form.preferredCapture.startAt, availability.scheduleConfig.timezone)}</strong>
+                            <small> Data/período mantidos do primeiro imóvel.</small>
+                            <p>Duração estimada deste imóvel:</p>
+                            <div className="marketing-duration-options">
+                              {availability.scheduleConfig.durationOptionsMinutes.filter((duration) => duration <= 120).map((duration) => (
+                                <button
+                                  type="button"
+                                  key={duration}
+                                  className={form.preferredCapture?.durationMinutes === duration ? "selected" : ""}
+                                  onClick={() => setForm({ ...form, preferredCapture: { startAt: form.preferredCapture!.startAt, durationMinutes: duration } })}
+                                >
+                                  {formatDuration(duration)}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
                         : <p>O Marketing definirá a data e o período para toda esta saída agrupada.</p>
                     ) : <>
                       <button type="button" className={form.capturePreference === "choose" ? "selected" : ""} onClick={() => { setForm({ ...form, capturePreference: "choose" }); setPickerOpen(true); }}>ESCOLHER DATA E HORÁRIO</button>
