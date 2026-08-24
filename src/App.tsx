@@ -484,7 +484,7 @@ function App() {
   const [previewEmployeeId, setPreviewEmployeeId] = useState<EmployeeId | null>(initialSession.previewEmployeeId);
   const [selectedGuardName, setSelectedGuardName] = useState<GuardName | null>(initialSession.selectedGuardName ?? null);
   const [marketingSessionToken, setMarketingSessionToken] = useState<string | null>(initialSession.marketingSessionToken ?? null);
-  const [marketingSummary, setMarketingSummary] = useState<MarketingSummary>({ newCount: 0, urgencyCount: 0 });
+  const [marketingSummary, setMarketingSummary] = useState<MarketingSummary>({ newCount: 0, urgencyCount: 0, unreadCount: 0, queueOverrideCount: 0 });
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState("");
   const [orders, setOrders] = useState<CleaningOrder[]>(() => getLocalOrders().filter((order) => !order.deletedAt));
@@ -631,7 +631,7 @@ function App() {
 
   const handleMarketingSessionInvalid = useCallback(() => {
     setMarketingSessionToken(null);
-    setMarketingSummary({ newCount: 0, urgencyCount: 0 });
+    setMarketingSummary({ newCount: 0, urgencyCount: 0, unreadCount: 0, queueOverrideCount: 0 });
   }, []);
 
   async function refreshOrders() {
@@ -778,7 +778,7 @@ function App() {
     void signOutSupabaseAuth();
     window.sessionStorage.removeItem(SESSION_KEY);
     setMarketingSessionToken(null);
-    setMarketingSummary({ newCount: 0, urgencyCount: 0 });
+    setMarketingSummary({ newCount: 0, urgencyCount: 0, unreadCount: 0, queueOverrideCount: 0 });
     setCurrentUser(null);
     setPreviewEmployeeId(null);
     setSelectedGuardName(null);
@@ -1893,7 +1893,7 @@ function App() {
           onOpenHubAdministration={openHubAdministrationMenu}
           onOpenSecurity={openSecurityMenu}
           onOpenMarketing={openMarketing}
-          marketingAttention={marketingSummary.newCount + marketingSummary.urgencyCount > 0}
+          marketingAttention={marketingSummary.newCount + marketingSummary.urgencyCount + marketingSummary.unreadCount + marketingSummary.queueOverrideCount > 0}
           onProfilePhotoChange={handleCurrentUserPhoto}
         />
       )}
@@ -2043,7 +2043,7 @@ function App() {
           onOpenAssetsMaterials={openAssetsMaterialsMenu}
           onOpenHubAdministration={openHubAdministrationMenu}
           onOpenMarketing={openMarketing}
-          marketingAttention={marketingSummary.newCount + marketingSummary.urgencyCount > 0}
+          marketingAttention={marketingSummary.newCount + marketingSummary.urgencyCount + marketingSummary.unreadCount + marketingSummary.queueOverrideCount > 0}
         />
       )}
 

@@ -1,4 +1,5 @@
 import { getSupabaseAccessToken, SUPABASE_KEY_HEADER, SUPABASE_PUBLIC_KEY, SUPABASE_URL, supabaseConfigured } from "../security/services/supabaseClient";
+import type { MarketingOccupiedCaptureSlot, MarketingScheduleConfig } from "./marketingConfig";
 
 export type MarketingRole = "admin" | "marketing" | "sales_manager";
 export type MarketingRequestStatus =
@@ -47,7 +48,9 @@ export type MarketingRequest = {
   contentTypes: string[];
   captureLocation?: string | null;
   preferredCaptureAt?: string | null;
+  preferredCaptureDurationMinutes?: number | null;
   confirmedCaptureAt?: string | null;
+  confirmedCaptureDurationMinutes?: number | null;
   assetLink?: string | null;
   paidTraffic: boolean;
   requesterNotes?: string | null;
@@ -83,6 +86,38 @@ export type MarketingAvailableUser = {
   active: boolean;
 };
 
+export type MarketingNotification = {
+  id: string;
+  recipientUserId: string;
+  requestId: string;
+  requestNumber: number;
+  brokerName: string;
+  type: string;
+  title: string;
+  message: string;
+  readAt?: string | null;
+  createdAt: string;
+};
+
+export type MarketingQueueOverrideRequest = {
+  id: string;
+  requestId: string;
+  requestNumber: number;
+  brokerName: string;
+  managerName: string;
+  blockingRequestId?: string | null;
+  blockingRequestNumber?: number | null;
+  requestedByUserId: string;
+  requestedByName: string;
+  reason: string;
+  status: "pending" | "approved" | "rejected";
+  decidedByUserId?: string | null;
+  decidedByName?: string | null;
+  decidedAt?: string | null;
+  consumedAt?: string | null;
+  createdAt: string;
+};
+
 export type MarketingDashboard = {
   context: MarketingContext;
   teams: MarketingTeam[];
@@ -90,6 +125,10 @@ export type MarketingDashboard = {
   requests: MarketingRequest[];
   access: MarketingAccess[];
   availableUsers: MarketingAvailableUser[];
+  notifications: MarketingNotification[];
+  queueOverrideRequests: MarketingQueueOverrideRequest[];
+  occupiedCaptureSlots: MarketingOccupiedCaptureSlot[];
+  scheduleConfig: MarketingScheduleConfig;
 };
 
 export type MarketingSession = {
@@ -107,6 +146,7 @@ export type MarketingRequestDraft = {
   contentTypes: string[];
   captureLocation?: string;
   preferredCaptureAt?: string;
+  preferredCaptureDurationMinutes?: number | null;
   assetLink?: string;
   paidTraffic: boolean;
   requesterNotes?: string;
@@ -145,11 +185,11 @@ export async function endMarketingSession(sessionToken: string) {
 }
 
 export async function getMarketingDashboard(sessionToken: string): Promise<MarketingDashboard> {
-  return rpc<MarketingDashboard>("marketing_session_get_dashboard", { p_session_token: sessionToken });
+  return rpc<MarketingDashboard>("marketing_v2_get_dashboard", { p_session_token: sessionToken });
 }
 
 export async function createMarketingRequest(sessionToken: string, draft: MarketingRequestDraft) {
-  return rpc<Array<{ request_id: string; request_number: number }>>("marketing_session_create_request", {
+  return rpc<Array<{ request_id: string; request_number: number }>>("marketing_v2_create_request", {
     p_session_token: sessionToken,
     p_team_id: draft.teamId,
     p_broker_name: draft.brokerName,
@@ -159,6 +199,7 @@ export async function createMarketingRequest(sessionToken: string, draft: Market
     p_content_types: draft.contentTypes,
     p_capture_location: draft.captureLocation || null,
     p_preferred_capture_at: toIsoOrNull(draft.preferredCaptureAt),
+    p_preferred_capture_duration_minutes: draft.preferredCaptureDurationMinutes || null,
     p_asset_link: draft.assetLink || null,
     p_paid_traffic: draft.paidTraffic,
     p_requester_notes: draft.requesterNotes || null,
@@ -173,11 +214,38 @@ export async function updateMarketingRequest(
   action: "save_management" | "approve_urgency" | "reject_urgency" | "cancel",
   payload: Record<string, unknown> = {},
 ) {
-  await rpc<unknown>("marketing_session_update_request", {
+  await rpc<unknown>("marketing_v2_update_request", {
     p_session_token: sessionToken,
     p_request_id: requestId,
     p_action: action,
     p_payload: payload,
+  });
+}
+
+export async function requestMarketingQueueOverride(sessionToken: string, requestId: string, reason: string) {
+  return rpc<string>("marketing_v2_request_queue_override", {
+    p_session_token: sessionToken,
+    p_request_id: requestId,
+    p_reason: reason,
+  });
+}
+
+export async function decideMarketingQueueOverride(
+  sessionToken: string,
+  overrideRequestId: string,
+  decision: "approved" | "rejected",
+) {
+  await rpc<unknown>("marketing_v2_decide_queue_override", {
+    p_session_token: sessionToken,
+    p_override_request_id: overrideRequestId,
+    p_decision: decision,
+  });
+}
+
+export async function markMarketingNotificationsRead(sessionToken: string, notificationIds?: string[]) {
+  return rpc<number>("marketing_v2_mark_notifications_read", {
+    p_session_token: sessionToken,
+    p_notification_ids: notificationIds?.length ? notificationIds : null,
   });
 }
 
@@ -211,9 +279,24 @@ export function getMarketingErrorMessage(error: unknown) {
   if (normalized.includes("MARKETING_TEAM_REQUIRED")) return "Escolha a equipe deste gerente.";
   if (normalized.includes("MARKETING_USER_NOT_FOUND")) return "O usuário do HUB não foi encontrado ou está inativo.";
   if (normalized.includes("MARKETING_REQUEST_NOT_FOUND")) return "Este pedido não foi encontrado.";
+  if (normalized.includes("MARKETING_QUEUE_ORDER_BLOCKED")) return "Existe um pedido anterior aguardando atendimento. A fila deve ser seguida na ordem de entrada.";
+  if (normalized.includes("MARKETING_CAPTURE_CONFLICT")) return "Este horário já possui outra captação agendada.";
+  if (normalized.includes("MARKETING_CAPTURE_DURATION_REQUIRED")) return "Escolha a data, o horário e a duração da captação.";
+  if (normalized.includes("MARKETING_CAPTURE_WINDOW_INVALID")) return "Escolha um horário disponível dentro da agenda do Marketing.";
+  if (normalized.includes("MARKETING_EDIT_ONLY_CAPTURE_DENIED")) return "Pedidos de somente edição não podem ter captação confirmada.";
+  if (normalized.includes("MARKETING_ASSIGNEE_INVALID")) return "Escolha Maria ou Arthur como responsável do Marketing.";
+  if (normalized.includes("MARKETING_OVERRIDE_REASON_REQUIRED")) return "Informe o motivo para alterar a ordem da fila.";
+  if (normalized.includes("MARKETING_OVERRIDE_ALREADY_PENDING")) return "Já existe uma solicitação de autorização pendente para este pedido.";
+  if (normalized.includes("MARKETING_OVERRIDE_NOT_NEEDED")) return "Este pedido já pode seguir a ordem normal da fila.";
+  if (normalized.includes("MARKETING_OVERRIDE_REQUEST_DENIED")) return "Somente a equipe de Marketing pode solicitar alteração da fila.";
   if (normalized.includes("MARKETING_UPDATE_DENIED") || normalized.includes("MARKETING_REQUEST_DENIED")) return "Você não tem permissão para alterar este pedido.";
   if (error instanceof MarketingRemoteError && error.status === 0) return "Não foi possível conectar ao Marketing. Verifique a internet.";
   return "Não foi possível concluir a operação no Marketing.";
+}
+
+export function isMarketingError(error: unknown, code: string) {
+  const raw = error instanceof Error ? error.message : String(error ?? "");
+  return raw.toUpperCase().includes(code.toUpperCase());
 }
 
 function toIsoOrNull(value?: string) {
