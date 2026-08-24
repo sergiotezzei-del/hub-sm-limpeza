@@ -11,6 +11,7 @@ import { NeiaHistoryEnhancer } from "./modules/cleaning/components/NeiaHistoryEn
 import { AirConditioningMapFeature } from "./modules/patrimony/AirConditioningMapFeature";
 import { PatrimonyPeopleEquipmentFeature } from "./modules/patrimony/PatrimonyPeopleEquipmentFeature";
 import { PatrimonySpaceMapsFeature } from "./modules/patrimony/PatrimonySpaceMapsFeature";
+import { PublicMarketingRequestPage } from "./modules/marketing/PublicMarketingRequestPage";
 import { PublicServiceRequestPage } from "./modules/service-requests/PublicServiceRequestPage";
 import "./styles.css";
 import "./modules/alerts/alertsExtensions.css";
@@ -20,10 +21,13 @@ import "./modules/tasks/taskBoardSimplified.css";
 
 const normalizedPath = window.location.pathname.replace(/\/+$/, "") || "/";
 const isPublicServiceRequestPage = normalizedPath === "/chamados";
+const isPublicMarketingRequestPage = normalizedPath === "/marketing/pedido";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    {isPublicServiceRequestPage ? (
+    {isPublicMarketingRequestPage ? (
+      <PublicMarketingRequestPage />
+    ) : isPublicServiceRequestPage ? (
       <PublicServiceRequestPage />
     ) : (
       <>

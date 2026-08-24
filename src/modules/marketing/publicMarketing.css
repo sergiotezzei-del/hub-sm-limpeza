@@ -1,0 +1,309 @@
+.marketing-public-page {
+  min-height: 100vh;
+  background: #f2f4f5;
+  color: #172126;
+  padding: 20px 14px 32px;
+}
+
+.marketing-public-shell {
+  width: min(100%, 760px);
+  margin: 0 auto;
+}
+
+.marketing-public-brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.marketing-public-logo {
+  width: 54px;
+  height: 54px;
+}
+
+.marketing-public-brand div {
+  display: grid;
+  gap: 3px;
+}
+
+.marketing-public-brand strong {
+  font-size: 1.05rem;
+}
+
+.marketing-public-brand span {
+  color: #59666d;
+  font-size: .78rem;
+  font-weight: 800;
+}
+
+.marketing-public-card,
+.marketing-public-success {
+  background: #fff;
+  border: 1px solid #d9dfe2;
+  border-radius: 8px;
+  box-shadow: 0 12px 28px rgba(23, 33, 38, .08);
+  padding: 22px 18px;
+}
+
+.marketing-public-eyebrow {
+  color: #9b352c;
+  font-size: .75rem;
+  font-weight: 900;
+  margin: 0 0 7px;
+}
+
+.marketing-public-card h1,
+.marketing-public-success h1 {
+  font-size: 1.55rem;
+  margin: 0;
+}
+
+.marketing-public-intro,
+.marketing-public-success > p {
+  color: #59666d;
+  line-height: 1.5;
+}
+
+.marketing-public-card form {
+  display: grid;
+  gap: 16px;
+  margin-top: 24px;
+}
+
+.marketing-public-card form > label,
+.marketing-public-card fieldset {
+  display: grid;
+  gap: 8px;
+  color: #344248;
+  font-size: .86rem;
+  font-weight: 800;
+}
+
+.marketing-public-card input,
+.marketing-public-card select,
+.marketing-public-card textarea {
+  width: 100%;
+  border: 1px solid #c9d1d5;
+  border-radius: 6px;
+  background: #fff;
+  color: #172126;
+  font: inherit;
+  padding: 12px;
+}
+
+.marketing-public-card textarea {
+  resize: vertical;
+}
+
+.marketing-public-card input:focus,
+.marketing-public-card select:focus,
+.marketing-public-card textarea:focus {
+  border-color: #236b57;
+  box-shadow: 0 0 0 3px rgba(35, 107, 87, .13);
+  outline: 0;
+}
+
+.marketing-public-card fieldset {
+  border: 1px solid #d9dfe2;
+  border-radius: 6px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+  padding: 13px;
+}
+
+.marketing-public-card fieldset legend {
+  padding: 0 6px;
+}
+
+.marketing-public-card fieldset label,
+.marketing-public-check {
+  align-items: center;
+  display: flex !important;
+  gap: 8px !important;
+}
+
+.marketing-public-card fieldset input,
+.marketing-public-check input {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+}
+
+.marketing-public-content {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+}
+
+.marketing-public-field-disabled {
+  color: #7b878d !important;
+}
+
+.marketing-public-field-disabled input {
+  background: #edf0f1;
+}
+
+.marketing-public-capture-choice {
+  grid-template-columns: 1fr !important;
+}
+
+.marketing-public-capture-choice > button,
+.marketing-public-capture-choice div button,
+.marketing-public-submit {
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 900;
+  padding: 12px 14px;
+}
+
+.marketing-public-capture-choice > button {
+  background: #edf0f1;
+  color: #344248;
+}
+
+.marketing-public-capture-choice > button.selected {
+  background: #dcece6;
+  color: #155440;
+  box-shadow: inset 0 0 0 1px #70a795;
+}
+
+.marketing-public-capture-choice p {
+  color: #59666d;
+  font-weight: 500;
+  margin: 2px 0;
+}
+
+.marketing-public-capture-choice div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.marketing-public-capture-choice div button {
+  background: #236b57;
+  color: #fff;
+  padding: 8px 10px;
+}
+
+.marketing-public-picker {
+  min-width: 0;
+}
+
+.marketing-public-check small {
+  color: #737f84;
+  font-weight: 500;
+}
+
+.marketing-public-check.urgent {
+  border-left: 3px solid #c95345;
+  padding-left: 10px;
+}
+
+.marketing-public-honeypot {
+  position: absolute;
+  left: -10000px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+
+.marketing-public-error {
+  background: #fce8e5;
+  border-left: 3px solid #bb4035;
+  color: #7e2922;
+  margin: 0;
+  padding: 11px 12px;
+}
+
+.marketing-public-submit {
+  background: #9b352c;
+  color: #fff;
+  min-height: 48px;
+}
+
+.marketing-public-submit:disabled {
+  cursor: wait;
+  opacity: .65;
+}
+
+.marketing-public-loading {
+  color: #59666d;
+  padding: 28px 0;
+  text-align: center;
+}
+
+.marketing-public-success {
+  text-align: center;
+}
+
+.marketing-public-success-icon {
+  align-items: center;
+  background: #dcece6;
+  border-radius: 50%;
+  color: #155440;
+  display: inline-flex;
+  font-size: 1.8rem;
+  height: 54px;
+  justify-content: center;
+  margin-bottom: 14px;
+  width: 54px;
+}
+
+.marketing-public-success article {
+  background: #f2f4f5;
+  border: 1px solid #d9dfe2;
+  border-radius: 6px;
+  display: grid;
+  gap: 4px;
+  margin: 22px auto;
+  max-width: 300px;
+  padding: 18px;
+}
+
+.marketing-public-success article span,
+.marketing-public-success article small {
+  color: #59666d;
+  font-weight: 700;
+}
+
+.marketing-public-success article strong {
+  color: #9b352c;
+  font-size: 2rem;
+}
+
+.marketing-public-footer {
+  color: #6e797e;
+  font-size: .75rem;
+  padding: 20px 0 0;
+  text-align: center;
+}
+
+@media (min-width: 700px) {
+  .marketing-public-page {
+    padding: 36px 24px 48px;
+  }
+
+  .marketing-public-card,
+  .marketing-public-success {
+    padding: 34px;
+  }
+
+  .marketing-public-card h1,
+  .marketing-public-success h1 {
+    font-size: 2rem;
+  }
+
+  .marketing-public-card form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .marketing-public-card form > fieldset,
+  .marketing-public-card form > .marketing-public-picker,
+  .marketing-public-card form > .marketing-public-error,
+  .marketing-public-card form > .marketing-public-submit,
+  .marketing-public-card form > label:has(textarea),
+  .marketing-public-card form > label.marketing-public-check {
+    grid-column: 1 / -1;
+  }
+}

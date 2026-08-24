@@ -1,4 +1,5 @@
 import { getSupabaseAccessToken, SUPABASE_KEY_HEADER, SUPABASE_PUBLIC_KEY, SUPABASE_URL, supabaseConfigured } from "../security/services/supabaseClient";
+import type { MarketingOccupiedCaptureSlot, MarketingScheduleConfig } from "./marketingConfig";
 
 export type MarketingRole = "admin" | "marketing" | "sales_manager";
 export type MarketingRequestStatus =
@@ -43,11 +44,14 @@ export type MarketingRequest = {
   brokerName: string;
   hasPropertyCode: boolean;
   propertyReference: string;
+  isExclusive: boolean | null;
   requestKind: "capture_edit" | "edit_only";
   contentTypes: string[];
   captureLocation?: string | null;
   preferredCaptureAt?: string | null;
+  preferredCaptureDurationMinutes?: number | null;
   confirmedCaptureAt?: string | null;
+  confirmedCaptureDurationMinutes?: number | null;
   assetLink?: string | null;
   paidTraffic: boolean;
   requesterNotes?: string | null;
@@ -60,8 +64,12 @@ export type MarketingRequest = {
   urgencyApproved: boolean;
   urgencyDecidedByName?: string | null;
   urgencyDecidedAt?: string | null;
-  createdByUserId: string;
+  createdByUserId?: string | null;
   createdByName: string;
+  requestSource: "hub" | "public";
+  publicRequesterName?: string | null;
+  managerReviewStatus?: MarketingManagerReviewStatus | null;
+  managerReviewUpdatedAt?: string | null;
   completedAt?: string | null;
   createdAt: string;
   updatedAt: string;
@@ -83,6 +91,70 @@ export type MarketingAvailableUser = {
   active: boolean;
 };
 
+export type MarketingNotification = {
+  id: string;
+  recipientUserId: string;
+  requestId: string;
+  requestNumber: number;
+  brokerName: string;
+  type: string;
+  title: string;
+  message: string;
+  readAt?: string | null;
+  createdAt: string;
+};
+
+export type MarketingQueueOverrideRequest = {
+  id: string;
+  requestId: string;
+  requestNumber: number;
+  brokerName: string;
+  managerName: string;
+  blockingRequestId?: string | null;
+  blockingRequestNumber?: number | null;
+  requestedByUserId: string;
+  requestedByName: string;
+  reason: string;
+  status: "pending" | "approved" | "rejected";
+  decidedByUserId?: string | null;
+  decidedByName?: string | null;
+  decidedAt?: string | null;
+  consumedAt?: string | null;
+  createdAt: string;
+};
+
+export type MarketingManagerReviewStatus = "pending" | "confirmed" | "modified" | "declined";
+
+export type MarketingManagerReviewReason =
+  | "property_code_divergent"
+  | "incomplete_request"
+  | "incorrect_service"
+  | "capture_confirmation"
+  | "content_validation"
+  | "other";
+
+export type MarketingManagerReview = {
+  id: string;
+  requestId: string;
+  requestNumber: number;
+  teamId: string;
+  managerName: string;
+  brokerName: string;
+  propertyLabel: string;
+  openedByUserId: string;
+  openedByName: string;
+  reason: MarketingManagerReviewReason;
+  details: string;
+  status: MarketingManagerReviewStatus;
+  managerUserId: string;
+  reviewManagerName?: string | null;
+  managerResponse?: string | null;
+  decidedAt?: string | null;
+  returnStatus: MarketingRequestStatus;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type MarketingDashboard = {
   context: MarketingContext;
   teams: MarketingTeam[];
@@ -90,6 +162,11 @@ export type MarketingDashboard = {
   requests: MarketingRequest[];
   access: MarketingAccess[];
   availableUsers: MarketingAvailableUser[];
+  notifications: MarketingNotification[];
+  queueOverrideRequests: MarketingQueueOverrideRequest[];
+  managerReviews: MarketingManagerReview[];
+  occupiedCaptureSlots: MarketingOccupiedCaptureSlot[];
+  scheduleConfig: MarketingScheduleConfig;
 };
 
 export type MarketingSession = {
@@ -103,10 +180,12 @@ export type MarketingRequestDraft = {
   brokerName: string;
   hasPropertyCode: boolean;
   propertyReference: string;
+  isExclusive: boolean;
   requestKind: "capture_edit" | "edit_only";
   contentTypes: string[];
   captureLocation?: string;
   preferredCaptureAt?: string;
+  preferredCaptureDurationMinutes?: number | null;
   assetLink?: string;
   paidTraffic: boolean;
   requesterNotes?: string;
@@ -145,20 +224,22 @@ export async function endMarketingSession(sessionToken: string) {
 }
 
 export async function getMarketingDashboard(sessionToken: string): Promise<MarketingDashboard> {
-  return rpc<MarketingDashboard>("marketing_session_get_dashboard", { p_session_token: sessionToken });
+  return rpc<MarketingDashboard>("marketing_v2_get_dashboard_review", { p_session_token: sessionToken });
 }
 
 export async function createMarketingRequest(sessionToken: string, draft: MarketingRequestDraft) {
-  return rpc<Array<{ request_id: string; request_number: number }>>("marketing_session_create_request", {
+  return rpc<Array<{ request_id: string; request_number: number }>>("marketing_v2_create_request", {
     p_session_token: sessionToken,
     p_team_id: draft.teamId,
     p_broker_name: draft.brokerName,
     p_has_property_code: draft.hasPropertyCode,
     p_property_reference: draft.propertyReference,
+    p_is_exclusive: draft.isExclusive,
     p_request_kind: draft.requestKind,
     p_content_types: draft.contentTypes,
     p_capture_location: draft.captureLocation || null,
     p_preferred_capture_at: toIsoOrNull(draft.preferredCaptureAt),
+    p_preferred_capture_duration_minutes: draft.preferredCaptureDurationMinutes || null,
     p_asset_link: draft.assetLink || null,
     p_paid_traffic: draft.paidTraffic,
     p_requester_notes: draft.requesterNotes || null,
@@ -173,11 +254,68 @@ export async function updateMarketingRequest(
   action: "save_management" | "approve_urgency" | "reject_urgency" | "cancel",
   payload: Record<string, unknown> = {},
 ) {
-  await rpc<unknown>("marketing_session_update_request", {
+  await rpc<unknown>("marketing_v2_update_request", {
     p_session_token: sessionToken,
     p_request_id: requestId,
     p_action: action,
     p_payload: payload,
+  });
+}
+
+export async function requestMarketingQueueOverride(sessionToken: string, requestId: string, reason: string) {
+  return rpc<string>("marketing_v2_request_queue_override", {
+    p_session_token: sessionToken,
+    p_request_id: requestId,
+    p_reason: reason,
+  });
+}
+
+export async function decideMarketingQueueOverride(
+  sessionToken: string,
+  overrideRequestId: string,
+  decision: "approved" | "rejected",
+) {
+  await rpc<unknown>("marketing_v2_decide_queue_override", {
+    p_session_token: sessionToken,
+    p_override_request_id: overrideRequestId,
+    p_decision: decision,
+  });
+}
+
+export async function markMarketingNotificationsRead(sessionToken: string, notificationIds?: string[]) {
+  return rpc<number>("marketing_v2_mark_notifications_read", {
+    p_session_token: sessionToken,
+    p_notification_ids: notificationIds?.length ? notificationIds : null,
+  });
+}
+
+export async function openMarketingManagerReview(
+  sessionToken: string,
+  requestId: string,
+  reason: MarketingManagerReviewReason,
+  details: string,
+) {
+  return rpc<string>("marketing_v2_open_manager_review", {
+    p_session_token: sessionToken,
+    p_request_id: requestId,
+    p_reason: reason,
+    p_details: details,
+  });
+}
+
+export async function resolveMarketingManagerReview(
+  sessionToken: string,
+  reviewId: string,
+  decision: "confirmed" | "modified" | "declined",
+  managerResponse?: string,
+  corrections: Record<string, unknown> = {},
+) {
+  await rpc<unknown>("marketing_v2_resolve_manager_review", {
+    p_session_token: sessionToken,
+    p_review_id: reviewId,
+    p_decision: decision,
+    p_manager_response: managerResponse || null,
+    p_corrections: corrections,
   });
 }
 
@@ -205,15 +343,41 @@ export function getMarketingErrorMessage(error: unknown) {
   if (normalized.includes("MARKETING_TEAM_DENIED")) return "O gerente só pode abrir pedidos para a própria equipe.";
   if (normalized.includes("MARKETING_BROKER_REQUIRED")) return "Informe o nome do corretor.";
   if (normalized.includes("MARKETING_PROPERTY_REQUIRED")) return "Informe o código ou a descrição do imóvel.";
+  if (normalized.includes("MARKETING_EXCLUSIVITY_REQUIRED")) return "Informe se o imóvel é exclusividade.";
   if (normalized.includes("MARKETING_CONTENT_REQUIRED")) return "Selecione pelo menos um tipo de conteúdo.";
   if (normalized.includes("MARKETING_URGENCY_REASON_REQUIRED")) return "Explique o motivo do pedido de urgência.";
   if (normalized.includes("MARKETING_ADMIN_REQUIRED")) return "Somente o administrador do Marketing pode alterar acessos.";
   if (normalized.includes("MARKETING_TEAM_REQUIRED")) return "Escolha a equipe deste gerente.";
   if (normalized.includes("MARKETING_USER_NOT_FOUND")) return "O usuário do HUB não foi encontrado ou está inativo.";
   if (normalized.includes("MARKETING_REQUEST_NOT_FOUND")) return "Este pedido não foi encontrado.";
+  if (normalized.includes("MARKETING_QUEUE_ORDER_BLOCKED")) return "Existe um pedido anterior aguardando atendimento. A fila deve ser seguida na ordem de entrada.";
+  if (normalized.includes("MARKETING_CAPTURE_CONFLICT")) return "Este horário já possui outra captação agendada.";
+  if (normalized.includes("MARKETING_CAPTURE_DURATION_REQUIRED")) return "Escolha a data, o horário e a duração da captação.";
+  if (normalized.includes("MARKETING_CAPTURE_WINDOW_INVALID")) return "Escolha um horário disponível dentro da agenda do Marketing.";
+  if (normalized.includes("MARKETING_EDIT_ONLY_CAPTURE_DENIED")) return "Pedidos de somente edição não podem ter captação confirmada.";
+  if (normalized.includes("MARKETING_ASSIGNEE_INVALID")) return "Escolha Maria ou Arthur como responsável do Marketing.";
+  if (normalized.includes("MARKETING_OVERRIDE_REASON_REQUIRED")) return "Informe o motivo para alterar a ordem da fila.";
+  if (normalized.includes("MARKETING_OVERRIDE_ALREADY_PENDING")) return "Já existe uma solicitação de autorização pendente para este pedido.";
+  if (normalized.includes("MARKETING_OVERRIDE_NOT_NEEDED")) return "Este pedido já pode seguir a ordem normal da fila.";
+  if (normalized.includes("MARKETING_OVERRIDE_REQUEST_DENIED")) return "Somente a equipe de Marketing pode solicitar alteração da fila.";
+  if (normalized.includes("MARKETING_MANAGER_REVIEW_ALREADY_PENDING")) return "Este pedido já está aguardando conferência do gerente.";
+  if (normalized.includes("MARKETING_MANAGER_REVIEW_DETAILS_REQUIRED")) return "Descreva o problema para o gerente com pelo menos 5 caracteres.";
+  if (normalized.includes("MARKETING_MANAGER_REVIEW_MANAGER_NOT_FOUND")) return "A equipe ainda não possui um gerente ativo vinculado ao Marketing.";
+  if (normalized.includes("MARKETING_MANAGER_REVIEW_PENDING")) return "Este pedido está bloqueado enquanto aguarda a conferência do gerente.";
+  if (normalized.includes("MARKETING_MANAGER_REVIEW_DECLINE_REASON_REQUIRED")) return "Informe o motivo para declinar o pedido.";
+  if (normalized.includes("MARKETING_MANAGER_REVIEW_NO_CHANGES")) return "Altere pelo menos um dado operacional antes de salvar a correção.";
+  if (normalized.includes("MARKETING_MANAGER_REVIEW_FIELD_DENIED")) return "A correção tentou alterar um campo interno do Marketing.";
+  if (normalized.includes("MARKETING_URGENCY_ALREADY_DECIDED")) return "A urgência já foi decidida pelo Tezzei e não pode ser alterada nesta conferência.";
+  if (normalized.includes("MARKETING_REVIEW_KIND_CONFIRMED_CAPTURE_DENIED")) return "O Marketing precisa retirar a captação confirmada antes de mudar este pedido para somente edição.";
+  if (normalized.includes("MARKETING_MANAGER_REVIEW")) return "Não foi possível concluir a conferência deste pedido.";
   if (normalized.includes("MARKETING_UPDATE_DENIED") || normalized.includes("MARKETING_REQUEST_DENIED")) return "Você não tem permissão para alterar este pedido.";
   if (error instanceof MarketingRemoteError && error.status === 0) return "Não foi possível conectar ao Marketing. Verifique a internet.";
   return "Não foi possível concluir a operação no Marketing.";
+}
+
+export function isMarketingError(error: unknown, code: string) {
+  const raw = error instanceof Error ? error.message : String(error ?? "");
+  return raw.toUpperCase().includes(code.toUpperCase());
 }
 
 function toIsoOrNull(value?: string) {
