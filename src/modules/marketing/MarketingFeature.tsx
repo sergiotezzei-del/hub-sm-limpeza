@@ -13,6 +13,9 @@ import {
   MarketingCaptureSelection,
 } from "./marketingConfig";
 import {
+  adminDeleteMarketingRequest,
+  adminRestoreMarketingRequest,
+  adminUpdateMarketingRequest,
   createMarketingRequest,
   decideMarketingQueueOverride,
   getMarketingDashboard,
@@ -20,6 +23,7 @@ import {
   isMarketingError,
   markMarketingNotificationsRead,
   MarketingDashboard,
+  MarketingDeletedRequest,
   MarketingManagerReview,
   MarketingManagerReviewReason,
   MarketingNotification,
@@ -63,7 +67,7 @@ const contentLabels: Record<string, string> = Object.fromEntries(
   MARKETING_CONTENT_OPTIONS.map((option) => [option.value, option.label]),
 );
 
-type MarketingTab = "central" | "agenda" | "request" | "mine" | "reviews" | "updates" | "access";
+type MarketingTab = "central" | "agenda" | "request" | "mine" | "reviews" | "updates" | "access" | "deleted";
 
 type RequestFormState = {
   teamId: string;
@@ -380,6 +384,15 @@ function MarketingScreen(props: {
         )}
         {props.tab === "access" && (
           <AccessView sessionToken={props.sessionToken} dashboard={props.dashboard} onSaved={props.onRefresh} onError={props.onError} onNotice={props.onNotice} />
+        )}
+        {props.tab === "deleted" && role === "admin" && (
+          <DeletedRequestsView
+            sessionToken={props.sessionToken}
+            dashboard={props.dashboard}
+            onRefresh={props.onRefresh}
+            onError={props.onError}
+            onNotice={props.onNotice}
+          />
         )}
       </main>
 
@@ -889,6 +902,141 @@ function RequestView(props: { sessionToken: string; dashboard: MarketingDashboar
   );
 }
 
+function AdminRequestEditForm(props: {
+  sessionToken: string;
+  dashboard: MarketingDashboard;
+  request: MarketingRequest;
+  onCancel: () => void;
+  onSaved: () => Promise<void>;
+  onError: (message: string) => void;
+  onNotice: (message: string) => void;
+}) {
+  const [form, setForm] = useState<RequestFormState>(() => requestToForm(props.request));
+  const [busy, setBusy] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const brokers = props.dashboard.brokers.filter((broker) => broker.teamId === form.teamId);
+
+  function toggleContent(value: string) {
+    setForm((current) => ({
+      ...current,
+      contentTypes: current.contentTypes.includes(value)
+        ? current.contentTypes.filter((item) => item !== value)
+        : [...current.contentTypes, value],
+    }));
+  }
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    if (busy) return;
+    if (!form.teamId || !form.brokerName.trim() || (form.hasPropertyCode && !form.propertyReference.trim()) || form.contentTypes.length === 0) {
+      props.onError("Preencha equipe, corretor, imóvel e tipo de conteúdo.");
+      return;
+    }
+    if (form.requestKind === "capture_edit" && form.capturePreference === "choose" && (!form.preferredCaptureAt || !form.preferredCaptureDurationMinutes)) {
+      props.onError("Escolha a data, o horário e a duração da captação.");
+      return;
+    }
+    if (form.urgencyRequested && !form.urgencyReason.trim()) {
+      props.onError("Explique o motivo da urgência.");
+      return;
+    }
+
+    setBusy(true);
+    props.onError("");
+    try {
+      await adminUpdateMarketingRequest(
+        props.sessionToken,
+        props.request.id,
+        buildAdminRequestChanges(props.request, form),
+      );
+      props.onNotice("Pedido corrigido pelo administrador. As alterações foram registradas no histórico.");
+      await props.onSaved();
+      props.onCancel();
+    } catch (error) {
+      props.onError(getMarketingErrorMessage(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="marketing-admin-edit-panel">
+      <div className="marketing-section-head"><div><h3>Editar pedido</h3><p>Dados da solicitação. O controle operacional permanece separado.</p></div></div>
+      <form className="marketing-review-correction" onSubmit={submit}>
+        <label>Equipe / gerente<select value={form.teamId} onChange={(event) => setForm({ ...form, teamId: event.target.value, brokerName: "" })}>{props.dashboard.teams.map((team) => <option key={team.id} value={team.id}>{team.managerName}</option>)}</select></label>
+        <label>Corretor<input list={`marketing-admin-brokers-${props.request.id}`} value={form.brokerName} onChange={(event) => setForm({ ...form, brokerName: event.target.value })} required /></label>
+        <datalist id={`marketing-admin-brokers-${props.request.id}`}>{brokers.map((broker) => <option key={broker.id} value={broker.name} />)}</datalist>
+        <fieldset><legend>O imóvel já tem código?</legend><label><input type="radio" checked={form.hasPropertyCode} onChange={() => setForm({ ...form, hasPropertyCode: true })} /> Sim</label><label><input type="radio" checked={!form.hasPropertyCode} onChange={() => setForm({ ...form, hasPropertyCode: false, propertyReference: "" })} /> Ainda não</label></fieldset>
+        <label className={!form.hasPropertyCode ? "marketing-field-disabled" : ""}>Código do imóvel<input value={form.propertyReference} onChange={(event) => setForm({ ...form, propertyReference: event.target.value })} required={form.hasPropertyCode} disabled={!form.hasPropertyCode} placeholder={form.hasPropertyCode ? "Ex.: 78119" : "Sem código informado"} /></label>
+        <ExclusiveChoice name={`admin-edit-exclusive-${props.request.id}`} value={form.isExclusive} onChange={(isExclusive) => setForm({ ...form, isExclusive })} />
+        <fieldset><legend>Tipo da solicitação</legend><label><input type="radio" checked={form.requestKind === "capture_edit"} onChange={() => setForm({ ...form, requestKind: "capture_edit" })} /> Captação + edição</label><label><input type="radio" checked={form.requestKind === "edit_only"} onChange={() => { setForm({ ...form, requestKind: "edit_only", captureLocation: "", capturePreference: "marketing", preferredCaptureAt: "", preferredCaptureDurationMinutes: null }); setPickerOpen(false); }} /> Somente edição</label></fieldset>
+        <fieldset className="span-2"><legend>Tipos de conteúdo</legend>{MARKETING_CONTENT_OPTIONS.map((option) => <label key={option.value}><input type="checkbox" checked={form.contentTypes.includes(option.value)} onChange={() => toggleContent(option.value)} /> {option.label}</label>)}</fieldset>
+        {form.requestKind === "capture_edit" && <>
+          <label className="span-2">Local da captação<input value={form.captureLocation} onChange={(event) => setForm({ ...form, captureLocation: event.target.value })} maxLength={300} /></label>
+          <fieldset className="span-2 marketing-capture-choice"><legend>Data solicitada</legend><button type="button" className={form.capturePreference === "choose" ? "selected" : ""} onClick={() => { setForm({ ...form, capturePreference: "choose" }); setPickerOpen(true); }}>ESCOLHER DATA E HORÁRIO</button><button type="button" className={form.capturePreference === "marketing" ? "selected" : ""} onClick={() => { setForm({ ...form, capturePreference: "marketing", preferredCaptureAt: "", preferredCaptureDurationMinutes: null }); setPickerOpen(false); }}>DEIXAR O MARKETING DEFINIR</button>{form.capturePreference === "choose" && form.preferredCaptureAt && form.preferredCaptureDurationMinutes && !pickerOpen && <div className="marketing-capture-summary"><strong>{formatCaptureRange(form.preferredCaptureAt, form.preferredCaptureDurationMinutes, props.dashboard.scheduleConfig.timezone)}</strong><button type="button" onClick={() => setPickerOpen(true)}>ALTERAR</button></div>}</fieldset>
+          {form.capturePreference === "choose" && pickerOpen && <div className="span-2"><CaptureSchedulePicker config={props.dashboard.scheduleConfig} occupiedSlots={props.dashboard.occupiedCaptureSlots} excludedRequestId={props.request.id} value={form.preferredCaptureAt && form.preferredCaptureDurationMinutes ? { startAt: form.preferredCaptureAt, durationMinutes: form.preferredCaptureDurationMinutes } : null} onConfirm={(selection) => { setForm({ ...form, preferredCaptureAt: selection.startAt, preferredCaptureDurationMinutes: selection.durationMinutes }); setPickerOpen(false); }} onCancel={() => setPickerOpen(false)} /></div>}
+        </>}
+        <label className="span-2">Link de arquivos<input type="url" value={form.assetLink} onChange={(event) => setForm({ ...form, assetLink: event.target.value })} maxLength={2000} /></label>
+        <label className="marketing-check span-2"><input type="checkbox" checked={form.paidTraffic} onChange={(event) => setForm({ ...form, paidTraffic: event.target.checked })} /> Tráfego pago</label>
+        <label className="span-2">Observação do pedido<textarea value={form.requesterNotes} onChange={(event) => setForm({ ...form, requesterNotes: event.target.value })} maxLength={3000} /></label>
+        <label className="marketing-check span-2 urgent"><input type="checkbox" checked={form.urgencyRequested} disabled={Boolean(props.request.urgencyDecidedAt)} onChange={(event) => setForm({ ...form, urgencyRequested: event.target.checked })} /> Urgência solicitada</label>
+        {form.urgencyRequested && <label className="span-2">Motivo da urgência<textarea value={form.urgencyReason} disabled={Boolean(props.request.urgencyDecidedAt)} onChange={(event) => setForm({ ...form, urgencyReason: event.target.value })} maxLength={1000} /></label>}
+        {props.request.urgencyDecidedAt && <small className="span-2">A urgência já foi decidida e permanece protegida pela regra operacional.</small>}
+        <div className="marketing-review-correction-actions span-2"><button type="button" className="secondary" onClick={props.onCancel}>CANCELAR</button><button type="submit" disabled={busy}>{busy ? "Salvando..." : "SALVAR EDIÇÃO"}</button></div>
+      </form>
+    </section>
+  );
+}
+
+function buildAdminRequestChanges(request: MarketingRequest, form: RequestFormState) {
+  const changes = buildManagerReviewCorrections(request, form);
+  if (request.teamId !== form.teamId) changes.teamId = form.teamId;
+  return changes;
+}
+
+function AdminDeleteRequestModal(props: {
+  sessionToken: string;
+  request: MarketingRequest;
+  onClose: () => void;
+  onDeleted: () => Promise<void>;
+  onError: (message: string) => void;
+}) {
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    if (reason.trim().length < 5) {
+      props.onError("Informe o motivo da exclusão com pelo menos 5 caracteres.");
+      return;
+    }
+    setBusy(true);
+    props.onError("");
+    try {
+      await adminDeleteMarketingRequest(props.sessionToken, props.request.id, reason);
+      await props.onDeleted();
+    } catch (error) {
+      props.onError(getMarketingErrorMessage(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return createPortal(
+    <div className="marketing-modal-backdrop marketing-confirmation-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) props.onClose(); }}>
+      <section className="marketing-confirmation-modal" role="dialog" aria-modal="true" aria-labelledby="marketing-delete-title">
+        <h2 id="marketing-delete-title">Excluir pedido #{props.request.requestNumber}</h2>
+        <p>Este pedido será retirado da operação, mas seu histórico será preservado.</p>
+        <form onSubmit={submit}>
+          <label>Motivo<textarea value={reason} onChange={(event) => setReason(event.target.value)} minLength={5} maxLength={2000} required autoFocus /></label>
+          <div><button type="button" className="secondary" onClick={props.onClose}>CANCELAR</button><button type="submit" className="danger" disabled={busy}>{busy ? "Excluindo..." : "CONFIRMAR EXCLUSÃO"}</button></div>
+        </form>
+      </section>
+    </div>,
+    document.body,
+  );
+}
+
 function AccessView(props: { sessionToken: string; dashboard: MarketingDashboard; onSaved: () => Promise<void>; onError: (message: string) => void; onNotice: (message: string) => void }) {
   const [userId, setUserId] = useState("");
   const [role, setRole] = useState<MarketingRole>("sales_manager");
@@ -937,6 +1085,75 @@ function AccessView(props: { sessionToken: string; dashboard: MarketingDashboard
   );
 }
 
+function DeletedRequestsView(props: {
+  sessionToken: string;
+  dashboard: MarketingDashboard;
+  onRefresh: () => Promise<void>;
+  onError: (message: string) => void;
+  onNotice: (message: string) => void;
+}) {
+  const requests = props.dashboard.deletedRequests ?? [];
+  const [historyId, setHistoryId] = useState("");
+  const [restoreRequest, setRestoreRequest] = useState<MarketingDeletedRequest | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function restore() {
+    if (!restoreRequest || busy) return;
+    setBusy(true);
+    props.onError("");
+    try {
+      await adminRestoreMarketingRequest(props.sessionToken, restoreRequest.id);
+      props.onNotice(`Pedido #${restoreRequest.requestNumber} restaurado na posição original da fila.`);
+      setRestoreRequest(null);
+      await props.onRefresh();
+    } catch (error) {
+      props.onError(getMarketingErrorMessage(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="marketing-deleted-view">
+      <div className="marketing-section-head"><div><h2>Pedidos excluídos</h2><p>Fora da operação, com número e histórico preservados.</p></div></div>
+      {requests.length === 0 ? (
+        <div className="marketing-empty"><h3>Nenhum pedido excluído.</h3><p>Exclusões administrativas aparecerão aqui.</p></div>
+      ) : (
+        <div className="marketing-deleted-list">
+          {requests.map((request) => (
+            <article key={request.id}>
+              <header><div><small>PEDIDO #{request.requestNumber}</small><h3>{request.brokerName}</h3><p>{request.managerName} · {propertyLabel(request)}</p></div><span>{request.requestSource === "public" ? "LINK PÚBLICO" : "HUB"}</span></header>
+              <dl>
+                <div><dt>Criado em</dt><dd>{formatDateTime(request.createdAt)}</dd></div>
+                <div><dt>Excluído em</dt><dd>{formatDateTime(request.deletedAt)}</dd></div>
+                <div><dt>Excluído por</dt><dd>{request.deletedByName}</dd></div>
+                <div><dt>Motivo</dt><dd>{request.deletionReason}</dd></div>
+              </dl>
+              <div className="marketing-deleted-actions"><button type="button" className="secondary" onClick={() => setHistoryId(historyId === request.id ? "" : request.id)}>{historyId === request.id ? "OCULTAR HISTÓRICO" : "VER HISTÓRICO"}</button><button type="button" onClick={() => setRestoreRequest(request)}>RESTAURAR</button></div>
+              {historyId === request.id && (
+                <div className="marketing-deleted-history">
+                  {request.events.length === 0 ? <p>Nenhum evento registrado.</p> : request.events.map((event) => <div className="marketing-deleted-event" key={event.id}><div><strong>{event.eventType.split("_").join(" ")}</strong><time>{formatDateTime(event.createdAt)}</time></div><span>{event.actorName || "Sistema"}</span>{Object.keys(event.details || {}).length > 0 && <pre>{JSON.stringify(event.details, null, 2)}</pre>}</div>)}
+                </div>
+              )}
+            </article>
+          ))}
+        </div>
+      )}
+      {restoreRequest && createPortal(
+        <div className="marketing-modal-backdrop marketing-confirmation-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setRestoreRequest(null); }}>
+          <section className="marketing-confirmation-modal" role="dialog" aria-modal="true" aria-labelledby="marketing-restore-title">
+            <h2 id="marketing-restore-title">Restaurar pedido #{restoreRequest.requestNumber}</h2>
+            <p>O pedido voltará à operação com o número, a data de criação, o status e o histórico originais.</p>
+            {restoreRequest.confirmedCaptureAt && <small>A disponibilidade da captação confirmada será validada novamente antes da restauração.</small>}
+            <div><button type="button" className="secondary" onClick={() => setRestoreRequest(null)}>CANCELAR</button><button type="button" disabled={busy} onClick={() => void restore()}>{busy ? "Restaurando..." : "RESTAURAR PEDIDO"}</button></div>
+          </section>
+        </div>,
+        document.body,
+      )}
+    </section>
+  );
+}
+
 function RequestDetail(props: { sessionToken: string; dashboard: MarketingDashboard; request: MarketingRequest; role: MarketingRole; onClose: () => void; onChanged: () => Promise<void>; onError: (message: string) => void; onNotice: (message: string) => void }) {
   const [status, setStatus] = useState<MarketingRequestStatus>(props.request.status);
   const [confirmed, setConfirmed] = useState<MarketingCaptureSelection | null>(() => props.request.confirmedCaptureAt && props.request.confirmedCaptureDurationMinutes
@@ -953,6 +1170,8 @@ function RequestDetail(props: { sessionToken: string; dashboard: MarketingDashbo
   const [reviewFormOpen, setReviewFormOpen] = useState(false);
   const [reviewReason, setReviewReason] = useState<MarketingManagerReviewReason>("incomplete_request");
   const [reviewDetails, setReviewDetails] = useState("");
+  const [adminEditOpen, setAdminEditOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const canManage = props.role === "admin" || props.role === "marketing";
   const pendingOverride = props.dashboard.queueOverrideRequests.find((request) => request.requestId === props.request.id && request.status === "pending");
   const pendingManagerReview = props.dashboard.managerReviews.find((review) => review.requestId === props.request.id && review.status === "pending");
@@ -1049,6 +1268,8 @@ function RequestDetail(props: { sessionToken: string; dashboard: MarketingDashbo
         </div>
         {props.request.requesterNotes && <div className="marketing-note-box"><strong>Observação do pedido</strong><p>{props.request.requesterNotes}</p></div>}
         {props.request.urgencyRequested && <div className={`marketing-urgency-box ${props.request.urgencyApproved ? "approved" : ""}`}><strong>Urgência solicitada</strong><p>{props.request.urgencyReason}</p><small>{props.request.urgencyDecidedAt ? `${props.request.urgencyApproved ? "Aprovada" : "Mantida na fila normal"} por ${props.request.urgencyDecidedByName || "Admin"}` : "Aguardando decisão do Tezzei"}</small>{props.role === "admin" && !props.request.urgencyDecidedAt && <div><button type="button" disabled={busy} onClick={() => void run("approve_urgency")}>APROVAR PRIORIDADE</button><button type="button" disabled={busy} onClick={() => void run("reject_urgency")}>MANTER FILA</button></div>}</div>}
+        {props.role === "admin" && <div className="marketing-admin-actions"><button type="button" className="secondary" onClick={() => setAdminEditOpen((open) => !open)}>{adminEditOpen ? "FECHAR EDIÇÃO" : "EDITAR PEDIDO"}</button><button type="button" className="danger" onClick={() => setDeleteOpen(true)}>EXCLUIR PEDIDO</button></div>}
+        {props.role === "admin" && adminEditOpen && <AdminRequestEditForm key={props.request.updatedAt} sessionToken={props.sessionToken} dashboard={props.dashboard} request={props.request} onCancel={() => setAdminEditOpen(false)} onSaved={props.onChanged} onError={props.onError} onNotice={props.onNotice} />}
         {props.request.managerReviewStatus && props.request.managerReviewStatus !== "pending" && <div className="marketing-review-answered"><strong>AUDITORIA RESPONDIDA</strong><span>{managerReviewStatusLabel(props.request.managerReviewStatus)}</span></div>}
         {canManage && <form className="marketing-management-form" onSubmit={saveManagement}>
           <h3>Controle do Marketing</h3>
@@ -1102,6 +1323,7 @@ function RequestDetail(props: { sessionToken: string; dashboard: MarketingDashbo
           </section>
         )}
         {!canManage && !["pronto", "cancelado"].includes(props.request.status) && <button type="button" className="marketing-cancel-request" disabled={busy} onClick={() => void run("cancel")}>Cancelar pedido</button>}
+        {deleteOpen && <AdminDeleteRequestModal sessionToken={props.sessionToken} request={props.request} onClose={() => setDeleteOpen(false)} onError={props.onError} onDeleted={async () => { props.onNotice(`Pedido #${props.request.requestNumber} excluído da operação com o histórico preservado.`); setDeleteOpen(false); await props.onChanged(); props.onClose(); }} />}
       </section>
     </div>,
     document.body,
@@ -1139,7 +1361,7 @@ function Detail({ label, value }: { label: string; value: string }) {
 function availableTabs(role: MarketingRole): Array<{ id: MarketingTab; label: string }> {
   if (role === "sales_manager") return [{ id: "request", label: "Novo pedido" }, { id: "mine", label: "Minha equipe" }, { id: "reviews", label: "Para conferir" }, { id: "updates", label: "Atualizações" }];
   if (role === "marketing") return [{ id: "central", label: "Central do Marketing" }, { id: "agenda", label: "Agenda" }, { id: "updates", label: "Atualizações" }];
-  return [{ id: "central", label: "Central do Marketing" }, { id: "agenda", label: "Agenda" }, { id: "request", label: "Novo pedido" }, { id: "updates", label: "Atualizações" }, { id: "access", label: "Equipes e acessos" }];
+  return [{ id: "central", label: "Central do Marketing" }, { id: "agenda", label: "Agenda" }, { id: "request", label: "Novo pedido" }, { id: "updates", label: "Atualizações" }, { id: "access", label: "Equipes e acessos" }, { id: "deleted", label: "Excluídos" }];
 }
 
 function defaultTab(role: MarketingRole): MarketingTab {

@@ -75,6 +75,25 @@ export type MarketingRequest = {
   updatedAt: string;
 };
 
+export type MarketingRequestEvent = {
+  id: string;
+  eventType: string;
+  fromStatus?: MarketingRequestStatus | null;
+  toStatus?: MarketingRequestStatus | null;
+  actorUserId?: string | null;
+  actorName?: string | null;
+  details: Record<string, unknown>;
+  createdAt: string;
+};
+
+export type MarketingDeletedRequest = MarketingRequest & {
+  deletedAt: string;
+  deletedByUserId: string;
+  deletedByName: string;
+  deletionReason: string;
+  events: MarketingRequestEvent[];
+};
+
 export type MarketingAccess = {
   managedUserId: string;
   userName: string;
@@ -165,6 +184,7 @@ export type MarketingDashboard = {
   notifications: MarketingNotification[];
   queueOverrideRequests: MarketingQueueOverrideRequest[];
   managerReviews: MarketingManagerReview[];
+  deletedRequests: MarketingDeletedRequest[];
   occupiedCaptureSlots: MarketingOccupiedCaptureSlot[];
   scheduleConfig: MarketingScheduleConfig;
 };
@@ -262,6 +282,33 @@ export async function updateMarketingRequest(
   });
 }
 
+export async function adminUpdateMarketingRequest(
+  sessionToken: string,
+  requestId: string,
+  payload: Record<string, unknown>,
+) {
+  return rpc<Record<string, { from: unknown; to: unknown }>>("marketing_v2_admin_update_request", {
+    p_session_token: sessionToken,
+    p_request_id: requestId,
+    p_payload: payload,
+  });
+}
+
+export async function adminDeleteMarketingRequest(sessionToken: string, requestId: string, reason: string) {
+  await rpc<unknown>("marketing_v2_admin_delete_request", {
+    p_session_token: sessionToken,
+    p_request_id: requestId,
+    p_reason: reason,
+  });
+}
+
+export async function adminRestoreMarketingRequest(sessionToken: string, requestId: string) {
+  await rpc<unknown>("marketing_v2_admin_restore_request", {
+    p_session_token: sessionToken,
+    p_request_id: requestId,
+  });
+}
+
 export async function requestMarketingQueueOverride(sessionToken: string, requestId: string, reason: string) {
   return rpc<string>("marketing_v2_request_queue_override", {
     p_session_token: sessionToken,
@@ -346,10 +393,20 @@ export function getMarketingErrorMessage(error: unknown) {
   if (normalized.includes("MARKETING_EXCLUSIVITY_REQUIRED")) return "Informe se o imóvel é exclusividade.";
   if (normalized.includes("MARKETING_CONTENT_REQUIRED")) return "Selecione pelo menos um tipo de conteúdo.";
   if (normalized.includes("MARKETING_URGENCY_REASON_REQUIRED")) return "Explique o motivo do pedido de urgência.";
-  if (normalized.includes("MARKETING_ADMIN_REQUIRED")) return "Somente o administrador do Marketing pode alterar acessos.";
+  if (normalized.includes("MARKETING_ADMIN_REQUIRED")) return "Somente o administrador do Marketing pode realizar esta ação.";
   if (normalized.includes("MARKETING_TEAM_REQUIRED")) return "Escolha a equipe deste gerente.";
   if (normalized.includes("MARKETING_USER_NOT_FOUND")) return "O usuário do HUB não foi encontrado ou está inativo.";
   if (normalized.includes("MARKETING_REQUEST_NOT_FOUND")) return "Este pedido não foi encontrado.";
+  if (normalized.includes("MARKETING_REQUEST_DELETED")) return "Este pedido foi excluído da operação e não pode mais ser alterado.";
+  if (normalized.includes("MARKETING_ADMIN_UPDATE_NO_CHANGES")) return "Nenhum campo do pedido foi alterado.";
+  if (normalized.includes("MARKETING_ADMIN_FIELD_DENIED")) return "A edição tentou alterar um campo interno do Marketing.";
+  if (normalized.includes("MARKETING_ADMIN_KIND_CONFIRMED_CAPTURE_DENIED")) return "Retire a captação confirmada no controle operacional antes de mudar para somente edição.";
+  if (normalized.includes("MARKETING_DELETION_REASON_REQUIRED")) return "Informe o motivo da exclusão com pelo menos 5 caracteres.";
+  if (normalized.includes("MARKETING_REQUEST_ALREADY_DELETED")) return "Este pedido já está na área de excluídos.";
+  if (normalized.includes("MARKETING_REQUEST_NOT_DELETED")) return "Este pedido não está excluído.";
+  if (normalized.includes("MARKETING_RESTORE_CAPTURE_CONFLICT")) return "Este pedido possui uma captação confirmada que agora conflita com outro horário. Ajuste a agenda antes de restaurar.";
+  if (normalized.includes("MARKETING_RESTORE_TEAM_INACTIVE")) return "A equipe deste pedido está inativa. Reative a equipe antes de restaurar.";
+  if (normalized.includes("MARKETING_RESTORE_KIND_INVALID") || normalized.includes("MARKETING_RESTORE_DATA_INVALID")) return "Os dados deste pedido não atendem mais às regras atuais e impedem a restauração.";
   if (normalized.includes("MARKETING_QUEUE_ORDER_BLOCKED")) return "Existe um pedido anterior aguardando atendimento. A fila deve ser seguida na ordem de entrada.";
   if (normalized.includes("MARKETING_CAPTURE_CONFLICT")) return "Este horário já possui outra captação agendada.";
   if (normalized.includes("MARKETING_CAPTURE_DURATION_REQUIRED")) return "Escolha a data, o horário e a duração da captação.";
