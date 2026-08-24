@@ -398,10 +398,12 @@ function MarketingScreen(props: {
 
       {props.selected && (
         <RequestDetail
+          key={props.selected.id}
           sessionToken={props.sessionToken}
           dashboard={props.dashboard}
           request={props.selected}
           role={role}
+          onSelect={props.onSelect}
           onClose={() => props.onSelect(null)}
           onChanged={async () => { await props.onRefresh(); }}
           onError={props.onError}
@@ -447,7 +449,7 @@ function CentralView(props: {
         <Metric label="Bloqueados" value={metrics.blocked} />
         <Metric label="Urgências para decidir" value={metrics.urgency} danger={metrics.urgency > 0} />
       </section>
-      <section className="marketing-section-head"><div><h2>Fila de produção</h2><p>Ordem de entrada. Urgência só sobe quando aprovada pelo Tezzei.</p></div></section>
+      <section className="marketing-section-head"><div><h2>Fila de produção</h2><p>Ordem de entrada. A urgência só altera a posição após análise interna.</p></div></section>
       <section className="marketing-kanban">
         {statusOrder.map((status) => {
           const requests = active.filter((request) => request.status === status);
@@ -526,13 +528,18 @@ function QueueOverridePanel(props: {
 function AgendaView({ dashboard, onSelect }: { dashboard: MarketingDashboard; onSelect: (request: MarketingRequest) => void }) {
   const scheduled = dashboard.requests
     .filter((request) => request.requestKind === "capture_edit" && request.status !== "cancelado" && (request.confirmedCaptureAt || request.preferredCaptureAt))
-    .sort((a, b) => new Date(a.confirmedCaptureAt || a.preferredCaptureAt || 0).getTime() - new Date(b.confirmedCaptureAt || b.preferredCaptureAt || 0).getTime());
+    .sort((a, b) => new Date(a.confirmedCaptureAt || a.preferredCaptureAt || 0).getTime() - new Date(b.confirmedCaptureAt || b.preferredCaptureAt || 0).getTime())
+    .filter((request, index, requests) => !request.captureGroupId
+      || requests.findIndex((candidate) => candidate.captureGroupId === request.captureGroupId) === index);
   return (
     <section className="marketing-agenda-view">
       <div className="marketing-section-head"><div><h2>Agenda de captação</h2><p>Data solicitada pelo gerente e confirmação do Marketing ficam separadas.</p></div></div>
       {scheduled.length === 0 ? <div className="marketing-empty"><h3>Nenhuma captação agendada.</h3><p>Os novos pedidos aparecem aqui assim que tiverem data.</p></div> : (
         <div className="marketing-agenda-list">
           {scheduled.map((request) => {
+            const groupMembers = request.captureGroupId
+              ? dashboard.requests.filter((candidate) => candidate.captureGroupId === request.captureGroupId)
+              : [request];
             const date = request.confirmedCaptureAt || request.preferredCaptureAt!;
             const duration = request.confirmedCaptureAt
               ? request.confirmedCaptureDurationMinutes
@@ -544,6 +551,7 @@ function AgendaView({ dashboard, onSelect }: { dashboard: MarketingDashboard; on
                   <strong>{request.brokerName} · {propertyLabel(request)}</strong>
                   <span>{request.managerName} · {request.captureLocation || "Local não informado"}</span>
                   <small>{request.assignedMarketingName || "Responsável não definido"} · {formatDuration(duration)}</small>
+                  {groupMembers.length > 1 && <small className="marketing-group-summary">Saída agrupada · {groupMembers.length} imóveis · {groupMembers.map((member) => `#${member.requestNumber}`).join(", ")}</small>}
                 </div>
                 <em className={request.confirmedCaptureAt ? "confirmed" : "pending"}>{request.confirmedCaptureAt ? "CAPTAÇÃO CONFIRMADA" : "SOLICITAÇÃO DE DATA"}</em>
               </button>
@@ -744,7 +752,7 @@ function ManagerReviewModal(props: {
           {form.requestKind === "capture_edit" && <>
             <label className="span-2">Local solicitado<input value={form.captureLocation} onChange={(event) => setForm({ ...form, captureLocation: event.target.value })} /></label>
             <fieldset className="span-2 marketing-capture-choice"><legend>Data solicitada</legend><button type="button" className={form.capturePreference === "choose" ? "selected" : ""} onClick={() => { setForm({ ...form, capturePreference: "choose" }); setPickerOpen(true); }}>ESCOLHER DATA E HORÁRIO</button><button type="button" className={form.capturePreference === "marketing" ? "selected" : ""} onClick={() => { setForm({ ...form, capturePreference: "marketing", preferredCaptureAt: "", preferredCaptureDurationMinutes: null }); setPickerOpen(false); }}>DEIXAR O MARKETING DEFINIR</button>{form.capturePreference === "choose" && form.preferredCaptureAt && form.preferredCaptureDurationMinutes && !pickerOpen && <div className="marketing-capture-summary"><strong>{formatCaptureRange(form.preferredCaptureAt, form.preferredCaptureDurationMinutes, props.dashboard.scheduleConfig.timezone)}</strong><button type="button" onClick={() => setPickerOpen(true)}>ALTERAR</button></div>}</fieldset>
-            {form.capturePreference === "choose" && pickerOpen && <div className="span-2"><CaptureSchedulePicker config={props.dashboard.scheduleConfig} occupiedSlots={props.dashboard.occupiedCaptureSlots} excludedRequestId={request.id} value={form.preferredCaptureAt && form.preferredCaptureDurationMinutes ? { startAt: form.preferredCaptureAt, durationMinutes: form.preferredCaptureDurationMinutes } : null} onConfirm={(selection) => { setForm({ ...form, preferredCaptureAt: selection.startAt, preferredCaptureDurationMinutes: selection.durationMinutes }); setPickerOpen(false); }} onCancel={() => setPickerOpen(false)} /></div>}
+            {form.capturePreference === "choose" && pickerOpen && <div className="span-2"><CaptureSchedulePicker config={props.dashboard.scheduleConfig} occupiedSlots={props.dashboard.occupiedCaptureSlots} excludedRequestId={request.id} excludedCaptureGroupId={request.captureGroupId} value={form.preferredCaptureAt && form.preferredCaptureDurationMinutes ? { startAt: form.preferredCaptureAt, durationMinutes: form.preferredCaptureDurationMinutes } : null} onConfirm={(selection) => { setForm({ ...form, preferredCaptureAt: selection.startAt, preferredCaptureDurationMinutes: selection.durationMinutes }); setPickerOpen(false); }} onCancel={() => setPickerOpen(false)} /></div>}
           </>}
           <label className="span-2">Link de arquivos<input type="url" value={form.assetLink} onChange={(event) => setForm({ ...form, assetLink: event.target.value })} /></label>
           <label className="marketing-check span-2"><input type="checkbox" checked={form.paidTraffic} onChange={(event) => setForm({ ...form, paidTraffic: event.target.checked })} /> Tráfego pago</label>
@@ -894,7 +902,7 @@ function RequestView(props: { sessionToken: string; dashboard: MarketingDashboar
         <label className="span-2">Link dos arquivos, se já existirem<input type="url" value={form.assetLink} onChange={(event) => setForm({ ...form, assetLink: event.target.value })} placeholder="Google Drive, OneDrive..." /></label>
         <label className="marketing-check span-2"><input type="checkbox" checked={form.paidTraffic} onChange={(event) => setForm({ ...form, paidTraffic: event.target.checked })} /> O conteúdo será usado para tráfego pago</label>
         <label className="marketing-check span-2 urgent"><input type="checkbox" checked={form.urgencyRequested} onChange={(event) => setForm({ ...form, urgencyRequested: event.target.checked })} /> Solicitar urgência <small>Não muda a fila automaticamente.</small></label>
-        {form.urgencyRequested && <label className="span-2">Motivo da urgência<textarea value={form.urgencyReason} onChange={(event) => setForm({ ...form, urgencyReason: event.target.value })} placeholder="Explique por que este trabalho precisa furar a fila." /></label>}
+        {form.urgencyRequested && <label className="span-2">Motivo da urgência<textarea value={form.urgencyReason} onChange={(event) => setForm({ ...form, urgencyReason: event.target.value })} placeholder="Explique por que este trabalho precisa de análise prioritária." /></label>}
         <label className="span-2">Observações<textarea value={form.requesterNotes} onChange={(event) => setForm({ ...form, requesterNotes: event.target.value })} placeholder="Somente o que o Marketing precisa saber." /></label>
         <div className="marketing-form-footer span-2"><span>A data de entrega será definida pelo Marketing. Nesta primeira fase ainda não há SLA automático.</span><button type="submit" disabled={busy}>{busy ? "Enviando..." : "ENVIAR PEDIDO"}</button></div>
       </form>
@@ -974,7 +982,7 @@ function AdminRequestEditForm(props: {
         {form.requestKind === "capture_edit" && <>
           <label className="span-2">Local da captação<input value={form.captureLocation} onChange={(event) => setForm({ ...form, captureLocation: event.target.value })} maxLength={300} /></label>
           <fieldset className="span-2 marketing-capture-choice"><legend>Data solicitada</legend><button type="button" className={form.capturePreference === "choose" ? "selected" : ""} onClick={() => { setForm({ ...form, capturePreference: "choose" }); setPickerOpen(true); }}>ESCOLHER DATA E HORÁRIO</button><button type="button" className={form.capturePreference === "marketing" ? "selected" : ""} onClick={() => { setForm({ ...form, capturePreference: "marketing", preferredCaptureAt: "", preferredCaptureDurationMinutes: null }); setPickerOpen(false); }}>DEIXAR O MARKETING DEFINIR</button>{form.capturePreference === "choose" && form.preferredCaptureAt && form.preferredCaptureDurationMinutes && !pickerOpen && <div className="marketing-capture-summary"><strong>{formatCaptureRange(form.preferredCaptureAt, form.preferredCaptureDurationMinutes, props.dashboard.scheduleConfig.timezone)}</strong><button type="button" onClick={() => setPickerOpen(true)}>ALTERAR</button></div>}</fieldset>
-          {form.capturePreference === "choose" && pickerOpen && <div className="span-2"><CaptureSchedulePicker config={props.dashboard.scheduleConfig} occupiedSlots={props.dashboard.occupiedCaptureSlots} excludedRequestId={props.request.id} value={form.preferredCaptureAt && form.preferredCaptureDurationMinutes ? { startAt: form.preferredCaptureAt, durationMinutes: form.preferredCaptureDurationMinutes } : null} onConfirm={(selection) => { setForm({ ...form, preferredCaptureAt: selection.startAt, preferredCaptureDurationMinutes: selection.durationMinutes }); setPickerOpen(false); }} onCancel={() => setPickerOpen(false)} /></div>}
+          {form.capturePreference === "choose" && pickerOpen && <div className="span-2"><CaptureSchedulePicker config={props.dashboard.scheduleConfig} occupiedSlots={props.dashboard.occupiedCaptureSlots} excludedRequestId={props.request.id} excludedCaptureGroupId={props.request.captureGroupId} value={form.preferredCaptureAt && form.preferredCaptureDurationMinutes ? { startAt: form.preferredCaptureAt, durationMinutes: form.preferredCaptureDurationMinutes } : null} onConfirm={(selection) => { setForm({ ...form, preferredCaptureAt: selection.startAt, preferredCaptureDurationMinutes: selection.durationMinutes }); setPickerOpen(false); }} onCancel={() => setPickerOpen(false)} /></div>}
         </>}
         <label className="span-2">Link de arquivos<input type="url" value={form.assetLink} onChange={(event) => setForm({ ...form, assetLink: event.target.value })} maxLength={2000} /></label>
         <label className="marketing-check span-2"><input type="checkbox" checked={form.paidTraffic} onChange={(event) => setForm({ ...form, paidTraffic: event.target.checked })} /> Tráfego pago</label>
@@ -1154,7 +1162,7 @@ function DeletedRequestsView(props: {
   );
 }
 
-function RequestDetail(props: { sessionToken: string; dashboard: MarketingDashboard; request: MarketingRequest; role: MarketingRole; onClose: () => void; onChanged: () => Promise<void>; onError: (message: string) => void; onNotice: (message: string) => void }) {
+function RequestDetail(props: { sessionToken: string; dashboard: MarketingDashboard; request: MarketingRequest; role: MarketingRole; onSelect: (request: MarketingRequest) => void; onClose: () => void; onChanged: () => Promise<void>; onError: (message: string) => void; onNotice: (message: string) => void }) {
   const [status, setStatus] = useState<MarketingRequestStatus>(props.request.status);
   const [confirmed, setConfirmed] = useState<MarketingCaptureSelection | null>(() => props.request.confirmedCaptureAt && props.request.confirmedCaptureDurationMinutes
     ? { startAt: props.request.confirmedCaptureAt, durationMinutes: props.request.confirmedCaptureDurationMinutes }
@@ -1199,7 +1207,7 @@ function RequestDetail(props: { sessionToken: string; dashboard: MarketingDashbo
     props.onError("");
     try {
       await requestMarketingQueueOverride(props.sessionToken, props.request.id, overrideReason);
-      props.onNotice("Solicitação de alteração da fila enviada ao Tezzei.");
+      props.onNotice("Solicitação de alteração da fila enviada para análise interna.");
       setQueueBlocked(false);
       setOverrideFormOpen(false);
       setOverrideReason("");
@@ -1266,8 +1274,20 @@ function RequestDetail(props: { sessionToken: string; dashboard: MarketingDashbo
           {props.request.assetLink && <div className="marketing-detail"><span>Arquivos</span><button className="marketing-link-button" type="button" onClick={() => safeOpen(props.request.assetLink!)}>Abrir link</button></div>}
           <Detail label="Tráfego pago" value={props.request.paidTraffic ? "Sim" : "Não"} />
         </div>
+        {props.request.captureGroupId && (
+          <section className="marketing-capture-group-detail">
+            <div><strong>Este pedido faz parte de uma saída agrupada</strong><span>Total de imóveis nesta saída: {props.request.captureGroupSize || 1}</span></div>
+            <nav aria-label="Pedidos vinculados desta saída">
+              {(props.request.captureGroupRequestIds || []).map((requestId, index) => {
+                const linked = props.dashboard.requests.find((request) => request.id === requestId);
+                if (!linked) return null;
+                return <button type="button" className={linked.id === props.request.id ? "active" : ""} key={linked.id} onClick={() => props.onSelect(linked)}>#{props.request.captureGroupRequestNumbers?.[index] || linked.requestNumber}</button>;
+              })}
+            </nav>
+          </section>
+        )}
         {props.request.requesterNotes && <div className="marketing-note-box"><strong>Observação do pedido</strong><p>{props.request.requesterNotes}</p></div>}
-        {props.request.urgencyRequested && <div className={`marketing-urgency-box ${props.request.urgencyApproved ? "approved" : ""}`}><strong>Urgência solicitada</strong><p>{props.request.urgencyReason}</p><small>{props.request.urgencyDecidedAt ? `${props.request.urgencyApproved ? "Aprovada" : "Mantida na fila normal"} por ${props.request.urgencyDecidedByName || "Admin"}` : "Aguardando decisão do Tezzei"}</small>{props.role === "admin" && !props.request.urgencyDecidedAt && <div><button type="button" disabled={busy} onClick={() => void run("approve_urgency")}>APROVAR PRIORIDADE</button><button type="button" disabled={busy} onClick={() => void run("reject_urgency")}>MANTER FILA</button></div>}</div>}
+        {props.request.urgencyRequested && <div className={`marketing-urgency-box ${props.request.urgencyApproved ? "approved" : ""}`}><strong>Urgência solicitada</strong><p>{props.request.urgencyReason}</p><small>{props.request.urgencyDecidedAt ? `${props.request.urgencyApproved ? "Aprovada" : "Mantida na fila normal"} por ${props.request.urgencyDecidedByName || "Admin"}` : "Aguardando análise interna"}</small>{props.role === "admin" && !props.request.urgencyDecidedAt && <div><button type="button" disabled={busy} onClick={() => void run("approve_urgency")}>APROVAR PRIORIDADE</button><button type="button" disabled={busy} onClick={() => void run("reject_urgency")}>MANTER FILA</button></div>}</div>}
         {props.role === "admin" && <div className="marketing-admin-actions"><button type="button" className="secondary" onClick={() => setAdminEditOpen((open) => !open)}>{adminEditOpen ? "FECHAR EDIÇÃO" : "EDITAR PEDIDO"}</button><button type="button" className="danger" onClick={() => setDeleteOpen(true)}>EXCLUIR PEDIDO</button></div>}
         {props.role === "admin" && adminEditOpen && <AdminRequestEditForm key={props.request.updatedAt} sessionToken={props.sessionToken} dashboard={props.dashboard} request={props.request} onCancel={() => setAdminEditOpen(false)} onSaved={props.onChanged} onError={props.onError} onNotice={props.onNotice} />}
         {props.request.managerReviewStatus && props.request.managerReviewStatus !== "pending" && <div className="marketing-review-answered"><strong>AUDITORIA RESPONDIDA</strong><span>{managerReviewStatusLabel(props.request.managerReviewStatus)}</span></div>}
@@ -1294,6 +1314,7 @@ function RequestDetail(props: { sessionToken: string; dashboard: MarketingDashbo
                   config={props.dashboard.scheduleConfig}
                   occupiedSlots={props.dashboard.occupiedCaptureSlots}
                   excludedRequestId={props.request.id}
+                  excludedCaptureGroupId={props.request.captureGroupId}
                   value={confirmed}
                   onCancel={() => setCapturePickerOpen(false)}
                   onConfirm={(selection) => { setConfirmed(selection); setCapturePickerOpen(false); }}
@@ -1307,7 +1328,7 @@ function RequestDetail(props: { sessionToken: string; dashboard: MarketingDashbo
         {canManage && pendingManagerReview && <div className="marketing-review-pending"><strong>AGUARDANDO CONFERÊNCIA DO GERENTE</strong><p>{pendingManagerReview.details}</p><small>Enviado por {pendingManagerReview.openedByName}.</small></div>}
         {canManage && !pendingManagerReview && !["pronto", "cancelado"].includes(props.request.status) && !reviewFormOpen && <button type="button" className="marketing-open-review" onClick={() => setReviewFormOpen(true)}>SOLICITAR AUDITORIA DO GERENTE</button>}
         {canManage && !pendingManagerReview && reviewFormOpen && <form className="marketing-open-review-form" onSubmit={openManagerReview}><h3>Motivo da auditoria</h3><label>Tipo de divergência<select value={reviewReason} onChange={(event) => setReviewReason(event.target.value as MarketingManagerReviewReason)}>{MARKETING_REVIEW_REASONS.map((reason) => <option key={reason.value} value={reason.value}>{reason.label}</option>)}</select></label><label>Descreva o problema<textarea value={reviewDetails} onChange={(event) => setReviewDetails(event.target.value)} minLength={5} maxLength={2000} required /></label><div><button type="button" className="secondary" onClick={() => setReviewFormOpen(false)}>CANCELAR</button><button type="submit" disabled={busy}>{busy ? "Enviando..." : "ENVIAR AO GERENTE"}</button></div></form>}
-        {pendingOverride && <div className="marketing-queue-blocked"><strong>Autorização de fila pendente</strong><p>O pedido permanece bloqueado até a decisão do Tezzei.</p></div>}
+        {pendingOverride && <div className="marketing-queue-blocked"><strong>Autorização de fila pendente</strong><p>O pedido permanece bloqueado até a análise interna.</p></div>}
         {queueBlocked && !pendingOverride && (
           <section className="marketing-queue-blocked">
             <strong>Existe um pedido anterior aguardando atendimento.</strong>
@@ -1316,10 +1337,10 @@ function RequestDetail(props: { sessionToken: string; dashboard: MarketingDashbo
             {props.role === "marketing" && overrideFormOpen && (
               <form onSubmit={requestOverride}>
                 <label>Motivo para alterar a ordem<textarea value={overrideReason} onChange={(event) => setOverrideReason(event.target.value)} /></label>
-                <button type="submit" disabled={busy}>ENVIAR AO TEZZEI</button>
+                <button type="submit" disabled={busy}>ENVIAR PARA ANÁLISE</button>
               </form>
             )}
-            {props.role === "admin" && <small>A equipe de Marketing deve justificar a alteração antes da aprovação do Tezzei.</small>}
+            {props.role === "admin" && <small>A equipe de Marketing deve justificar a alteração antes da aprovação administrativa.</small>}
           </section>
         )}
         {!canManage && !["pronto", "cancelado"].includes(props.request.status) && <button type="button" className="marketing-cancel-request" disabled={busy} onClick={() => void run("cancel")}>Cancelar pedido</button>}
@@ -1338,7 +1359,7 @@ function RequestCard({ request, onClick, showCaptureStatus = false, timezone }: 
   return (
     <button type="button" className={`marketing-request-card ${request.urgencyApproved ? "priority" : ""}`} onClick={onClick}>
       <div><small>#{request.requestNumber} · {request.managerName}</small>{request.urgencyApproved && <em>PRIORIDADE</em>}</div>
-      <div className="marketing-card-tags">{request.isExclusive === true && <em className="exclusive">EXCLUSIVO</em>}{request.requestSource === "public" && <em className="public">LINK PÚBLICO</em>}{request.managerReviewStatus === "pending" && <em className="review-pending">AGUARDANDO GERENTE</em>}{request.managerReviewStatus && request.managerReviewStatus !== "pending" && <em className="review-answered">AUDITORIA RESPONDIDA</em>}</div>
+      <div className="marketing-card-tags">{request.isExclusive === true && <em className="exclusive">EXCLUSIVO</em>}{request.requestSource === "public" && <em className="public">LINK PÚBLICO</em>}{request.captureGroupId && <em className="capture-group">SAÍDA AGRUPADA · {request.captureGroupSize || 1}</em>}{request.managerReviewStatus === "pending" && <em className="review-pending">AGUARDANDO GERENTE</em>}{request.managerReviewStatus && request.managerReviewStatus !== "pending" && <em className="review-answered">AUDITORIA RESPONDIDA</em>}</div>
       <strong>{request.brokerName}</strong>
       <span>{propertyLabel(request)}</span>
       <small className="marketing-card-exclusive">Exclusividade: {exclusiveLabel(request.isExclusive)}</small>
@@ -1400,7 +1421,7 @@ function overrideStatusLabel(status: MarketingQueueOverrideRequest["status"], co
   if (consumedAt) return "UTILIZADA";
   if (status === "approved") return "APROVADA";
   if (status === "rejected") return "ORDEM MANTIDA";
-  return "AGUARDANDO TEZZEI";
+  return "AGUARDANDO ANÁLISE";
 }
 
 function formatTime(value: string) {

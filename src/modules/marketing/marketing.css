@@ -1145,6 +1145,11 @@
   color: #245f45;
 }
 
+.marketing-card-tags .capture-group {
+  background: #ede9fb;
+  color: #4e38a5;
+}
+
 .marketing-card-exclusive {
   color: #50625a;
   display: block;
@@ -1449,7 +1454,7 @@
 .marketing-capture-summary button,
 .marketing-capture-actions button,
 .marketing-schedule-picker footer button,
-.marketing-time-grid button,
+.marketing-period-grid button,
 .marketing-date-grid button,
 .marketing-override-list button,
 .marketing-notification-list button,
@@ -1467,7 +1472,7 @@
 
 .marketing-capture-choice > button.selected,
 .marketing-duration-options button.selected,
-.marketing-time-grid button.selected,
+.marketing-period-grid button.selected,
 .marketing-date-grid button.selected {
   border-color: #4e38a5;
   box-shadow: 0 0 0 2px rgba(78, 56, 165, .14);
@@ -1565,7 +1570,7 @@
 }
 
 .marketing-date-grid button.full,
-.marketing-time-grid button.occupied {
+.marketing-period-grid button.occupied {
   border-color: #e5aaa6;
   background: #fff0ef;
   color: #9d2c24;
@@ -1577,19 +1582,42 @@
   text-transform: capitalize;
 }
 
-.marketing-time-grid {
+.marketing-period-grid {
   display: grid;
-  grid-template-columns: repeat(8, minmax(70px, 1fr));
-  gap: 7px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
 }
 
-.marketing-time-grid button.available {
+.marketing-period-grid button {
+  display: grid;
+  gap: 3px;
+  min-height: 58px;
+  text-align: left;
+}
+
+.marketing-period-grid button span {
+  color: inherit;
+  font-size: .82rem;
+  font-weight: 650;
+}
+
+.marketing-period-grid button.available {
   border-color: #a9d3b6;
   color: #205d35;
 }
 
 .marketing-schedule-picker footer {
   justify-content: flex-end;
+  margin-top: 0;
+  padding: 12px 0 0;
+  background: transparent;
+  border-top: 1px solid #e4dfe9;
+  text-align: right;
+}
+
+.marketing-schedule-picker footer::before {
+  content: none;
+  display: none;
 }
 
 .marketing-schedule-picker footer button:not(.secondary),
@@ -1607,6 +1635,12 @@
 .marketing-override-list button:disabled {
   opacity: .55;
   cursor: not-allowed;
+}
+
+@media (max-width: 520px) {
+  .marketing-period-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .marketing-override-panel {
@@ -1683,6 +1717,67 @@
   display: block;
   margin-top: 4px;
   color: #6f6678;
+}
+
+.marketing-agenda-row .marketing-group-summary {
+  color: #4e38a5;
+  font-weight: 800;
+}
+
+.marketing-capture-group-detail {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin: 14px 0;
+  padding: 14px;
+  border-left: 4px solid #4e38a5;
+  background: #f4f1fc;
+}
+
+.marketing-capture-group-detail > div {
+  display: grid;
+  gap: 4px;
+}
+
+.marketing-capture-group-detail span {
+  color: #625b69;
+  font-size: .84rem;
+}
+
+.marketing-capture-group-detail nav {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.marketing-capture-group-detail button {
+  min-width: 44px;
+  min-height: 36px;
+  border: 1px solid #b9ace2;
+  border-radius: 6px;
+  background: #fff;
+  color: #4e38a5;
+  font: inherit;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.marketing-capture-group-detail button.active {
+  background: #4e38a5;
+  color: #fff;
+}
+
+@media (max-width: 620px) {
+  .marketing-capture-group-detail {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .marketing-capture-group-detail nav {
+    justify-content: flex-start;
+  }
 }
 
 .marketing-card-capture {
@@ -1786,9 +1881,6 @@
     grid-template-columns: repeat(5, minmax(74px, 1fr));
   }
 
-  .marketing-time-grid {
-    grid-template-columns: repeat(5, minmax(64px, 1fr));
-  }
 }
 
 @media (max-width: 640px) {
@@ -1800,10 +1892,6 @@
 
   .marketing-date-grid {
     grid-template-columns: repeat(4, minmax(70px, 1fr));
-  }
-
-  .marketing-time-grid {
-    grid-template-columns: repeat(4, minmax(62px, 1fr));
   }
 
   .marketing-capture-summary,

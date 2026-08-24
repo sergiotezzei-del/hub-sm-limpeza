@@ -13,28 +13,39 @@
 .marketing-public-brand {
   display: flex;
   align-items: center;
-  gap: 14px;
-  margin-bottom: 18px;
+  gap: 18px;
+  margin-bottom: 20px;
+  min-height: 88px;
+  padding: 8px 2px 14px;
+  border-bottom: 1px solid #d9dfe2;
 }
 
 .marketing-public-logo {
-  width: 54px;
-  height: 54px;
+  flex: 0 0 88px;
+  width: 88px;
 }
 
 .marketing-public-brand div {
   display: grid;
-  gap: 3px;
+  gap: 4px;
+  min-width: 0;
 }
 
 .marketing-public-brand strong {
-  font-size: 1.05rem;
+  color: #172126;
+  font-size: 1.15rem;
 }
 
 .marketing-public-brand span {
   color: #59666d;
   font-size: .78rem;
   font-weight: 800;
+}
+
+.marketing-public-brand small {
+  color: #737f84;
+  font-size: .72rem;
+  font-weight: 650;
 }
 
 .marketing-public-card,
@@ -156,6 +167,16 @@
   padding: 12px 14px;
 }
 
+.marketing-public-property-rule {
+  grid-column: 1 / -1;
+  border-left: 3px solid #236b57;
+  color: #4f5c62;
+  font-size: .82rem;
+  font-weight: 700;
+  margin: 0;
+  padding: 8px 11px;
+}
+
 .marketing-public-capture-choice > button {
   background: #edf0f1;
   color: #344248;
@@ -272,6 +293,19 @@
   font-size: 2rem;
 }
 
+.marketing-public-add-property {
+  border: 0;
+  border-radius: 6px;
+  background: #236b57;
+  color: #fff;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 900;
+  margin-top: 8px;
+  min-height: 48px;
+  padding: 12px 16px;
+}
+
 .marketing-public-footer {
   color: #6e797e;
   font-size: .75rem;
@@ -305,5 +339,25 @@
   .marketing-public-card form > label:has(textarea),
   .marketing-public-card form > label.marketing-public-check {
     grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 480px) {
+  .marketing-public-brand {
+    align-items: center;
+    gap: 12px;
+  }
+
+  .marketing-public-logo {
+    flex-basis: 72px;
+    width: 72px;
+  }
+
+  .marketing-public-brand strong {
+    font-size: 1rem;
+  }
+
+  .marketing-public-brand span {
+    line-height: 1.35;
   }
 }

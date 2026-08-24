@@ -1,5 +1,5 @@
 import { getSupabaseAccessToken, SUPABASE_KEY_HEADER, SUPABASE_PUBLIC_KEY, SUPABASE_URL, supabaseConfigured } from "../security/services/supabaseClient";
-import type { MarketingOccupiedCaptureSlot, MarketingScheduleConfig } from "./marketingConfig";
+import { DEFAULT_MARKETING_CAPTURE_WINDOWS, type MarketingOccupiedCaptureSlot, type MarketingScheduleConfig } from "./marketingConfig";
 
 export type MarketingRole = "admin" | "marketing" | "sales_manager";
 export type MarketingRequestStatus =
@@ -68,6 +68,10 @@ export type MarketingRequest = {
   createdByName: string;
   requestSource: "hub" | "public";
   publicRequesterName?: string | null;
+  captureGroupId?: string | null;
+  captureGroupSize?: number;
+  captureGroupRequestIds?: string[];
+  captureGroupRequestNumbers?: number[];
   managerReviewStatus?: MarketingManagerReviewStatus | null;
   managerReviewUpdatedAt?: string | null;
   completedAt?: string | null;
@@ -189,6 +193,16 @@ export type MarketingDashboard = {
   scheduleConfig: MarketingScheduleConfig;
 };
 
+type MarketingOperationSchedule = {
+  scheduleConfig: MarketingScheduleConfig;
+  occupiedCaptureSlots: MarketingOccupiedCaptureSlot[];
+  captureGroups: Array<{
+    captureGroupId: string;
+    requestIds: string[];
+    requestNumbers: Array<number | string>;
+  }>;
+};
+
 export type MarketingSession = {
   sessionToken: string;
   userId: string;
@@ -244,7 +258,42 @@ export async function endMarketingSession(sessionToken: string) {
 }
 
 export async function getMarketingDashboard(sessionToken: string): Promise<MarketingDashboard> {
-  return rpc<MarketingDashboard>("marketing_v2_get_dashboard_review", { p_session_token: sessionToken });
+  const dashboard = await rpc<MarketingDashboard>("marketing_v2_get_dashboard_review", { p_session_token: sessionToken });
+  let operation: MarketingOperationSchedule;
+  try {
+    operation = await rpc<MarketingOperationSchedule>("marketing_v2_get_operation_schedule", { p_session_token: sessionToken });
+  } catch (error) {
+    if (!(error instanceof MarketingRemoteError) || error.status !== 404) throw error;
+    return {
+      ...dashboard,
+      scheduleConfig: {
+        ...dashboard.scheduleConfig,
+        captureWindows: DEFAULT_MARKETING_CAPTURE_WINDOWS.map((window) => ({ ...window })),
+      },
+    };
+  }
+  const groups = new Map(operation.captureGroups.map((group) => [group.captureGroupId, group]));
+  const groupsByRequest = new Map(
+    operation.captureGroups.flatMap((group) => group.requestIds.map((requestId) => [requestId, group] as const)),
+  );
+  const enrichRequest = (request: MarketingRequest): MarketingRequest => {
+    const group = request.captureGroupId ? groups.get(request.captureGroupId) : groupsByRequest.get(request.id);
+    if (!group) return request;
+    return {
+      ...request,
+      captureGroupId: group.captureGroupId,
+      captureGroupSize: group.requestIds.length,
+      captureGroupRequestIds: group.requestIds,
+      captureGroupRequestNumbers: group.requestNumbers.map(Number),
+    };
+  };
+  return {
+    ...dashboard,
+    scheduleConfig: operation.scheduleConfig,
+    occupiedCaptureSlots: operation.occupiedCaptureSlots,
+    requests: dashboard.requests.map(enrichRequest),
+    deletedRequests: dashboard.deletedRequests.map(enrichRequest) as MarketingDeletedRequest[],
+  };
 }
 
 export async function createMarketingRequest(sessionToken: string, draft: MarketingRequestDraft) {
@@ -274,12 +323,13 @@ export async function updateMarketingRequest(
   action: "save_management" | "approve_urgency" | "reject_urgency" | "cancel",
   payload: Record<string, unknown> = {},
 ) {
-  await rpc<unknown>("marketing_v2_update_request", {
-    p_session_token: sessionToken,
-    p_request_id: requestId,
-    p_action: action,
-    p_payload: payload,
-  });
+  const body = { p_session_token: sessionToken, p_request_id: requestId, p_action: action, p_payload: payload };
+  try {
+    await rpc<unknown>("marketing_v2_update_request_grouped", body);
+  } catch (error) {
+    if (!(error instanceof MarketingRemoteError) || error.status !== 404) throw error;
+    await rpc<unknown>("marketing_v2_update_request", body);
+  }
 }
 
 export async function adminUpdateMarketingRequest(
@@ -424,7 +474,7 @@ export function getMarketingErrorMessage(error: unknown) {
   if (normalized.includes("MARKETING_MANAGER_REVIEW_DECLINE_REASON_REQUIRED")) return "Informe o motivo para declinar o pedido.";
   if (normalized.includes("MARKETING_MANAGER_REVIEW_NO_CHANGES")) return "Altere pelo menos um dado operacional antes de salvar a correção.";
   if (normalized.includes("MARKETING_MANAGER_REVIEW_FIELD_DENIED")) return "A correção tentou alterar um campo interno do Marketing.";
-  if (normalized.includes("MARKETING_URGENCY_ALREADY_DECIDED")) return "A urgência já foi decidida pelo Tezzei e não pode ser alterada nesta conferência.";
+  if (normalized.includes("MARKETING_URGENCY_ALREADY_DECIDED")) return "A urgência já foi decidida internamente e não pode ser alterada nesta conferência.";
   if (normalized.includes("MARKETING_REVIEW_KIND_CONFIRMED_CAPTURE_DENIED")) return "O Marketing precisa retirar a captação confirmada antes de mudar este pedido para somente edição.";
   if (normalized.includes("MARKETING_MANAGER_REVIEW")) return "Não foi possível concluir a conferência deste pedido.";
   if (normalized.includes("MARKETING_UPDATE_DENIED") || normalized.includes("MARKETING_REQUEST_DENIED")) return "Você não tem permissão para alterar este pedido.";

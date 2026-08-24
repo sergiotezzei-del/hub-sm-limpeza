@@ -4,7 +4,7 @@ import {
   SUPABASE_URL,
   supabaseConfigured,
 } from "../security/services/supabaseClient";
-import type { MarketingOccupiedCaptureSlot, MarketingScheduleConfig } from "./marketingConfig";
+import { DEFAULT_MARKETING_CAPTURE_WINDOWS, type MarketingOccupiedCaptureSlot, type MarketingScheduleConfig } from "./marketingConfig";
 
 export type PublicMarketingTeam = {
   id: string;
@@ -41,18 +41,21 @@ export type PublicMarketingRequestDraft = {
   urgencyRequested: boolean;
   urgencyReason?: string;
   website?: string;
+  captureGroupId?: string | null;
 };
 
 export type PublicMarketingReceipt = {
   requestNumber: number;
   teamName: string;
   createdAt: string;
+  captureGroupId?: string | null;
 };
 
 type PublicReceiptRow = {
   request_number: number | string;
   team_name: string;
   created_at: string;
+  capture_group_id?: string | null;
 };
 
 const REQUEST_TIMEOUT_MS = 12000;
@@ -65,15 +68,25 @@ export class PublicMarketingRemoteError extends Error {
 }
 
 export async function loadPublicMarketingData() {
-  const [options, availability] = await Promise.all([
-    publicRpc<PublicMarketingOptions>("marketing_public_get_options", {}),
-    publicRpc<PublicMarketingAvailability>("marketing_public_get_availability", {}),
-  ]);
+  const optionsPromise = publicRpc<PublicMarketingOptions>("marketing_public_get_options", {});
+  const availabilityPromise = publicRpc<PublicMarketingAvailability>("marketing_public_get_availability_v22", {})
+    .catch(async (error) => {
+      if (!(error instanceof PublicMarketingRemoteError) || error.status !== 404) throw error;
+      const legacy = await publicRpc<PublicMarketingAvailability>("marketing_public_get_availability", {});
+      return {
+        ...legacy,
+        scheduleConfig: {
+          ...legacy.scheduleConfig,
+          captureWindows: DEFAULT_MARKETING_CAPTURE_WINDOWS.map((window) => ({ ...window })),
+        },
+      };
+    });
+  const [options, availability] = await Promise.all([optionsPromise, availabilityPromise]);
   return { options, availability };
 }
 
 export async function submitPublicMarketingRequest(draft: PublicMarketingRequestDraft) {
-  const rows = await publicRpc<PublicReceiptRow[]>("marketing_public_create_request", {
+  const body = {
     p_submission_id: draft.submissionId,
     p_requester_name: draft.requesterName,
     p_team_id: draft.teamId,
@@ -92,13 +105,23 @@ export async function submitPublicMarketingRequest(draft: PublicMarketingRequest
     p_urgency_requested: draft.urgencyRequested,
     p_urgency_reason: draft.urgencyRequested ? draft.urgencyReason || null : null,
     p_website: draft.website || null,
-  });
+    p_capture_group_id: draft.captureGroupId || null,
+  };
+  let rows: PublicReceiptRow[];
+  try {
+    rows = await publicRpc<PublicReceiptRow[]>("marketing_public_create_grouped_request", body);
+  } catch (error) {
+    if (draft.captureGroupId || !(error instanceof PublicMarketingRemoteError) || error.status !== 404) throw error;
+    const { p_capture_group_id: _captureGroupId, ...legacyBody } = body;
+    rows = await publicRpc<PublicReceiptRow[]>("marketing_public_create_request", legacyBody);
+  }
   const row = rows?.[0];
   if (!row) throw new PublicMarketingRemoteError(500, "Não foi possível confirmar o pedido enviado.");
   return {
     requestNumber: Number(row.request_number),
     teamName: row.team_name,
     createdAt: row.created_at,
+    captureGroupId: row.capture_group_id || null,
   } satisfies PublicMarketingReceipt;
 }
 
