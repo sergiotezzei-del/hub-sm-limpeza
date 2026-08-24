@@ -866,6 +866,260 @@
   }
 }
 
+.marketing-admin-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 16px 22px;
+  padding-top: 16px;
+  border-top: 1px solid #e5dfe9;
+}
+
+.marketing-admin-actions button,
+.marketing-deleted-actions button,
+.marketing-confirmation-modal button {
+  border: 0;
+  border-radius: 6px;
+  padding: 10px 13px;
+  background: #4e38a5;
+  color: #fff;
+  cursor: pointer;
+  font-weight: 900;
+}
+
+.marketing-admin-actions .secondary,
+.marketing-deleted-actions .secondary,
+.marketing-confirmation-modal .secondary {
+  background: #ebe7ef;
+  color: #4e3f57;
+}
+
+.marketing-admin-actions .danger,
+.marketing-confirmation-modal .danger {
+  background: #a12f27;
+  color: #fff;
+}
+
+.marketing-admin-edit-panel {
+  margin: 16px 22px 24px;
+  border: 1px solid #d8d1e1;
+  border-radius: 8px;
+  background: #faf9fb;
+}
+
+.marketing-admin-edit-panel .marketing-section-head {
+  margin: 0;
+  padding: 14px 16px 0;
+}
+
+.marketing-admin-edit-panel .marketing-section-head h3,
+.marketing-admin-edit-panel .marketing-section-head p {
+  margin: 0;
+}
+
+.marketing-admin-edit-panel .marketing-section-head p {
+  margin-top: 4px;
+  color: #756c82;
+}
+
+.marketing-admin-edit-panel .marketing-review-correction {
+  margin: 14px 16px 18px;
+}
+
+.marketing-review-correction select {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid #cfc8d8;
+  border-radius: 6px;
+  padding: 9px 10px;
+  background: #fff;
+  font: inherit;
+}
+
+.marketing-confirmation-backdrop {
+  z-index: 14000;
+}
+
+.marketing-confirmation-modal {
+  width: min(500px, 100%);
+  display: grid;
+  gap: 13px;
+  padding: 22px;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 24px 70px rgba(25, 13, 50, .3);
+}
+
+.marketing-confirmation-modal h2,
+.marketing-confirmation-modal p {
+  margin: 0;
+}
+
+.marketing-confirmation-modal form,
+.marketing-confirmation-modal label {
+  display: grid;
+  gap: 8px;
+  font-weight: 800;
+}
+
+.marketing-confirmation-modal textarea {
+  min-height: 110px;
+  width: 100%;
+  border: 1px solid #cfc8d8;
+  border-radius: 6px;
+  padding: 10px;
+  resize: vertical;
+  font: inherit;
+}
+
+.marketing-confirmation-modal form > div,
+.marketing-confirmation-modal > div {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.marketing-confirmation-modal button:disabled {
+  opacity: .55;
+  cursor: not-allowed;
+}
+
+.marketing-deleted-list {
+  display: grid;
+  gap: 12px;
+}
+
+.marketing-deleted-list > article {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid #ddd7e5;
+  border-left: 5px solid #746b7f;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.marketing-deleted-list > article > header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.marketing-deleted-list h3,
+.marketing-deleted-list header p,
+.marketing-deleted-list header small {
+  margin: 0;
+}
+
+.marketing-deleted-list header > span {
+  color: #62596c;
+  font-size: .75rem;
+  font-weight: 900;
+}
+
+.marketing-deleted-list dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 18px;
+  margin: 0;
+}
+
+.marketing-deleted-list dl div {
+  display: grid;
+  gap: 3px;
+}
+
+.marketing-deleted-list dt {
+  color: #746b7f;
+  font-size: .75rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.marketing-deleted-list dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.marketing-deleted-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.marketing-deleted-history {
+  display: grid;
+  gap: 0;
+  border-top: 1px solid #e5dfe9;
+}
+
+.marketing-deleted-event {
+  display: grid;
+  gap: 5px;
+  padding: 12px 0;
+  border-bottom: 1px solid #eeeaf1;
+}
+
+.marketing-deleted-event > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.marketing-deleted-event strong {
+  text-transform: capitalize;
+}
+
+.marketing-deleted-event time,
+.marketing-deleted-event span {
+  color: #746b7f;
+  font-size: .8rem;
+}
+
+.marketing-deleted-event pre {
+  max-height: 220px;
+  overflow: auto;
+  margin: 3px 0 0;
+  padding: 10px;
+  border-radius: 6px;
+  background: #f4f2f6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: .76rem;
+}
+
+@media (max-width: 640px) {
+  .marketing-admin-actions,
+  .marketing-deleted-actions,
+  .marketing-confirmation-modal form > div,
+  .marketing-confirmation-modal > div,
+  .marketing-deleted-list > article > header,
+  .marketing-deleted-event > div {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .marketing-admin-actions button,
+  .marketing-deleted-actions button,
+  .marketing-confirmation-modal button {
+    width: 100%;
+  }
+
+  .marketing-admin-edit-panel {
+    margin-inline: 12px;
+  }
+
+  .marketing-deleted-list dl {
+    grid-template-columns: 1fr;
+  }
+
+  .marketing-confirmation-modal {
+    width: 100%;
+    border-radius: 8px 8px 0 0;
+  }
+}
+
 .marketing-card-tags {
   display: flex;
   flex-wrap: wrap;
