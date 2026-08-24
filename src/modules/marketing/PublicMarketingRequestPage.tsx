@@ -4,6 +4,8 @@ import { CaptureSchedulePicker } from "./CaptureSchedulePicker";
 import { ExclusiveChoice } from "./ExclusiveChoice";
 import {
   formatCaptureRange,
+  formatDuration,
+  formatMarketingDateTime,
   MARKETING_CONTENT_OPTIONS,
   type MarketingCaptureSelection,
 } from "./marketingConfig";
@@ -35,6 +37,7 @@ type PublicFormState = {
   requesterNotes: string;
   urgencyRequested: boolean;
   urgencyReason: string;
+  hasMultipleProperties: boolean | null;
   website: string;
 };
 
@@ -55,11 +58,13 @@ const emptyForm = (): PublicFormState => ({
   requesterNotes: "",
   urgencyRequested: false,
   urgencyReason: "",
+  hasMultipleProperties: null,
   website: "",
 });
 
 export function PublicMarketingRequestPage() {
-  const [submissionId] = useState(createSubmissionId);
+  const [submissionId, setSubmissionId] = useState(createSubmissionId);
+  const [captureGroupId, setCaptureGroupId] = useState<string | null>(null);
   const [form, setForm] = useState<PublicFormState>(emptyForm);
   const [options, setOptions] = useState<PublicMarketingOptions | null>(null);
   const [availability, setAvailability] = useState<PublicMarketingAvailability | null>(null);
@@ -68,6 +73,7 @@ export function PublicMarketingRequestPage() {
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState("");
   const [receipt, setReceipt] = useState<PublicMarketingReceipt | null>(null);
+  const continuingCaptureGroup = Boolean(captureGroupId);
 
   useEffect(() => {
     document.title = "Solicitação de Marketing | Santa Maria";
@@ -122,7 +128,11 @@ export function PublicMarketingRequestPage() {
       return;
     }
     if (form.requestKind === "capture_edit" && form.capturePreference === "choose" && !form.preferredCapture) {
-      setMessage("Escolha a data, o horário e a duração da captação.");
+      setMessage("Escolha a data e o período da captação.");
+      return;
+    }
+    if (form.requestKind === "capture_edit" && form.hasMultipleProperties === null) {
+      setMessage("Informe se há mais de um imóvel nesta saída de captação.");
       return;
     }
     if (form.urgencyRequested && !form.urgencyReason.trim()) {
@@ -132,6 +142,9 @@ export function PublicMarketingRequestPage() {
 
     setSubmitting(true);
     try {
+      const nextCaptureGroupId = form.requestKind === "capture_edit" && form.hasMultipleProperties
+        ? captureGroupId || createSubmissionId()
+        : null;
       const nextReceipt = await submitPublicMarketingRequest({
         submissionId,
         requesterName: form.requesterName,
@@ -151,7 +164,9 @@ export function PublicMarketingRequestPage() {
         urgencyRequested: form.urgencyRequested,
         urgencyReason: form.urgencyReason,
         website: form.website,
+        captureGroupId: nextCaptureGroupId,
       });
+      if (nextReceipt.captureGroupId && !captureGroupId) setCaptureGroupId(nextReceipt.captureGroupId);
       setReceipt(nextReceipt);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (error) {
@@ -161,12 +176,33 @@ export function PublicMarketingRequestPage() {
     }
   }
 
+  function addAnotherProperty() {
+    const common = form;
+    setSubmissionId(createSubmissionId());
+    setForm({
+      ...emptyForm(),
+      requesterName: common.requesterName,
+      teamId: common.teamId,
+      brokerName: common.brokerName,
+      requestKind: common.requestKind,
+      contentTypes: [...common.contentTypes],
+      captureLocation: common.captureLocation,
+      capturePreference: common.capturePreference,
+      preferredCapture: common.preferredCapture,
+      hasMultipleProperties: true,
+    });
+    setReceipt(null);
+    setMessage("");
+    setPickerOpen(false);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
   return (
     <main className="marketing-public-page">
       <section className="marketing-public-shell">
         <header className="marketing-public-brand">
-          <SantaMariaBrand className="marketing-public-logo panel-corner-brand" />
-          <div><strong>SANTA MARIA</strong><span>SOLICITAÇÃO DE MARKETING</span></div>
+          <SantaMariaBrand className="marketing-public-logo" />
+          <div><strong>SANTA MARIA</strong><span>SOLICITAÇÃO DE MARKETING</span><small>Envio direto para a equipe de Marketing</small></div>
         </header>
 
         {receipt ? (
@@ -180,36 +216,79 @@ export function PublicMarketingRequestPage() {
               <small>Equipe: {receipt.teamName}</small>
             </article>
             <p>O gerente da sua equipe e o Marketing poderão acompanhar o andamento pelo HUB.</p>
+            {receipt.captureGroupId && form.hasMultipleProperties && (
+              <button className="marketing-public-add-property" type="button" onClick={addAnotherProperty}>
+                ADICIONAR OUTRO IMÓVEL DESTA MESMA SAÍDA
+              </button>
+            )}
           </section>
         ) : (
           <section className="marketing-public-card">
             <p className="marketing-public-eyebrow">SOLICITAÇÃO DE MARKETING</p>
             <h1>Envie seu pedido</h1>
             <p className="marketing-public-intro">Preencha as informações para enviar sua solicitação diretamente ao Marketing.</p>
+            {continuingCaptureGroup && (
+              <p className="marketing-public-property-rule">
+                <strong>MESMA SAÍDA DE CAPTAÇÃO.</strong> Solicitante, equipe, corretor e data/período foram mantidos do primeiro imóvel. Informe agora os dados deste novo imóvel.
+              </p>
+            )}
 
             {loading ? <div className="marketing-public-loading">Carregando formulário...</div> : options && availability ? (
               <form onSubmit={submit}>
-                <label>Nome de quem está fazendo a solicitação *<input value={form.requesterName} onChange={(event) => setForm({ ...form, requesterName: event.target.value })} maxLength={120} autoComplete="name" required /></label>
-                <label>Equipe / gerente *<select value={form.teamId} onChange={(event) => setForm({ ...form, teamId: event.target.value })} required><option value="" disabled>Selecione...</option>{options.teams.map((team) => <option key={team.id} value={team.id}>{team.managerName}</option>)}</select></label>
-                <label>Nome do corretor *<input value={form.brokerName} onChange={(event) => setForm({ ...form, brokerName: event.target.value })} maxLength={120} required /></label>
+                <label>Nome de quem está fazendo a solicitação *<input value={form.requesterName} onChange={(event) => setForm({ ...form, requesterName: event.target.value })} maxLength={120} autoComplete="name" required disabled={continuingCaptureGroup} /></label>
+                <label>Equipe / gerente *<select value={form.teamId} onChange={(event) => setForm({ ...form, teamId: event.target.value })} required disabled={continuingCaptureGroup}><option value="" disabled>Selecione...</option>{options.teams.map((team) => <option key={team.id} value={team.id}>{team.managerName}</option>)}</select></label>
+                <label>Nome do corretor *<input value={form.brokerName} onChange={(event) => setForm({ ...form, brokerName: event.target.value })} maxLength={120} required disabled={continuingCaptureGroup} /></label>
 
                 <fieldset><legend>O imóvel já tem código?</legend><label><input type="radio" checked={form.hasPropertyCode} onChange={() => setForm({ ...form, hasPropertyCode: true })} /> Sim</label><label><input type="radio" checked={!form.hasPropertyCode} onChange={() => setForm({ ...form, hasPropertyCode: false, propertyReference: "" })} /> Ainda não</label></fieldset>
                 <label className={!form.hasPropertyCode ? "marketing-public-field-disabled" : ""}>Código do imóvel<input value={form.propertyReference} onChange={(event) => setForm({ ...form, propertyReference: event.target.value })} maxLength={80} placeholder={form.hasPropertyCode ? "Ex.: 78119" : "Sem código informado"} required={form.hasPropertyCode} disabled={!form.hasPropertyCode} /></label>
                 <ExclusiveChoice name="public-marketing-exclusive" value={form.isExclusive} onChange={(isExclusive) => setForm({ ...form, isExclusive })} />
+                <p className="marketing-public-property-rule">Cada solicitação deve corresponder a um único imóvel.</p>
 
-                <fieldset><legend>O que precisa?</legend><label><input type="radio" checked={form.requestKind === "capture_edit"} onChange={() => setForm({ ...form, requestKind: "capture_edit" })} /> Captação + edição</label><label><input type="radio" checked={form.requestKind === "edit_only"} onChange={() => { setForm({ ...form, requestKind: "edit_only", captureLocation: "", capturePreference: "marketing", preferredCapture: null }); setPickerOpen(false); }} /> Somente edição</label></fieldset>
+                <fieldset><legend>O que precisa?</legend><label><input type="radio" checked={form.requestKind === "capture_edit"} onChange={() => setForm({ ...form, requestKind: "capture_edit" })} disabled={continuingCaptureGroup} /> Captação + edição</label><label><input type="radio" checked={form.requestKind === "edit_only"} onChange={() => { setForm({ ...form, requestKind: "edit_only", captureLocation: "", capturePreference: "marketing", preferredCapture: null }); setPickerOpen(false); }} disabled={continuingCaptureGroup} /> Somente edição</label></fieldset>
                 <fieldset className="marketing-public-content"><legend>Tipo de conteúdo *</legend>{MARKETING_CONTENT_OPTIONS.map((option) => <label key={option.value}><input type="checkbox" checked={form.contentTypes.includes(option.value)} onChange={() => toggleContent(option.value)} /> {option.label}</label>)}</fieldset>
 
                 {form.requestKind === "capture_edit" && <>
                   <label>Local da captação *<input value={form.captureLocation} onChange={(event) => setForm({ ...form, captureLocation: event.target.value })} maxLength={300} placeholder="Endereço / empreendimento" required /></label>
-                  <fieldset className="marketing-public-capture-choice"><legend>Data da captação</legend><button type="button" className={form.capturePreference === "choose" ? "selected" : ""} onClick={() => { setForm({ ...form, capturePreference: "choose" }); setPickerOpen(true); }}>ESCOLHER DATA E HORÁRIO</button><button type="button" className={form.capturePreference === "marketing" ? "selected" : ""} onClick={() => { setForm({ ...form, capturePreference: "marketing", preferredCapture: null }); setPickerOpen(false); }}>DEIXAR O MARKETING DEFINIR</button>{form.capturePreference === "marketing" && <p>O Marketing definirá a melhor data e horário conforme disponibilidade.</p>}{form.capturePreference === "choose" && form.preferredCapture && !pickerOpen && <div><strong>{formatCaptureRange(form.preferredCapture.startAt, form.preferredCapture.durationMinutes, availability.scheduleConfig.timezone)}</strong><button type="button" onClick={() => setPickerOpen(true)}>ALTERAR</button></div>}</fieldset>
-                  {form.capturePreference === "choose" && pickerOpen && <div className="marketing-public-picker"><CaptureSchedulePicker config={availability.scheduleConfig} occupiedSlots={availability.occupiedCaptureSlots} value={form.preferredCapture} onConfirm={(selection) => { setForm({ ...form, preferredCapture: selection }); setPickerOpen(false); }} onCancel={() => setPickerOpen(false)} /></div>}
+                  {!continuingCaptureGroup ? (
+                    <fieldset><legend>Há mais de um imóvel nesta mesma saída de captação?</legend><label><input type="radio" checked={form.hasMultipleProperties === true} onChange={() => setForm({ ...form, hasMultipleProperties: true })} /> Sim</label><label><input type="radio" checked={form.hasMultipleProperties === false} onChange={() => { setForm({ ...form, hasMultipleProperties: false }); setCaptureGroupId(null); }} /> Não</label></fieldset>
+                  ) : (
+                    <p className="marketing-public-property-rule">Este imóvel será vinculado à mesma saída de captação do pedido anterior.</p>
+                  )}
+                  <fieldset className="marketing-public-capture-choice"><legend>Data da captação</legend>
+                    {continuingCaptureGroup ? (
+                      form.capturePreference === "choose" && form.preferredCapture
+                        ? <div>
+                            <strong>{formatMarketingDateTime(form.preferredCapture.startAt, availability.scheduleConfig.timezone)}</strong>
+                            <small> Data/período mantidos do primeiro imóvel.</small>
+                            <p>Duração estimada deste imóvel:</p>
+                            <div className="marketing-duration-options">
+                              {availability.scheduleConfig.durationOptionsMinutes.filter((duration) => duration <= 120).map((duration) => (
+                                <button
+                                  type="button"
+                                  key={duration}
+                                  className={form.preferredCapture?.durationMinutes === duration ? "selected" : ""}
+                                  onClick={() => setForm({ ...form, preferredCapture: { startAt: form.preferredCapture!.startAt, durationMinutes: duration } })}
+                                >
+                                  {formatDuration(duration)}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        : <p>O Marketing definirá a data e o período para toda esta saída agrupada.</p>
+                    ) : <>
+                      <button type="button" className={form.capturePreference === "choose" ? "selected" : ""} onClick={() => { setForm({ ...form, capturePreference: "choose" }); setPickerOpen(true); }}>ESCOLHER DATA E HORÁRIO</button>
+                      <button type="button" className={form.capturePreference === "marketing" ? "selected" : ""} onClick={() => { setForm({ ...form, capturePreference: "marketing", preferredCapture: null }); setPickerOpen(false); }}>DEIXAR O MARKETING DEFINIR</button>
+                      {form.capturePreference === "marketing" && <p>O Marketing definirá a melhor data e horário conforme disponibilidade.</p>}
+                      {form.capturePreference === "choose" && form.preferredCapture && !pickerOpen && <div><strong>{formatCaptureRange(form.preferredCapture.startAt, form.preferredCapture.durationMinutes, availability.scheduleConfig.timezone)}</strong><button type="button" onClick={() => setPickerOpen(true)}>ALTERAR</button></div>}
+                    </>}
+                  </fieldset>
+                  {!continuingCaptureGroup && form.capturePreference === "choose" && pickerOpen && <div className="marketing-public-picker"><CaptureSchedulePicker config={availability.scheduleConfig} occupiedSlots={availability.occupiedCaptureSlots} value={form.preferredCapture} onConfirm={(selection) => { setForm({ ...form, preferredCapture: selection }); setPickerOpen(false); }} onCancel={() => setPickerOpen(false)} /></div>}
                 </>}
 
                 <label>Link de arquivos<input type="url" value={form.assetLink} onChange={(event) => setForm({ ...form, assetLink: event.target.value })} maxLength={2000} placeholder="Google Drive, OneDrive..." /></label>
                 <label className="marketing-public-check"><input type="checkbox" checked={form.paidTraffic} onChange={(event) => setForm({ ...form, paidTraffic: event.target.checked })} /> Tráfego pago</label>
                 <label>Observações<textarea value={form.requesterNotes} onChange={(event) => setForm({ ...form, requesterNotes: event.target.value })} rows={4} maxLength={3000} /></label>
-                <label className="marketing-public-check urgent"><input type="checkbox" checked={form.urgencyRequested} onChange={(event) => setForm({ ...form, urgencyRequested: event.target.checked })} /> Solicitar urgência <small>Não altera a fila sem decisão do Tezzei.</small></label>
+                <label className="marketing-public-check urgent"><input type="checkbox" checked={form.urgencyRequested} onChange={(event) => setForm({ ...form, urgencyRequested: event.target.checked })} /> Solicitar urgência <small>A urgência será analisada internamente e não altera a ordem automaticamente.</small></label>
                 {form.urgencyRequested && <label>Motivo da urgência *<textarea value={form.urgencyReason} onChange={(event) => setForm({ ...form, urgencyReason: event.target.value })} rows={3} maxLength={1000} required /></label>}
                 <label className="marketing-public-honeypot" aria-hidden="true">Site<input value={form.website} onChange={(event) => setForm({ ...form, website: event.target.value })} tabIndex={-1} autoComplete="off" /></label>
 
@@ -221,7 +300,6 @@ export function PublicMarketingRequestPage() {
           </section>
         )}
 
-        <footer className="marketing-public-footer">Desenvolvido por TEZZEI</footer>
       </section>
     </main>
   );

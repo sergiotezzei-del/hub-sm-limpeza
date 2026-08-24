@@ -17,16 +17,30 @@ export const MARKETING_REVIEW_REASONS = [
   { value: "other", label: "Outra divergência" },
 ] as const;
 
+export const DEFAULT_MARKETING_CAPTURE_WINDOWS = [
+  { id: "morning", label: "Manhã", start: "08:30", end: "11:00" },
+  { id: "afternoon", label: "Tarde", start: "14:00", end: "16:00" },
+] as const;
+
+export type MarketingCaptureWindow = {
+  id: string;
+  label: string;
+  start: string;
+  end: string;
+};
+
 export type MarketingScheduleConfig = {
   timezone: string;
   workingDays: number[];
   workdayStart: string;
   workdayEnd: string;
   durationOptionsMinutes: number[];
+  captureWindows?: MarketingCaptureWindow[];
 };
 
 export type MarketingOccupiedCaptureSlot = {
   requestId?: string;
+  captureGroupId?: string | null;
   startAt: string;
   durationMinutes: number;
 };
@@ -35,6 +49,12 @@ export type MarketingCaptureSelection = {
   startAt: string;
   durationMinutes: number;
 };
+
+export function getMarketingCaptureWindows(config: MarketingScheduleConfig): MarketingCaptureWindow[] {
+  return config.captureWindows?.length
+    ? config.captureWindows
+    : DEFAULT_MARKETING_CAPTURE_WINDOWS.map((window) => ({ ...window }));
+}
 
 export function formatDuration(minutes?: number | null) {
   if (!minutes) return "Não informada";
