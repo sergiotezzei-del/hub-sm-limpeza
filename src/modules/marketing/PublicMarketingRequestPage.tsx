@@ -71,6 +71,7 @@ export function PublicMarketingRequestPage() {
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState("");
   const [receipt, setReceipt] = useState<PublicMarketingReceipt | null>(null);
+  const continuingCaptureGroup = Boolean(captureGroupId);
 
   useEffect(() => {
     document.title = "Solicitação de Marketing | Santa Maria";
@@ -182,11 +183,10 @@ export function PublicMarketingRequestPage() {
       teamId: common.teamId,
       brokerName: common.brokerName,
       requestKind: common.requestKind,
-      contentTypes: common.contentTypes,
+      contentTypes: [...common.contentTypes],
       captureLocation: common.captureLocation,
       capturePreference: common.capturePreference,
       preferredCapture: common.preferredCapture,
-      requesterNotes: common.requesterNotes,
       hasMultipleProperties: true,
     });
     setReceipt(null);
@@ -225,26 +225,46 @@ export function PublicMarketingRequestPage() {
             <p className="marketing-public-eyebrow">SOLICITAÇÃO DE MARKETING</p>
             <h1>Envie seu pedido</h1>
             <p className="marketing-public-intro">Preencha as informações para enviar sua solicitação diretamente ao Marketing.</p>
+            {continuingCaptureGroup && (
+              <p className="marketing-public-property-rule">
+                <strong>MESMA SAÍDA DE CAPTAÇÃO.</strong> Solicitante, equipe, corretor e data/período foram mantidos do primeiro imóvel. Informe agora os dados deste novo imóvel.
+              </p>
+            )}
 
             {loading ? <div className="marketing-public-loading">Carregando formulário...</div> : options && availability ? (
               <form onSubmit={submit}>
-                <label>Nome de quem está fazendo a solicitação *<input value={form.requesterName} onChange={(event) => setForm({ ...form, requesterName: event.target.value })} maxLength={120} autoComplete="name" required /></label>
-                <label>Equipe / gerente *<select value={form.teamId} onChange={(event) => setForm({ ...form, teamId: event.target.value })} required><option value="" disabled>Selecione...</option>{options.teams.map((team) => <option key={team.id} value={team.id}>{team.managerName}</option>)}</select></label>
-                <label>Nome do corretor *<input value={form.brokerName} onChange={(event) => setForm({ ...form, brokerName: event.target.value })} maxLength={120} required /></label>
+                <label>Nome de quem está fazendo a solicitação *<input value={form.requesterName} onChange={(event) => setForm({ ...form, requesterName: event.target.value })} maxLength={120} autoComplete="name" required disabled={continuingCaptureGroup} /></label>
+                <label>Equipe / gerente *<select value={form.teamId} onChange={(event) => setForm({ ...form, teamId: event.target.value })} required disabled={continuingCaptureGroup}><option value="" disabled>Selecione...</option>{options.teams.map((team) => <option key={team.id} value={team.id}>{team.managerName}</option>)}</select></label>
+                <label>Nome do corretor *<input value={form.brokerName} onChange={(event) => setForm({ ...form, brokerName: event.target.value })} maxLength={120} required disabled={continuingCaptureGroup} /></label>
 
                 <fieldset><legend>O imóvel já tem código?</legend><label><input type="radio" checked={form.hasPropertyCode} onChange={() => setForm({ ...form, hasPropertyCode: true })} /> Sim</label><label><input type="radio" checked={!form.hasPropertyCode} onChange={() => setForm({ ...form, hasPropertyCode: false, propertyReference: "" })} /> Ainda não</label></fieldset>
                 <label className={!form.hasPropertyCode ? "marketing-public-field-disabled" : ""}>Código do imóvel<input value={form.propertyReference} onChange={(event) => setForm({ ...form, propertyReference: event.target.value })} maxLength={80} placeholder={form.hasPropertyCode ? "Ex.: 78119" : "Sem código informado"} required={form.hasPropertyCode} disabled={!form.hasPropertyCode} /></label>
                 <ExclusiveChoice name="public-marketing-exclusive" value={form.isExclusive} onChange={(isExclusive) => setForm({ ...form, isExclusive })} />
                 <p className="marketing-public-property-rule">Cada solicitação deve corresponder a um único imóvel.</p>
 
-                <fieldset><legend>O que precisa?</legend><label><input type="radio" checked={form.requestKind === "capture_edit"} onChange={() => setForm({ ...form, requestKind: "capture_edit" })} /> Captação + edição</label><label><input type="radio" checked={form.requestKind === "edit_only"} onChange={() => { setForm({ ...form, requestKind: "edit_only", captureLocation: "", capturePreference: "marketing", preferredCapture: null }); setPickerOpen(false); }} /> Somente edição</label></fieldset>
+                <fieldset><legend>O que precisa?</legend><label><input type="radio" checked={form.requestKind === "capture_edit"} onChange={() => setForm({ ...form, requestKind: "capture_edit" })} disabled={continuingCaptureGroup} /> Captação + edição</label><label><input type="radio" checked={form.requestKind === "edit_only"} onChange={() => { setForm({ ...form, requestKind: "edit_only", captureLocation: "", capturePreference: "marketing", preferredCapture: null }); setPickerOpen(false); }} disabled={continuingCaptureGroup} /> Somente edição</label></fieldset>
                 <fieldset className="marketing-public-content"><legend>Tipo de conteúdo *</legend>{MARKETING_CONTENT_OPTIONS.map((option) => <label key={option.value}><input type="checkbox" checked={form.contentTypes.includes(option.value)} onChange={() => toggleContent(option.value)} /> {option.label}</label>)}</fieldset>
 
                 {form.requestKind === "capture_edit" && <>
                   <label>Local da captação *<input value={form.captureLocation} onChange={(event) => setForm({ ...form, captureLocation: event.target.value })} maxLength={300} placeholder="Endereço / empreendimento" required /></label>
-                  <fieldset><legend>Há mais de um imóvel nesta mesma saída de captação?</legend><label><input type="radio" checked={form.hasMultipleProperties === true} onChange={() => setForm({ ...form, hasMultipleProperties: true })} /> Sim</label><label><input type="radio" checked={form.hasMultipleProperties === false} onChange={() => { setForm({ ...form, hasMultipleProperties: false }); setCaptureGroupId(null); }} /> Não</label></fieldset>
-                  <fieldset className="marketing-public-capture-choice"><legend>Data da captação</legend><button type="button" className={form.capturePreference === "choose" ? "selected" : ""} onClick={() => { setForm({ ...form, capturePreference: "choose" }); setPickerOpen(true); }}>ESCOLHER DATA E HORÁRIO</button><button type="button" className={form.capturePreference === "marketing" ? "selected" : ""} onClick={() => { setForm({ ...form, capturePreference: "marketing", preferredCapture: null }); setPickerOpen(false); }}>DEIXAR O MARKETING DEFINIR</button>{form.capturePreference === "marketing" && <p>O Marketing definirá a melhor data e horário conforme disponibilidade.</p>}{form.capturePreference === "choose" && form.preferredCapture && !pickerOpen && <div><strong>{formatCaptureRange(form.preferredCapture.startAt, form.preferredCapture.durationMinutes, availability.scheduleConfig.timezone)}</strong><button type="button" onClick={() => setPickerOpen(true)}>ALTERAR</button></div>}</fieldset>
-                  {form.capturePreference === "choose" && pickerOpen && <div className="marketing-public-picker"><CaptureSchedulePicker config={availability.scheduleConfig} occupiedSlots={availability.occupiedCaptureSlots} value={form.preferredCapture} onConfirm={(selection) => { setForm({ ...form, preferredCapture: selection }); setPickerOpen(false); }} onCancel={() => setPickerOpen(false)} /></div>}
+                  {!continuingCaptureGroup ? (
+                    <fieldset><legend>Há mais de um imóvel nesta mesma saída de captação?</legend><label><input type="radio" checked={form.hasMultipleProperties === true} onChange={() => setForm({ ...form, hasMultipleProperties: true })} /> Sim</label><label><input type="radio" checked={form.hasMultipleProperties === false} onChange={() => { setForm({ ...form, hasMultipleProperties: false }); setCaptureGroupId(null); }} /> Não</label></fieldset>
+                  ) : (
+                    <p className="marketing-public-property-rule">Este imóvel será vinculado à mesma saída de captação do pedido anterior.</p>
+                  )}
+                  <fieldset className="marketing-public-capture-choice"><legend>Data da captação</legend>
+                    {continuingCaptureGroup ? (
+                      form.capturePreference === "choose" && form.preferredCapture
+                        ? <div><strong>{formatCaptureRange(form.preferredCapture.startAt, form.preferredCapture.durationMinutes, availability.scheduleConfig.timezone)}</strong><small> Data/período mantidos do primeiro imóvel.</small></div>
+                        : <p>O Marketing definirá a data e o período para toda esta saída agrupada.</p>
+                    ) : <>
+                      <button type="button" className={form.capturePreference === "choose" ? "selected" : ""} onClick={() => { setForm({ ...form, capturePreference: "choose" }); setPickerOpen(true); }}>ESCOLHER DATA E HORÁRIO</button>
+                      <button type="button" className={form.capturePreference === "marketing" ? "selected" : ""} onClick={() => { setForm({ ...form, capturePreference: "marketing", preferredCapture: null }); setPickerOpen(false); }}>DEIXAR O MARKETING DEFINIR</button>
+                      {form.capturePreference === "marketing" && <p>O Marketing definirá a melhor data e horário conforme disponibilidade.</p>}
+                      {form.capturePreference === "choose" && form.preferredCapture && !pickerOpen && <div><strong>{formatCaptureRange(form.preferredCapture.startAt, form.preferredCapture.durationMinutes, availability.scheduleConfig.timezone)}</strong><button type="button" onClick={() => setPickerOpen(true)}>ALTERAR</button></div>}
+                    </>}
+                  </fieldset>
+                  {!continuingCaptureGroup && form.capturePreference === "choose" && pickerOpen && <div className="marketing-public-picker"><CaptureSchedulePicker config={availability.scheduleConfig} occupiedSlots={availability.occupiedCaptureSlots} value={form.preferredCapture} onConfirm={(selection) => { setForm({ ...form, preferredCapture: selection }); setPickerOpen(false); }} onCancel={() => setPickerOpen(false)} /></div>}
                 </>}
 
                 <label>Link de arquivos<input type="url" value={form.assetLink} onChange={(event) => setForm({ ...form, assetLink: event.target.value })} maxLength={2000} placeholder="Google Drive, OneDrive..." /></label>
