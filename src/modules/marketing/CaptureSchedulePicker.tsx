@@ -37,7 +37,9 @@ export function CaptureSchedulePicker(props: CaptureSchedulePickerProps) {
   const dates = useMemo(() => buildWorkingDates(props.config), [props.config]);
   const times = useMemo(() => buildTimeOptions(props.config), [props.config]);
   const filteredOccupied = useMemo(
-    () => props.occupiedSlots.filter((slot) => slot.requestId !== props.excludedRequestId),
+    () => props.excludedRequestId
+      ? props.occupiedSlots.filter((slot) => slot.requestId !== props.excludedRequestId)
+      : props.occupiedSlots,
     [props.excludedRequestId, props.occupiedSlots],
   );
 

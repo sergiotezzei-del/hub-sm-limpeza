@@ -1,5 +1,22 @@
 export const MARKETING_ASSIGNEES = ["Maria", "Arthur"] as const;
 
+export const MARKETING_CONTENT_OPTIONS = [
+  { value: "video", label: "Vídeo" },
+  { value: "fotos", label: "Fotos" },
+  { value: "carrossel", label: "Carrossel" },
+  { value: "post_estatico", label: "Post estático" },
+  { value: "outro", label: "Outro" },
+] as const;
+
+export const MARKETING_REVIEW_REASONS = [
+  { value: "property_code_divergent", label: "Imóvel/código divergente" },
+  { value: "incomplete_request", label: "Solicitação incompleta" },
+  { value: "incorrect_service", label: "Serviço solicitado incorretamente" },
+  { value: "capture_confirmation", label: "Data/local precisa confirmação" },
+  { value: "content_validation", label: "Conteúdo precisa validação" },
+  { value: "other", label: "Outra divergência" },
+] as const;
+
 export type MarketingScheduleConfig = {
   timezone: string;
   workingDays: number[];
@@ -9,7 +26,7 @@ export type MarketingScheduleConfig = {
 };
 
 export type MarketingOccupiedCaptureSlot = {
-  requestId: string;
+  requestId?: string;
   startAt: string;
   durationMinutes: number;
 };

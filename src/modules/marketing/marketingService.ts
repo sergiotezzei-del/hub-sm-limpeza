@@ -63,8 +63,12 @@ export type MarketingRequest = {
   urgencyApproved: boolean;
   urgencyDecidedByName?: string | null;
   urgencyDecidedAt?: string | null;
-  createdByUserId: string;
+  createdByUserId?: string | null;
   createdByName: string;
+  requestSource: "hub" | "public";
+  publicRequesterName?: string | null;
+  managerReviewStatus?: MarketingManagerReviewStatus | null;
+  managerReviewUpdatedAt?: string | null;
   completedAt?: string | null;
   createdAt: string;
   updatedAt: string;
@@ -118,6 +122,38 @@ export type MarketingQueueOverrideRequest = {
   createdAt: string;
 };
 
+export type MarketingManagerReviewStatus = "pending" | "confirmed" | "modified" | "declined";
+
+export type MarketingManagerReviewReason =
+  | "property_code_divergent"
+  | "incomplete_request"
+  | "incorrect_service"
+  | "capture_confirmation"
+  | "content_validation"
+  | "other";
+
+export type MarketingManagerReview = {
+  id: string;
+  requestId: string;
+  requestNumber: number;
+  teamId: string;
+  managerName: string;
+  brokerName: string;
+  propertyLabel: string;
+  openedByUserId: string;
+  openedByName: string;
+  reason: MarketingManagerReviewReason;
+  details: string;
+  status: MarketingManagerReviewStatus;
+  managerUserId: string;
+  reviewManagerName?: string | null;
+  managerResponse?: string | null;
+  decidedAt?: string | null;
+  returnStatus: MarketingRequestStatus;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type MarketingDashboard = {
   context: MarketingContext;
   teams: MarketingTeam[];
@@ -127,6 +163,7 @@ export type MarketingDashboard = {
   availableUsers: MarketingAvailableUser[];
   notifications: MarketingNotification[];
   queueOverrideRequests: MarketingQueueOverrideRequest[];
+  managerReviews: MarketingManagerReview[];
   occupiedCaptureSlots: MarketingOccupiedCaptureSlot[];
   scheduleConfig: MarketingScheduleConfig;
 };
@@ -185,7 +222,7 @@ export async function endMarketingSession(sessionToken: string) {
 }
 
 export async function getMarketingDashboard(sessionToken: string): Promise<MarketingDashboard> {
-  return rpc<MarketingDashboard>("marketing_v2_get_dashboard", { p_session_token: sessionToken });
+  return rpc<MarketingDashboard>("marketing_v2_get_dashboard_review", { p_session_token: sessionToken });
 }
 
 export async function createMarketingRequest(sessionToken: string, draft: MarketingRequestDraft) {
@@ -249,6 +286,36 @@ export async function markMarketingNotificationsRead(sessionToken: string, notif
   });
 }
 
+export async function openMarketingManagerReview(
+  sessionToken: string,
+  requestId: string,
+  reason: MarketingManagerReviewReason,
+  details: string,
+) {
+  return rpc<string>("marketing_v2_open_manager_review", {
+    p_session_token: sessionToken,
+    p_request_id: requestId,
+    p_reason: reason,
+    p_details: details,
+  });
+}
+
+export async function resolveMarketingManagerReview(
+  sessionToken: string,
+  reviewId: string,
+  decision: "confirmed" | "modified" | "declined",
+  managerResponse?: string,
+  corrections: Record<string, unknown> = {},
+) {
+  await rpc<unknown>("marketing_v2_resolve_manager_review", {
+    p_session_token: sessionToken,
+    p_review_id: reviewId,
+    p_decision: decision,
+    p_manager_response: managerResponse || null,
+    p_corrections: corrections,
+  });
+}
+
 export async function saveMarketingAccess(
   sessionToken: string,
   input: { managedUserId: string; role: MarketingRole; teamId?: string | null; active?: boolean },
@@ -289,6 +356,16 @@ export function getMarketingErrorMessage(error: unknown) {
   if (normalized.includes("MARKETING_OVERRIDE_ALREADY_PENDING")) return "Já existe uma solicitação de autorização pendente para este pedido.";
   if (normalized.includes("MARKETING_OVERRIDE_NOT_NEEDED")) return "Este pedido já pode seguir a ordem normal da fila.";
   if (normalized.includes("MARKETING_OVERRIDE_REQUEST_DENIED")) return "Somente a equipe de Marketing pode solicitar alteração da fila.";
+  if (normalized.includes("MARKETING_MANAGER_REVIEW_ALREADY_PENDING")) return "Este pedido já está aguardando conferência do gerente.";
+  if (normalized.includes("MARKETING_MANAGER_REVIEW_DETAILS_REQUIRED")) return "Descreva o problema para o gerente com pelo menos 5 caracteres.";
+  if (normalized.includes("MARKETING_MANAGER_REVIEW_MANAGER_NOT_FOUND")) return "A equipe ainda não possui um gerente ativo vinculado ao Marketing.";
+  if (normalized.includes("MARKETING_MANAGER_REVIEW_PENDING")) return "Este pedido está bloqueado enquanto aguarda a conferência do gerente.";
+  if (normalized.includes("MARKETING_MANAGER_REVIEW_DECLINE_REASON_REQUIRED")) return "Informe o motivo para declinar o pedido.";
+  if (normalized.includes("MARKETING_MANAGER_REVIEW_NO_CHANGES")) return "Altere pelo menos um dado operacional antes de salvar a correção.";
+  if (normalized.includes("MARKETING_MANAGER_REVIEW_FIELD_DENIED")) return "A correção tentou alterar um campo interno do Marketing.";
+  if (normalized.includes("MARKETING_URGENCY_ALREADY_DECIDED")) return "A urgência já foi decidida pelo Tezzei e não pode ser alterada nesta conferência.";
+  if (normalized.includes("MARKETING_REVIEW_KIND_CONFIRMED_CAPTURE_DENIED")) return "O Marketing precisa retirar a captação confirmada antes de mudar este pedido para somente edição.";
+  if (normalized.includes("MARKETING_MANAGER_REVIEW")) return "Não foi possível concluir a conferência deste pedido.";
   if (normalized.includes("MARKETING_UPDATE_DENIED") || normalized.includes("MARKETING_REQUEST_DENIED")) return "Você não tem permissão para alterar este pedido.";
   if (error instanceof MarketingRemoteError && error.status === 0) return "Não foi possível conectar ao Marketing. Verifique a internet.";
   return "Não foi possível concluir a operação no Marketing.";
