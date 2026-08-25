@@ -1,3 +1,5 @@
+import { showHubWindowsNotification } from "./windowsNotifications";
+
 const APP_TITLE = "HUB Santa Maria";
 const ALERT_TITLE = "🔴 NOVO ALERTA · HUB Santa Maria";
 const CARD_SELECTOR = ".hub-alert-panel .hub-alert-card";
@@ -47,6 +49,10 @@ function normalize(value: string) {
 
 function cardTitle(card: Element) {
   return normalize(card.querySelector("h3")?.textContent ?? "");
+}
+
+function cardDescription(card: Element) {
+  return normalize(card.querySelector("p")?.textContent ?? "") || "Abra o HUB para conferir.";
 }
 
 function fingerprint(card: Element) {
@@ -140,9 +146,13 @@ function armInitialPanel(panel: HTMLElement) {
 }
 
 function markNewCards(panel: HTMLElement, fingerprints: Set<string>) {
+  const marked: HTMLElement[] = [];
   cardsInPanel(panel).forEach((card) => {
-    if (fingerprints.has(fingerprint(card))) card.classList.add(NEW_CARD_CLASS);
+    if (!fingerprints.has(fingerprint(card))) return;
+    card.classList.add(NEW_CARD_CLASS);
+    marked.push(card);
   });
+  return marked;
 }
 
 function markPendingTaskCards(panel: HTMLElement) {
@@ -158,6 +168,12 @@ function markPendingTaskCards(panel: HTMLElement) {
   });
 
   return marked;
+}
+
+function notifyNewCard(card: HTMLElement) {
+  const title = cardTitle(card) || "Novo alerta no HUB";
+  const description = cardDescription(card);
+  void showHubWindowsNotification(title, description, `hub-card-${fingerprint(card)}`);
 }
 
 function sync() {
@@ -187,7 +203,8 @@ function sync() {
   knownCards = nextCards;
 
   if (newFingerprints.size > 0) {
-    markNewCards(panel, newFingerprints);
+    const marked = markNewCards(panel, newFingerprints);
+    if (marked[0]) notifyNewCard(marked[0]);
     startAttention();
   } else if (markedPendingTask && !attentionActive) {
     startAttention();
@@ -210,10 +227,21 @@ if (root) {
 
 document.addEventListener("hub:new-alert-tasks", (event) => {
   const detail = (event as NewAlertTaskEvent).detail;
-  detail?.tasks?.forEach((task) => {
+  const tasks = detail?.tasks ?? [];
+  tasks.forEach((task) => {
     const title = normalize(task.title ?? "");
     if (title) pendingTaskTitles.add(title);
   });
+
+  if (tasks.length > 0) {
+    const single = tasks.length === 1;
+    void showHubWindowsNotification(
+      single ? "Novo chamado no HUB" : `${tasks.length} novos chamados no HUB`,
+      single ? normalize(tasks[0].title ?? "Abra o HUB para conferir.") : "Abra o HUB para conferir.",
+      single ? `hub-task-${tasks[0].id ?? tasks[0].title ?? Date.now()}` : `hub-tasks-${Date.now()}`,
+    );
+  }
+
   suppressGenericDetectionUntil = Date.now() + EXTERNAL_REFRESH_SUPPRESS_MS;
   startAttention();
   if (observedPanel) markPendingTaskCards(observedPanel);
