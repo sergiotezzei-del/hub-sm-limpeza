@@ -4,6 +4,7 @@ import App from "./App";
 import { LiveAlertDashboardEnhancer } from "./modules/alerts/LiveAlertDashboardEnhancer";
 import { CleaningActivityAlertEnhancer } from "./modules/alerts/CleaningActivityAlertEnhancer";
 import { GoogleCalendarAlertEnhancer } from "./modules/alerts/GoogleCalendarAlertEnhancer";
+import { WindowsNotificationControl } from "./modules/alerts/WindowsNotificationControl";
 import "./modules/alerts/browserAlertAttention";
 import { CleaningDeliveryFeature } from "./modules/cleaning/components/CleaningDeliveryFeature";
 import { NeiaDeliveryShortcutFeature } from "./modules/cleaning/components/NeiaDeliveryShortcutFeature";
@@ -33,6 +34,7 @@ createRoot(document.getElementById("root")!).render(
       <>
         <App />
         <LiveAlertDashboardEnhancer />
+        <WindowsNotificationControl />
         <CleaningActivityAlertEnhancer />
         <GoogleCalendarAlertEnhancer />
         <CleaningDeliveryFeature />
