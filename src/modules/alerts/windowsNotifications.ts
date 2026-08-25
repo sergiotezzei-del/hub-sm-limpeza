@@ -32,10 +32,22 @@ export async function showHubWindowsNotification(title: string, body: string, ta
       badge: HUB_NOTIFICATION_ICON,
       tag: tag ?? `hub-alert-${Date.now()}`,
       requireInteraction: true,
+      renotify: true,
       data: { url: "/" },
     });
     return true;
   } catch {
     return false;
+  }
+}
+
+export async function closeHubWindowsNotification(tag: string) {
+  if (!("serviceWorker" in navigator)) return;
+  try {
+    const registration = await navigator.serviceWorker.ready;
+    const notifications = await registration.getNotifications({ tag });
+    notifications.forEach((notification) => notification.close());
+  } catch {
+    // O aviso visual continua funcionando mesmo quando o navegador não expõe as notificações ativas.
   }
 }
