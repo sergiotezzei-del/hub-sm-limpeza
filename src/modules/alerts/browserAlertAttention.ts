@@ -85,7 +85,6 @@ function applyBlinkFrame() {
   blinkOn = !blinkOn;
   document.title = blinkOn ? ALERT_TITLE : APP_TITLE;
   setFavicon(blinkOn);
-  setAppBadge(blinkOn);
 }
 
 function clearNewCardClasses() {
@@ -93,7 +92,7 @@ function clearNewCardClasses() {
     .forEach((card) => card.classList.remove(NEW_CARD_CLASS));
 }
 
-function stopAttention() {
+function stopVisualAttention() {
   if (blinkTimer) window.clearInterval(blinkTimer);
   if (visibleStopTimer) window.clearTimeout(visibleStopTimer);
   blinkTimer = 0;
@@ -103,13 +102,17 @@ function stopAttention() {
   document.documentElement.removeAttribute(ATTENTION_ATTRIBUTE);
   document.title = APP_TITLE;
   setFavicon(false);
-  setAppBadge(false);
   clearNewCardClasses();
+}
+
+function acknowledgeAttention() {
+  stopVisualAttention();
+  setAppBadge(false);
 }
 
 function scheduleVisibleStop(delay = VISIBLE_FLASH_MS) {
   if (visibleStopTimer) window.clearTimeout(visibleStopTimer);
-  visibleStopTimer = window.setTimeout(stopAttention, delay);
+  visibleStopTimer = window.setTimeout(stopVisualAttention, delay);
 }
 
 function startAttention() {
@@ -119,6 +122,7 @@ function startAttention() {
   visibleStopTimer = 0;
   attentionActive = true;
   document.documentElement.setAttribute(ATTENTION_ATTRIBUTE, "1");
+  setAppBadge(true);
   blinkOn = false;
   applyBlinkFrame();
   blinkTimer = window.setInterval(applyBlinkFrame, BLINK_MS);
@@ -200,6 +204,7 @@ const root = document.getElementById("root");
 if (root) {
   const observer = new MutationObserver(sync);
   observer.observe(root, { childList: true, subtree: true, characterData: true });
+  setAppBadge(false);
   sync();
 }
 
@@ -218,5 +223,5 @@ document.addEventListener("visibilitychange", acknowledgeWhenUserReturns);
 window.addEventListener("focus", acknowledgeWhenUserReturns);
 document.addEventListener("click", (event) => {
   const target = event.target;
-  if (target instanceof Element && target.closest(CARD_SELECTOR)) stopAttention();
+  if (target instanceof Element && target.closest(CARD_SELECTOR)) acknowledgeAttention();
 });
