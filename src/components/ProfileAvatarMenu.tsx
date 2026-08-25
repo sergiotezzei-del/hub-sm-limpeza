@@ -130,6 +130,8 @@ export function ProfileAvatarMenu({ name, photoData, large = false, compact = fa
         <div className="profile-avatar-menu-popover">
           <button type="button" onClick={openCamera}>Tirar foto com a câmera</button>
           <button type="button" onClick={openFilePicker}>Escolher foto do aparelho</button>
+          <div className="profile-avatar-menu-settings-label">Configurações</div>
+          <div className="profile-notification-settings-slot" />
           <button className="profile-avatar-logout" type="button" onClick={onLogout}>Sair</button>
         </div>
       </details>

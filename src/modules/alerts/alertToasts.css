@@ -1,0 +1,140 @@
+.hub-alert-toast-stack {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 100000;
+  display: flex;
+  width: min(360px, calc(100vw - 28px));
+  flex-direction: column;
+  gap: 10px;
+  pointer-events: none;
+}
+
+.hub-alert-toast {
+  overflow: hidden;
+  border: 1px solid #8aa9ce;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 16px 44px rgba(15, 23, 42, 0.24);
+  pointer-events: auto;
+  animation: hub-alert-toast-in 280ms ease-out both;
+}
+
+.hub-alert-toast.is-closing {
+  animation: hub-alert-toast-out 240ms ease-in both;
+}
+
+.hub-alert-toast-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 6px 8px;
+  background: linear-gradient(180deg, #5f9fdf 0%, #2f6eae 100%);
+  color: #fff;
+}
+
+.hub-alert-toast-head strong {
+  flex: 1;
+  font-size: 0.84rem;
+  letter-spacing: 0.01em;
+}
+
+.hub-alert-toast-avatar {
+  display: grid;
+  width: 25px;
+  height: 25px;
+  place-items: center;
+  border: 2px solid rgba(255, 255, 255, 0.82);
+  border-radius: 50%;
+  background: #f97316;
+  color: #fff;
+  font-size: 0.76rem;
+  font-weight: 900;
+}
+
+.hub-alert-toast-head button {
+  display: grid;
+  width: 27px;
+  height: 27px;
+  place-items: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #fff;
+  font: inherit;
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.hub-alert-toast-head button:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.hub-alert-toast-body {
+  display: grid;
+  width: 100%;
+  gap: 4px;
+  padding: 13px 14px 14px;
+  border: 0;
+  background: #fff;
+  color: #172033;
+  text-align: left;
+  cursor: pointer;
+}
+
+.hub-alert-toast-body:hover {
+  background: #f7fbff;
+}
+
+.hub-alert-toast-body strong {
+  font-size: 0.92rem;
+}
+
+.hub-alert-toast-body span {
+  overflow: hidden;
+  color: #526071;
+  font-size: 0.82rem;
+  line-height: 1.38;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@keyframes hub-alert-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(26px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes hub-alert-toast-out {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+}
+
+@media (max-width: 640px) {
+  .hub-alert-toast-stack {
+    right: 14px;
+    bottom: 14px;
+    left: 14px;
+    width: auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hub-alert-toast,
+  .hub-alert-toast.is-closing {
+    animation: none;
+  }
+}
