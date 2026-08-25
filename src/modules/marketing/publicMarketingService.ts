@@ -135,6 +135,7 @@ export function getPublicMarketingErrorMessage(error: unknown) {
   if (normalized.includes("MARKETING_EXCLUSIVITY_REQUIRED")) return "Informe se o imóvel é exclusividade.";
   if (normalized.includes("MARKETING_CONTENT_INVALID")) return "Selecione pelo menos um tipo de conteúdo válido.";
   if (normalized.includes("MARKETING_CAPTURE_LOCATION_REQUIRED")) return "Informe o local da captação.";
+  if (normalized.includes("MARKETING_CAPTURE_PERIOD_LIMIT_REACHED")) return "Esse período já atingiu o limite de 2 agendamentos. Escolha outro horário ou período.";
   if (normalized.includes("MARKETING_CAPTURE_DAY_LIMIT_REACHED")) return "Esse dia já atingiu o limite de 2 agendamentos. Escolha outra data.";
   if (normalized.includes("MARKETING_CAPTURE_GROUP_CAPACITY_EXCEEDED")) return "Esta saída não cabe mais no horário escolhido. Envie este imóvel em uma nova saída de captação.";
   if (normalized.includes("MARKETING_CAPTURE_GROUP_SLOT_MISMATCH")) return "Os imóveis desta saída precisam permanecer na mesma data e no mesmo horário.";
