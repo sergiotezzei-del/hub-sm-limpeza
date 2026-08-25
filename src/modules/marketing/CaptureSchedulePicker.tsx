@@ -25,7 +25,8 @@ type CaptureSchedulePickerProps = {
 
 const DATE_WINDOW_DAYS = 28;
 const TIME_STEP_MINUTES = 30;
-const MAX_BOOKINGS_PER_DAY = 2;
+const MAX_BOOKINGS_PER_PERIOD = 2;
+const AFTERNOON_START_MINUTES = 12 * 60;
 
 export function CaptureSchedulePicker(props: CaptureSchedulePickerProps) {
   const initialDuration = props.value?.durationMinutes || props.config.durationOptionsMinutes[0];
@@ -78,7 +79,7 @@ export function CaptureSchedulePicker(props: CaptureSchedulePickerProps) {
         <strong>1. Escolha a data</strong>
         <div className="marketing-date-legend" aria-label="Legenda de disponibilidade">
           <span><i className="free" /> Livre</span>
-          <span><i className="partial" /> 1 agendamento</span>
+          <span><i className="partial" /> Parcial</span>
           <span><i className="full" /> Lotado</span>
         </div>
         <div className="marketing-date-grid">
@@ -98,7 +99,7 @@ export function CaptureSchedulePicker(props: CaptureSchedulePickerProps) {
             );
           })}
         </div>
-        <small>Limite de 2 agendamentos por dia.</small>
+        <small>Limite de 2 agendamentos pela manhã e 2 à tarde.</small>
       </div>
 
       <div className="marketing-picker-step">
@@ -133,7 +134,9 @@ export function CaptureSchedulePicker(props: CaptureSchedulePickerProps) {
             <p>Não há horário disponível para essa duração neste dia.</p>
           )}
         </div>
-        <small>Horários disponíveis entre {props.config.workdayStart} e {props.config.workdayEnd}, em intervalos de 30 minutos.</small>
+        <small>
+          Horários entre {props.config.workdayStart} e {props.config.workdayEnd}, em intervalos de 30 minutos. Manhã: início antes de 12:00; tarde: início a partir de 12:00.
+        </small>
       </div>
 
       <footer>
@@ -164,10 +167,8 @@ function dayAvailability(
   config: MarketingScheduleConfig,
   occupied: MarketingOccupiedCaptureSlot[],
 ) {
-  const daySlots = occupiedForDate(dateKey, config, occupied);
-  if (daySlots.length >= MAX_BOOKINGS_PER_DAY) return "full";
   if (buildTimeOptions(dateKey, durationMinutes, config, occupied).length === 0) return "full";
-  return daySlots.length === 0 ? "free" : "partial";
+  return occupiedForDate(dateKey, config, occupied).length === 0 ? "free" : "partial";
 }
 
 function buildTimeOptions(
@@ -176,8 +177,6 @@ function buildTimeOptions(
   config: MarketingScheduleConfig,
   occupied: MarketingOccupiedCaptureSlot[],
 ) {
-  if (occupiedForDate(dateKey, config, occupied).length >= MAX_BOOKINGS_PER_DAY) return [];
-
   const startMinutes = minutesFromTime(config.workdayStart);
   const endMinutes = minutesFromTime(config.workdayEnd);
   const latestStart = endMinutes - durationMinutes;
@@ -198,7 +197,12 @@ function isTimeAvailable(
   occupied: MarketingOccupiedCaptureSlot[],
 ) {
   const daySlots = occupiedForDate(dateKey, config, occupied);
-  if (daySlots.length >= MAX_BOOKINGS_PER_DAY) return false;
+  const candidatePeriod = periodForMinutes(minutesFromTime(time));
+  const periodCount = daySlots.filter((slot) => {
+    const slotTime = getTimeKeyInTimeZone(slot.startAt, config.timezone);
+    return periodForMinutes(minutesFromTime(slotTime)) === candidatePeriod;
+  }).length;
+  if (periodCount >= MAX_BOOKINGS_PER_PERIOD) return false;
 
   const startAt = new Date(zonedLocalToIso(dateKey, time, config.timezone)).getTime();
   const endAt = startAt + durationMinutes * 60000;
@@ -207,6 +211,10 @@ function isTimeAvailable(
     const occupiedEnd = occupiedStart + slot.durationMinutes * 60000;
     return startAt < occupiedEnd && endAt > occupiedStart;
   });
+}
+
+function periodForMinutes(minutes: number) {
+  return minutes < AFTERNOON_START_MINUTES ? "morning" : "afternoon";
 }
 
 function occupiedForDate(
