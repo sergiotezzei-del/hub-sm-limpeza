@@ -21,7 +21,6 @@ import "./marketing.css";
 import "./publicMarketing.css";
 
 type PublicFormState = {
-  requesterName: string;
   teamId: string;
   brokerName: string;
   hasPropertyCode: boolean;
@@ -42,7 +41,6 @@ type PublicFormState = {
 };
 
 const emptyForm = (): PublicFormState => ({
-  requesterName: "",
   teamId: "",
   brokerName: "",
   hasPropertyCode: true,
@@ -107,8 +105,8 @@ export function PublicMarketingRequestPage() {
     event.preventDefault();
     if (submitting) return;
     setMessage("");
-    if (!form.requesterName.trim() || !form.teamId || !form.brokerName.trim()) {
-      setMessage("Preencha solicitante, equipe e corretor.");
+    if (!form.teamId || !form.brokerName.trim()) {
+      setMessage("Preencha equipe e nome do corretor.");
       return;
     }
     if (form.hasPropertyCode && !form.propertyReference.trim()) {
@@ -147,7 +145,7 @@ export function PublicMarketingRequestPage() {
         : null;
       const nextReceipt = await submitPublicMarketingRequest({
         submissionId,
-        requesterName: form.requesterName,
+        requesterName: form.brokerName,
         teamId: form.teamId,
         brokerName: form.brokerName,
         hasPropertyCode: form.hasPropertyCode,
@@ -181,7 +179,6 @@ export function PublicMarketingRequestPage() {
     setSubmissionId(createSubmissionId());
     setForm({
       ...emptyForm(),
-      requesterName: common.requesterName,
       teamId: common.teamId,
       brokerName: common.brokerName,
       requestKind: common.requestKind,
@@ -229,15 +226,14 @@ export function PublicMarketingRequestPage() {
             <p className="marketing-public-intro">Preencha as informações para enviar sua solicitação diretamente ao Marketing.</p>
             {continuingCaptureGroup && (
               <p className="marketing-public-property-rule">
-                <strong>MESMA SAÍDA DE CAPTAÇÃO.</strong> Solicitante, equipe, corretor e data/período foram mantidos do primeiro imóvel. Informe agora os dados deste novo imóvel.
+                <strong>MESMA SAÍDA DE CAPTAÇÃO.</strong> Equipe, corretor e data/período foram mantidos do primeiro imóvel. Informe agora os dados deste novo imóvel.
               </p>
             )}
 
             {loading ? <div className="marketing-public-loading">Carregando formulário...</div> : options && availability ? (
               <form onSubmit={submit}>
-                <label>Nome de quem está fazendo a solicitação *<input value={form.requesterName} onChange={(event) => setForm({ ...form, requesterName: event.target.value })} maxLength={120} autoComplete="name" required disabled={continuingCaptureGroup} /></label>
                 <label>Equipe / gerente *<select value={form.teamId} onChange={(event) => setForm({ ...form, teamId: event.target.value })} required disabled={continuingCaptureGroup}><option value="" disabled>Selecione...</option>{options.teams.map((team) => <option key={team.id} value={team.id}>{team.managerName}</option>)}</select></label>
-                <label>Nome do corretor *<input value={form.brokerName} onChange={(event) => setForm({ ...form, brokerName: event.target.value })} maxLength={120} required disabled={continuingCaptureGroup} /></label>
+                <label>Nome do corretor *<input value={form.brokerName} onChange={(event) => setForm({ ...form, brokerName: event.target.value })} maxLength={120} autoComplete="name" required disabled={continuingCaptureGroup} /></label>
 
                 <fieldset><legend>O imóvel já tem código?</legend><label><input type="radio" checked={form.hasPropertyCode} onChange={() => setForm({ ...form, hasPropertyCode: true })} /> Sim</label><label><input type="radio" checked={!form.hasPropertyCode} onChange={() => setForm({ ...form, hasPropertyCode: false, propertyReference: "" })} /> Ainda não</label></fieldset>
                 <label className={!form.hasPropertyCode ? "marketing-public-field-disabled" : ""}>Código do imóvel<input value={form.propertyReference} onChange={(event) => setForm({ ...form, propertyReference: event.target.value })} maxLength={80} placeholder={form.hasPropertyCode ? "Ex.: 78119" : "Sem código informado"} required={form.hasPropertyCode} disabled={!form.hasPropertyCode} /></label>
