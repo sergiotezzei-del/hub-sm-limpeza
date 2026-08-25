@@ -7,6 +7,7 @@ const WARMUP_MS = 4000;
 const VISIBLE_FLASH_MS = 12000;
 const RETURN_FLASH_MS = 8000;
 const BLINK_MS = 900;
+const EXTERNAL_REFRESH_SUPPRESS_MS = 6000;
 
 let observedPanel: HTMLElement | null = null;
 let knownCards = new Set<string>();
@@ -16,6 +17,8 @@ let visibleStopTimer = 0;
 let blinkTimer = 0;
 let blinkOn = false;
 let attentionActive = false;
+let suppressGenericDetectionUntil = 0;
+const pendingTaskTitles = new Set<string>();
 
 const favicon = document.querySelector<HTMLLinkElement>('link[rel~="icon"]');
 const originalFavicon = favicon?.getAttribute("href") ?? "/icons/icon-192.png";
@@ -34,12 +37,20 @@ const badgeNavigator = navigator as Navigator & {
   clearAppBadge?: () => Promise<void>;
 };
 
+type NewAlertTaskEvent = CustomEvent<{
+  tasks?: Array<{ id?: string; title?: string }>;
+}>;
+
 function normalize(value: string) {
   return value.replace(/\s+/g, " ").trim();
 }
 
+function cardTitle(card: Element) {
+  return normalize(card.querySelector("h3")?.textContent ?? "");
+}
+
 function fingerprint(card: Element) {
-  const title = normalize(card.querySelector("h3")?.textContent ?? "");
+  const title = cardTitle(card);
   const description = normalize(card.querySelector("p")?.textContent ?? "");
   const detail = normalize(card.querySelector("small")?.textContent ?? "");
   const time = normalize(card.querySelector("time")?.textContent ?? "");
@@ -130,6 +141,21 @@ function markNewCards(panel: HTMLElement, fingerprints: Set<string>) {
   });
 }
 
+function markPendingTaskCards(panel: HTMLElement) {
+  if (pendingTaskTitles.size === 0) return false;
+  let marked = false;
+
+  cardsInPanel(panel).forEach((card) => {
+    const title = cardTitle(card);
+    if (!title || !pendingTaskTitles.has(title)) return;
+    card.classList.add(NEW_CARD_CLASS);
+    pendingTaskTitles.delete(title);
+    marked = true;
+  });
+
+  return marked;
+}
+
 function sync() {
   const panel = document.querySelector<HTMLElement>(".hub-alert-panel");
 
@@ -143,12 +169,23 @@ function sync() {
   }
 
   if (!panel || !initialized) return;
+
   const nextCards = currentCards(panel);
+  const markedPendingTask = markPendingTaskCards(panel);
+
+  if (Date.now() < suppressGenericDetectionUntil) {
+    knownCards = nextCards;
+    if (markedPendingTask && !attentionActive) startAttention();
+    return;
+  }
+
   const newFingerprints = new Set(Array.from(nextCards).filter((card) => !knownCards.has(card)));
   knownCards = nextCards;
 
   if (newFingerprints.size > 0) {
     markNewCards(panel, newFingerprints);
+    startAttention();
+  } else if (markedPendingTask && !attentionActive) {
     startAttention();
   }
 }
@@ -166,8 +203,15 @@ if (root) {
   sync();
 }
 
-document.addEventListener("hub:new-alert-tasks", () => {
+document.addEventListener("hub:new-alert-tasks", (event) => {
+  const detail = (event as NewAlertTaskEvent).detail;
+  detail?.tasks?.forEach((task) => {
+    const title = normalize(task.title ?? "");
+    if (title) pendingTaskTitles.add(title);
+  });
+  suppressGenericDetectionUntil = Date.now() + EXTERNAL_REFRESH_SUPPRESS_MS;
   startAttention();
+  if (observedPanel) markPendingTaskCards(observedPanel);
 });
 
 document.addEventListener("visibilitychange", acknowledgeWhenUserReturns);
