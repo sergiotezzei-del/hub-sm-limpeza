@@ -13,7 +13,7 @@ export function WindowsNotificationControl() {
   const [requesting, setRequesting] = useState(false);
 
   useEffect(() => {
-    const sync = () => setHost(document.querySelector<HTMLElement>(".hub-alert-panel-head"));
+    const sync = () => setHost(document.querySelector<HTMLElement>(".profile-notification-settings-slot"));
     sync();
     const root = document.getElementById("root");
     if (!root) return;
