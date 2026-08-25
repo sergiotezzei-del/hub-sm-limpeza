@@ -25,6 +25,7 @@ let blinkOn = false;
 let attentionActive = false;
 let suppressGenericDetectionUntil = 0;
 let unseenAlerts = loadUnseenAlerts();
+const pendingTaskKeysByTitle = new Map<string, string[]>();
 
 const favicon = document.querySelector<HTMLLinkElement>('link[rel~="icon"]');
 const originalFavicon = favicon?.getAttribute("href") ?? "/icons/icon-192.png";
@@ -99,6 +100,26 @@ function explicitCardKey(card: HTMLElement) {
   return "";
 }
 
+function rememberPendingTaskKey(title: string, key: string) {
+  const normalizedTitle = normalize(title);
+  if (!normalizedTitle) return;
+  const queue = pendingTaskKeysByTitle.get(normalizedTitle) ?? [];
+  if (!queue.includes(key)) queue.push(key);
+  pendingTaskKeysByTitle.set(normalizedTitle, queue);
+}
+
+function assignPendingTaskKeys(panel: HTMLElement) {
+  cardsInPanel(panel).forEach((card) => {
+    if (explicitCardKey(card)) return;
+    const title = cardTitle(card);
+    const queue = pendingTaskKeysByTitle.get(title);
+    if (!queue?.length) return;
+    const key = queue.shift();
+    if (key) card.dataset.hubAlertKey = key;
+    if (queue.length === 0) pendingTaskKeysByTitle.delete(title);
+  });
+}
+
 function matchStoredKey(card: HTMLElement) {
   const explicit = explicitCardKey(card);
   if (explicit) return explicit;
@@ -107,8 +128,8 @@ function matchStoredKey(card: HTMLElement) {
   const body = cardDescription(card);
   if (!title) return "";
   const matches = Array.from(unseenAlerts.values()).filter((alert) => {
-    if (alert.title !== title) return false;
-    return alert.body === body || alert.body.includes(title) || body.includes(alert.title);
+    if (alert.title !== title && alert.body !== title) return false;
+    return alert.body === body || alert.title === title || alert.body.includes(title) || body.includes(alert.title);
   });
   if (matches.length === 1) {
     card.dataset.hubAlertKey = matches[0].key;
@@ -204,9 +225,7 @@ function registerUnseenAlert(key: string, title: string, body: string, notify = 
   persistUnseenAlerts();
   syncAppBadge();
   dispatchToast(alert);
-  if (notify) {
-    void showHubWindowsNotification(alert.title, alert.body, notificationTagForKey(alert.key));
-  }
+  if (notify) void showHubWindowsNotification(alert.title, alert.body, notificationTagForKey(alert.key));
   startAttention();
   return true;
 }
@@ -268,6 +287,7 @@ function startAttention() {
 }
 
 function decorateUnseenCards(panel: HTMLElement) {
+  assignPendingTaskKeys(panel);
   cardsInPanel(panel).forEach((card) => {
     const key = storageKeyForCard(card);
     card.classList.toggle(NEW_CARD_CLASS, unseenAlerts.has(key));
@@ -333,9 +353,7 @@ function remindUnseenAlerts() {
 }
 
 function acknowledgeWhenUserReturns() {
-  if (document.visibilityState === "visible" && attentionActive) {
-    scheduleVisibleStop(RETURN_FLASH_MS);
-  }
+  if (document.visibilityState === "visible" && attentionActive) scheduleVisibleStop(RETURN_FLASH_MS);
 }
 
 function findCardByKey(key: string) {
@@ -358,9 +376,10 @@ document.addEventListener("hub:new-alert-tasks", (event) => {
   const detail = (event as NewAlertTaskEvent).detail;
   const tasks = detail?.tasks ?? [];
   tasks.forEach((task) => {
-    const title = normalize(task.title ?? "") || "Novo chamado no HUB";
-    const key = `task:${normalize(task.id ?? "") || hashString(title)}`;
-    registerUnseenAlert(key, "Novo chamado no HUB", title);
+    const taskTitle = normalize(task.title ?? "") || "Novo chamado no HUB";
+    const key = `task:${normalize(task.id ?? "") || hashString(taskTitle)}`;
+    rememberPendingTaskKey(taskTitle, key);
+    registerUnseenAlert(key, taskTitle, "Novo chamado/Afazer no HUB.");
   });
   suppressGenericDetectionUntil = Date.now() + EXTERNAL_REFRESH_SUPPRESS_MS;
   if (observedPanel) decorateUnseenCards(observedPanel);
