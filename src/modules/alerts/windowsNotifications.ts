@@ -32,7 +32,6 @@ export async function showHubWindowsNotification(title: string, body: string, ta
       badge: HUB_NOTIFICATION_ICON,
       tag: tag ?? `hub-alert-${Date.now()}`,
       requireInteraction: true,
-      renotify: true,
       data: { url: "/" },
     });
     return true;
