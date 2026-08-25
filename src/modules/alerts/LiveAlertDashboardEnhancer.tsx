@@ -1,35 +1,38 @@
 import { useEffect, useRef, useState } from "react";
 import { AlertDashboardEnhancer } from "./AlertDashboardEnhancer";
-import { loadAlertTaskIds } from "./alertTaskService";
+import { loadAlertTasks, type AlertTask } from "./alertTaskService";
 
 const TASK_POLL_MS = 10000;
 
+type TaskSnapshot = Pick<AlertTask, "id" | "title">;
+
 export function LiveAlertDashboardEnhancer() {
   const [revision, setRevision] = useState(0);
-  const knownTaskIds = useRef<string[] | null>(null);
+  const knownTasks = useRef<TaskSnapshot[] | null>(null);
 
   useEffect(() => {
     let cancelled = false;
 
     const checkTasks = async () => {
       try {
-        const nextIds = stableIds(await loadAlertTaskIds());
+        const tasks = await loadAlertTasks();
         if (cancelled) return;
 
-        const previousIds = knownTaskIds.current;
-        if (previousIds === null) {
-          knownTaskIds.current = nextIds;
+        const nextTasks = stableTasks(tasks.map(({ id, title }) => ({ id, title })));
+        const previousTasks = knownTasks.current;
+        if (previousTasks === null) {
+          knownTasks.current = nextTasks;
           return;
         }
-        if (sameIds(previousIds, nextIds)) return;
+        if (sameTasks(previousTasks, nextTasks)) return;
 
-        const previousSet = new Set(previousIds);
-        const addedIds = nextIds.filter((id) => !previousSet.has(id));
-        knownTaskIds.current = nextIds;
+        const previousIds = new Set(previousTasks.map((task) => task.id));
+        const addedTasks = nextTasks.filter((task) => !previousIds.has(task.id));
+        knownTasks.current = nextTasks;
 
-        if (addedIds.length > 0) {
+        if (addedTasks.length > 0) {
           document.dispatchEvent(new CustomEvent("hub:new-alert-tasks", {
-            detail: { ids: addedIds },
+            detail: { tasks: addedTasks },
           }));
         }
 
@@ -51,10 +54,11 @@ export function LiveAlertDashboardEnhancer() {
   return <AlertDashboardEnhancer key={revision} />;
 }
 
-function stableIds(ids: string[]) {
-  return [...ids].sort();
+function stableTasks(tasks: TaskSnapshot[]) {
+  return [...tasks].sort((first, second) => first.id.localeCompare(second.id));
 }
 
-function sameIds(first: string[], second: string[]) {
-  return first.length === second.length && first.every((id, index) => id === second[index]);
+function sameTasks(first: TaskSnapshot[], second: TaskSnapshot[]) {
+  return first.length === second.length
+    && first.every((task, index) => task.id === second[index].id && task.title === second[index].title);
 }
