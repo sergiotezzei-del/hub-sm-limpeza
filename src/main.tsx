@@ -1,7 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
-import { AlertDashboardEnhancer } from "./modules/alerts/AlertDashboardEnhancer";
+import { LiveAlertDashboardEnhancer } from "./modules/alerts/LiveAlertDashboardEnhancer";
 import { CleaningActivityAlertEnhancer } from "./modules/alerts/CleaningActivityAlertEnhancer";
 import { GoogleCalendarAlertEnhancer } from "./modules/alerts/GoogleCalendarAlertEnhancer";
 import "./modules/alerts/browserAlertAttention";
@@ -32,7 +32,7 @@ createRoot(document.getElementById("root")!).render(
     ) : (
       <>
         <App />
-        <AlertDashboardEnhancer />
+        <LiveAlertDashboardEnhancer />
         <CleaningActivityAlertEnhancer />
         <GoogleCalendarAlertEnhancer />
         <CleaningDeliveryFeature />

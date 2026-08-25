@@ -8,6 +8,24 @@
   color: #fff;
 }
 
+.hub-alert-card.is-new-alert-attention {
+  border-color: #f97316 !important;
+  animation: hub-new-alert-blink 0.9s ease-in-out infinite !important;
+}
+
+@keyframes hub-new-alert-blink {
+  0%, 100% {
+    background: #ffffff;
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+    transform: translateY(0);
+  }
+  50% {
+    background: #ffedd5;
+    box-shadow: 0 0 0 4px rgba(249, 115, 22, 0.22), 0 14px 34px rgba(249, 115, 22, 0.28);
+    transform: translateY(-2px);
+  }
+}
+
 .hub-alert-form input[type="number"] {
   width: 100%;
   min-height: 44px;
@@ -39,5 +57,12 @@
   .hub-alert-rules-list .hub-alert-rule-actions {
     flex-direction: column;
     align-items: stretch;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hub-alert-card.is-new-alert-attention {
+    animation: none !important;
+    box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.22);
   }
 }
