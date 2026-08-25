@@ -1,33 +1,42 @@
+.profile-avatar-menu-settings-label {
+  margin: 6px 0 2px;
+  padding: 8px 10px 4px;
+  border-top: 1px solid rgba(148, 163, 184, 0.22);
+  color: #64748b;
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.profile-notification-settings-slot {
+  width: 100%;
+}
+
 .hub-windows-notification-button {
-  margin-left: auto;
+  width: 100%;
   padding: 10px 12px;
-  border: 1px solid rgba(249, 115, 22, 0.35);
-  border-radius: 12px;
+  border: 1px solid rgba(249, 115, 22, 0.3);
+  border-radius: 9px;
   background: #fff7ed;
   color: #9a3412;
   font: inherit;
   font-size: 0.78rem;
-  font-weight: 900;
+  font-weight: 850;
+  text-align: left;
   cursor: pointer;
-  white-space: nowrap;
 }
 
 .hub-windows-notification-button.permission-granted {
-  border-color: rgba(21, 128, 61, 0.3);
+  border-color: rgba(21, 128, 61, 0.28);
   background: #f0fdf4;
   color: #166534;
   cursor: default;
 }
 
 .hub-windows-notification-button.permission-denied {
-  border-color: rgba(220, 38, 38, 0.25);
+  border-color: rgba(220, 38, 38, 0.24);
   background: #fff5f5;
   color: #b91c1c;
   cursor: default;
-}
-
-@media (max-width: 900px) {
-  .hub-windows-notification-button {
-    margin-left: 0;
-  }
 }
