@@ -1,4 +1,4 @@
-import { getSupabaseClient } from "../security/services/supabaseClient";
+import { getFreshSupabaseAccessToken, getSupabaseClient } from "../security/services/supabaseClient";
 
 export type AlertRecurrenceType = "weekly" | "biweekly" | "monthly" | "once";
 
@@ -159,5 +159,7 @@ function mapCompletion(row: AlertCompletionRow): HubAlertCompletion {
 async function getRequiredSupabaseClient() {
   const supabase = await getSupabaseClient();
   if (!supabase) throw new Error("Supabase não configurado para Alertas.");
+  const token = await getFreshSupabaseAccessToken();
+  if (!token) throw new Error("Sessão do HUB não encontrada. Entre novamente para carregar os Alertas.");
   return supabase;
 }
