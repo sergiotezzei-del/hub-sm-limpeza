@@ -1,5 +1,5 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { createClient } from "npm:@supabase/supabase-js@2.110.1";
+import postgres from "npm:postgres@3.4.7";
 import webpush from "npm:web-push@3.6.7";
 
 const PUBLIC_ORIGIN = "https://hubsantamariatem.vercel.app";
@@ -34,28 +34,15 @@ type DispatchRow = {
   sent_count: number;
 };
 
-function getServiceRoleKey() {
-  const legacy = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  if (legacy) return legacy;
-  const raw = Deno.env.get("SUPABASE_SECRET_KEYS");
-  if (raw) {
-    try {
-      const parsed = JSON.parse(raw) as Record<string, string>;
-      if (parsed.default) return parsed.default;
-      const first = Object.values(parsed).find(Boolean);
-      if (first) return first;
-    } catch {
-      // segue para erro explícito abaixo
-    }
+class PushRuntimeError extends Error {
+  constructor(readonly code: string) {
+    super(code);
   }
-  throw new Error("SUPABASE_SERVICE_ROLE_KEY_UNAVAILABLE");
 }
 
-const supabaseUrl = Deno.env.get("SUPABASE_URL");
-if (!supabaseUrl) throw new Error("SUPABASE_URL_UNAVAILABLE");
-const supabase = createClient(supabaseUrl, getServiceRoleKey(), {
-  auth: { persistSession: false, autoRefreshToken: false },
-});
+const databaseUrl = Deno.env.get("SUPABASE_DB_URL");
+if (!databaseUrl) throw new Error("SUPABASE_DB_URL_UNAVAILABLE");
+const database = postgres(databaseUrl, { prepare: false, max: 1, idle_timeout: 20 });
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS_HEADERS });
@@ -79,7 +66,7 @@ Deno.serve(async (req: Request) => {
         return json(400, { error: "claim_required" });
       }
 
-      const { data: requestId, error } = await supabase.rpc("marketing_push_register_server", {
+      const requestId = await callRpc<string>("marketing_push_register_server", {
         p_claim_token: claimToken || null,
         p_request_number: requestNumber || null,
         p_pair_code: pairCode || null,
@@ -88,7 +75,7 @@ Deno.serve(async (req: Request) => {
         p_auth: subscription.auth,
         p_user_agent: readString(body.userAgent) || null,
       });
-      if (error || !requestId) throw new Error(error?.message || "MARKETING_PUSH_REGISTER_FAILED");
+      if (!requestId) throw new PushRuntimeError("push_register_failed");
 
       const secrets = await ensureVapidSecrets();
       const result = await dispatchPushes(String(requestId), false, secrets);
@@ -98,8 +85,7 @@ Deno.serve(async (req: Request) => {
     if (action === "ack") {
       const ackToken = readString(body.ackToken);
       if (!ackToken || ackToken.length < 32) return json(400, { error: "ack_invalid" });
-      const { data, error } = await supabase.rpc("marketing_push_ack_server", { p_ack_token: ackToken });
-      if (error) throw new Error(error.message);
+      const data = await callRpc<boolean>("marketing_push_ack_server", { p_ack_token: ackToken });
       return json(200, { ok: Boolean(data) });
     }
 
@@ -116,25 +102,48 @@ Deno.serve(async (req: Request) => {
 
     return json(404, { error: "unknown_action" });
   } catch (error) {
-    console.error("marketing-public-push", error);
-    return json(500, { error: "internal_error" });
+    const code = error instanceof PushRuntimeError ? error.code : "unexpected_failure";
+    console.error("marketing-public-push", code);
+    return json(500, { error: "internal_error", code });
   }
 });
 
 async function ensureVapidSecrets() {
-  let row = await getSecrets();
-  if (!row.vapid_public_key || !row.vapid_private_key) {
-    const generated = webpush.generateVAPIDKeys();
-    const { error } = await supabase.rpc("marketing_push_store_vapid_keys_server", {
-      p_public_key: generated.publicKey,
-      p_private_key: generated.privateKey,
-    });
-    if (error) throw new Error(error.message);
+  let row: SecretsRow;
+  try {
     row = await getSecrets();
+  } catch (error) {
+    if (error instanceof PushRuntimeError) throw error;
+    throw new PushRuntimeError("secrets_read_failed");
   }
 
   if (!row.vapid_public_key || !row.vapid_private_key) {
-    throw new Error("MARKETING_PUSH_VAPID_NOT_CONFIGURED");
+    let generated: { publicKey: string; privateKey: string };
+    try {
+      generated = webpush.generateVAPIDKeys();
+    } catch {
+      throw new PushRuntimeError("vapid_generation_failed");
+    }
+
+    try {
+      await callRpc("marketing_push_store_vapid_keys_server", {
+        p_public_key: generated.publicKey,
+        p_private_key: generated.privateKey,
+      });
+    } catch {
+      throw new PushRuntimeError("vapid_store_failed");
+    }
+
+    try {
+      row = await getSecrets();
+    } catch (error) {
+      if (error instanceof PushRuntimeError) throw error;
+      throw new PushRuntimeError("secrets_reload_failed");
+    }
+  }
+
+  if (!row.vapid_public_key || !row.vapid_private_key) {
+    throw new PushRuntimeError("vapid_not_configured");
   }
 
   return {
@@ -145,8 +154,7 @@ async function ensureVapidSecrets() {
 }
 
 async function getSecrets(): Promise<SecretsRow> {
-  const { data, error } = await supabase.rpc("marketing_push_get_server_secrets");
-  if (error) throw new Error(error.message);
+  const data = await callRpc<SecretsRow[]>("marketing_push_get_server_secrets");
   return Array.isArray(data) && data[0] ? data[0] as SecretsRow : {};
 }
 
@@ -155,11 +163,10 @@ async function dispatchPushes(
   reminders: boolean,
   secrets: { webhookSecret: string; vapidPublicKey: string; vapidPrivateKey: string },
 ) {
-  const { data, error } = await supabase.rpc("marketing_push_get_dispatch_batch", {
+  const data = await callRpc<DispatchRow[]>("marketing_push_get_dispatch_batch", {
     p_request_id: requestId,
     p_reminders: reminders,
   });
-  if (error) throw new Error(error.message);
   const rows = (Array.isArray(data) ? data : []) as DispatchRow[];
   if (rows.length === 0) return { sent: 0, failed: 0 };
 
@@ -249,14 +256,81 @@ function buildPayload(row: DispatchRow, isReminder: boolean) {
 }
 
 async function recordDelivery(deliveryId: string, leaseToken: string, success: boolean, terminal: boolean, errorMessage: string | null) {
-  const { data, error } = await supabase.rpc("marketing_push_record_delivery_leased_server", {
-    p_delivery_id: deliveryId,
-    p_lease_token: leaseToken,
-    p_success: success,
-    p_terminal: terminal,
-    p_error: errorMessage,
-  });
-  if (error || data !== true) console.error("marketing_push_record_delivery_leased_server", error?.message || "lease_not_owned");
+  try {
+    const data = await callRpc<boolean>("marketing_push_record_delivery_leased_server", {
+      p_delivery_id: deliveryId,
+      p_lease_token: leaseToken,
+      p_success: success,
+      p_terminal: terminal,
+      p_error: errorMessage,
+    });
+    if (data !== true) console.error("marketing_push_record_delivery_leased_server", "lease_not_owned");
+  } catch {
+    console.error("marketing_push_record_delivery_leased_server", "rpc_failed");
+  }
+}
+
+async function callRpc<T = unknown>(name: string, parameters: JsonRecord = {}): Promise<T> {
+  if (name === "marketing_push_get_server_secrets") {
+    return await database`select * from public.marketing_push_get_server_secrets()` as unknown as T;
+  }
+
+  if (name === "marketing_push_store_vapid_keys_server") {
+    await database`
+      select public.marketing_push_store_vapid_keys_server(
+        ${parameters.p_public_key as string},
+        ${parameters.p_private_key as string}
+      )
+    `;
+    return undefined as T;
+  }
+
+  if (name === "marketing_push_register_server") {
+    const rows = await database`
+      select public.marketing_push_register_server(
+        ${parameters.p_claim_token as string | null},
+        ${parameters.p_request_number as number | null},
+        ${parameters.p_pair_code as string | null},
+        ${parameters.p_endpoint as string},
+        ${parameters.p_p256dh as string},
+        ${parameters.p_auth as string},
+        ${parameters.p_user_agent as string | null}
+      ) as value
+    `;
+    return rows[0]?.value as T;
+  }
+
+  if (name === "marketing_push_ack_server") {
+    const rows = await database`
+      select public.marketing_push_ack_server(${parameters.p_ack_token as string}) as value
+    `;
+    return rows[0]?.value as T;
+  }
+
+  if (name === "marketing_push_get_dispatch_batch") {
+    return await database`
+      select *
+      from public.marketing_push_get_dispatch_batch(
+        ${parameters.p_request_id as string | null},
+        ${parameters.p_reminders as boolean}
+      )
+    ` as unknown as T;
+  }
+
+  if (name === "marketing_push_record_delivery_leased_server") {
+    const rows = await database`
+      select public.marketing_push_record_delivery_leased_server(
+        ${parameters.p_delivery_id as string},
+        ${parameters.p_lease_token as string},
+        ${parameters.p_success as boolean},
+        ${parameters.p_terminal as boolean},
+        ${parameters.p_error as string | null}
+      ) as value
+    `;
+    return rows[0]?.value as T;
+  }
+
+  throw new PushRuntimeError("internal_rpc_not_allowed");
 }
 
 function readSubscription(value: unknown) {

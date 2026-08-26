@@ -1,0 +1,2 @@
+[functions.marketing-public-push]
+verify_jwt = false

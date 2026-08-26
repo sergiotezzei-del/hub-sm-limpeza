@@ -1,5 +1,7 @@
--- Run after 20260826130640_fix_marketing_public_push_critical.sql in the same
--- transaction. The caller must finish with ROLLBACK.
+-- Run after 20260826130640_fix_marketing_public_push_critical.sql.
+-- The transaction is always rolled back at the end of this file.
+
+begin;
 
 do $security$
 declare
@@ -439,3 +441,5 @@ begin
   end if;
 end;
 $push_flow$;
+
+rollback;
