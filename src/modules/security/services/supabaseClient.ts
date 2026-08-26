@@ -7,6 +7,8 @@ export const supabaseConfigured = Boolean(SUPABASE_URL && SUPABASE_PUBLIC_KEY);
 
 let clientPromise: Promise<SupabaseClient | null> | null = null;
 let activeSessionSnapshot: SupabaseSessionSnapshot = {};
+let nativeWindowFetch: typeof window.fetch | null = null;
+let globalFetchGuardInstalled = false;
 
 export type SupabaseSessionSnapshot = {
   accessToken?: string;
@@ -22,6 +24,9 @@ export async function getSupabaseClient() {
   if (!supabaseConfigured) return null;
   if (!clientPromise) {
     clientPromise = import("@supabase/supabase-js").then(({ createClient }) => {
+      const baseFetch = getNativeWindowFetch();
+      installHubSupabaseFetchGuard(baseFetch);
+
       const client = createClient(SUPABASE_URL, SUPABASE_PUBLIC_KEY, {
         auth: {
           autoRefreshToken: true,
@@ -29,7 +34,7 @@ export async function getSupabaseClient() {
           persistSession: true,
         },
         global: {
-          fetch: createHubSupabaseFetch(),
+          fetch: createHubSupabaseFetch(baseFetch),
         },
       });
 
@@ -104,21 +109,50 @@ function getHubSupabaseAuthStorageKey() {
   }
 }
 
-function createHubSupabaseFetch() {
-  return async (input: RequestInfo | URL, init?: RequestInit) => {
-    const url = getRequestUrl(input);
-    if (!url.includes("/rest/v1/")) return window.fetch(input, init);
+function getNativeWindowFetch() {
+  if (typeof window === "undefined") return fetch;
+  if (!nativeWindowFetch) nativeWindowFetch = window.fetch.bind(window);
+  return nativeWindowFetch;
+}
 
-    const accessToken = getSupabaseAccessToken();
-    if (!accessToken) return window.fetch(input, init);
+function installHubSupabaseFetchGuard(baseFetch: typeof fetch) {
+  if (typeof window === "undefined" || globalFetchGuardInstalled) return;
+  globalFetchGuardInstalled = true;
+  window.fetch = ((input: RequestInfo | URL, init?: RequestInit) => hubSupabaseFetch(baseFetch, input, init)) as typeof window.fetch;
+}
 
-    const inputHeaders = input instanceof Request ? input.headers : undefined;
-    const headers = new Headers(inputHeaders);
-    if (init?.headers) new Headers(init.headers).forEach((value, key) => headers.set(key, value));
+function createHubSupabaseFetch(baseFetch: typeof fetch) {
+  return (input: RequestInfo | URL, init?: RequestInit) => hubSupabaseFetch(baseFetch, input, init);
+}
+
+async function hubSupabaseFetch(baseFetch: typeof fetch, input: RequestInfo | URL, init?: RequestInit) {
+  const url = getRequestUrl(input);
+  if (!isHubRestRequest(url)) return baseFetch(input, init);
+
+  const inputHeaders = input instanceof Request ? input.headers : undefined;
+  const headers = new Headers(inputHeaders);
+  if (init?.headers) new Headers(init.headers).forEach((value, key) => headers.set(key, value));
+
+  const accessToken = getSupabaseAccessToken();
+  if (accessToken) {
     headers.set("Authorization", `Bearer ${accessToken}`);
+  } else if (isPublishableKeyBearer(headers.get("Authorization"))) {
+    // Publishable keys belong only in the apikey header. They are not user JWTs.
+    headers.delete("Authorization");
+  }
 
-    return window.fetch(input, { ...init, headers });
-  };
+  return baseFetch(input, { ...init, headers });
+}
+
+function isHubRestRequest(url: string) {
+  return Boolean(SUPABASE_URL) && url.startsWith(`${SUPABASE_URL}/rest/v1/`);
+}
+
+function isPublishableKeyBearer(authorization: string | null) {
+  if (!authorization) return false;
+  const match = /^Bearer\s+(.+)$/i.exec(authorization.trim());
+  const token = match?.[1]?.trim();
+  return Boolean(token && (token === SUPABASE_PUBLIC_KEY || token.startsWith("sb_publishable_")));
 }
 
 function getRequestUrl(input: RequestInfo | URL) {
