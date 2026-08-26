@@ -10,6 +10,7 @@ import "./modules/alerts/browserAlertAttention";
 import { CleaningDeliveryFeature } from "./modules/cleaning/components/CleaningDeliveryFeature";
 import { NeiaDeliveryShortcutFeature } from "./modules/cleaning/components/NeiaDeliveryShortcutFeature";
 import { NeiaHistoryEnhancer } from "./modules/cleaning/components/NeiaHistoryEnhancer";
+import { MarketingSessionKeepalive } from "./modules/marketing/MarketingSessionKeepalive";
 import { AirConditioningMapFeature } from "./modules/patrimony/AirConditioningMapFeature";
 import { PatrimonyPeopleEquipmentFeature } from "./modules/patrimony/PatrimonyPeopleEquipmentFeature";
 import { PatrimonySpaceMapsFeature } from "./modules/patrimony/PatrimonySpaceMapsFeature";
@@ -34,6 +35,7 @@ createRoot(document.getElementById("root")!).render(
     ) : (
       <>
         <App />
+        <MarketingSessionKeepalive />
         <LiveAlertDashboardEnhancer />
         <WindowsNotificationControl />
         <AlertToastHost />
