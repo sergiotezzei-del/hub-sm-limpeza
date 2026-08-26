@@ -5,7 +5,7 @@ import {
   getGuardSupabaseAuthEmailBinding,
   getGuardSupabaseUserBinding,
 } from "./guardSupabaseConfig";
-import { getSupabaseClient, signOutSupabaseAuth, supabaseConfigured } from "./supabaseClient";
+import { getSupabaseClient, rememberSupabaseSession, signOutSupabaseAuth, supabaseConfigured } from "./supabaseClient";
 
 const AUTH_BRIDGE_STATUS_KEY = "hub-sm-guard-auth-bridge-status";
 const AUTH_BRIDGE_TIMEOUT_MS = 5000;
@@ -167,6 +167,8 @@ async function signInSupabaseAuthBridge(input: {
       checkedAt: new Date().toISOString(),
     });
   }
+
+  rememberSupabaseSession(data.session);
 
   const authUserId = data.session.user.id;
   if (input.userBinding.userId && input.userBinding.userId !== authUserId) {
