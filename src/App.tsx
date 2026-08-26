@@ -2332,7 +2332,7 @@ function LoginScreen({ password, loginError, onPasswordChange, onSubmit }: { pas
         <h1>{BRAND}</h1>
       </div>
       <form className="login-form" onSubmit={onSubmit}>
-        <SantaMariaBrand compact showTagline={false} className="panel-corner-brand login-panel-brand" />
+        <SantaMariaBrand compact showTagline={false} className="login-panel-brand" />
         <label htmlFor="password">Digite sua senha</label>
         <input id="password" type="password" value={password} autoComplete="current-password" onChange={(event) => onPasswordChange(event.target.value)} />
         {loginError && <p className="error-message">{loginError}</p>}

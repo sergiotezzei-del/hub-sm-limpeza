@@ -1,0 +1,249 @@
+.marketing-push-receiver-page {
+  min-height: 100vh;
+  padding: 24px 14px 42px;
+  background: radial-gradient(circle at top, #fff7ed 0, #f8fafc 48%, #eef2f7 100%);
+  color: #1f2937;
+}
+
+.marketing-push-receiver-shell {
+  width: min(100%, 720px);
+  margin: 0 auto;
+}
+
+.marketing-push-receiver-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 4px 18px;
+}
+
+.marketing-push-receiver-logo {
+  width: 46px;
+  height: 46px;
+}
+
+.marketing-push-receiver-brand div {
+  display: grid;
+  gap: 2px;
+}
+
+.marketing-push-receiver-brand strong {
+  color: #9a3412;
+  font-size: 1rem;
+  letter-spacing: .04em;
+}
+
+.marketing-push-receiver-brand span {
+  color: #64748b;
+  font-size: .76rem;
+  font-weight: 800;
+  letter-spacing: .08em;
+}
+
+.marketing-push-receiver-card {
+  padding: clamp(20px, 5vw, 34px);
+  border: 1px solid #fed7aa;
+  border-radius: 26px;
+  background: rgba(255, 255, 255, .96);
+  box-shadow: 0 22px 55px rgba(15, 23, 42, .12);
+}
+
+.marketing-push-receiver-bell {
+  width: 62px;
+  height: 62px;
+  display: grid;
+  place-items: center;
+  border-radius: 18px;
+  background: #ffedd5;
+  font-size: 2rem;
+}
+
+.marketing-push-receiver-kicker {
+  margin: 20px 0 5px;
+  color: #ea580c;
+  font-size: .78rem;
+  font-weight: 950;
+  letter-spacing: .12em;
+}
+
+.marketing-push-receiver-card h1 {
+  margin: 0;
+  color: #431407;
+  font-size: clamp(1.55rem, 6vw, 2.25rem);
+  line-height: 1.08;
+}
+
+.marketing-push-receiver-intro {
+  margin: 12px 0 22px;
+  color: #475569;
+  line-height: 1.55;
+}
+
+.marketing-push-receiver-latest,
+.marketing-push-receiver-pending,
+.marketing-push-receiver-active,
+.marketing-push-receiver-manual,
+.marketing-push-receiver-help {
+  margin-top: 16px;
+  padding: 18px;
+  border-radius: 17px;
+}
+
+.marketing-push-receiver-latest {
+  border: 2px solid #fb923c;
+  background: #fff7ed;
+}
+
+.marketing-push-receiver-latest > span {
+  display: block;
+  margin-bottom: 6px;
+  color: #c2410c;
+  font-size: .75rem;
+  font-weight: 950;
+  letter-spacing: .1em;
+}
+
+.marketing-push-receiver-latest strong {
+  display: block;
+  color: #7c2d12;
+  font-size: 1.05rem;
+}
+
+.marketing-push-receiver-latest p {
+  white-space: pre-line;
+  line-height: 1.5;
+}
+
+.marketing-push-receiver-latest small {
+  color: #64748b;
+}
+
+.marketing-push-receiver-pending {
+  border: 2px solid #f97316;
+  background: #fff7ed;
+  text-align: center;
+}
+
+.marketing-push-receiver-pending > span {
+  display: block;
+  color: #9a3412;
+  font-size: .75rem;
+  font-weight: 900;
+  letter-spacing: .12em;
+}
+
+.marketing-push-receiver-pending > strong {
+  display: block;
+  margin: 4px 0;
+  color: #7c2d12;
+  font-size: 2rem;
+}
+
+.marketing-push-receiver-pending button,
+.marketing-push-receiver-manual button {
+  width: 100%;
+  min-height: 50px;
+  padding: 12px 16px;
+  border: 0;
+  border-radius: 13px;
+  background: #ea580c;
+  color: white;
+  font: inherit;
+  font-weight: 950;
+  cursor: pointer;
+}
+
+.marketing-push-receiver-pending button:disabled,
+.marketing-push-receiver-manual button:disabled {
+  opacity: .55;
+}
+
+.marketing-push-receiver-active {
+  border: 2px solid #86efac;
+  background: #f0fdf4;
+  color: #14532d;
+}
+
+.marketing-push-receiver-active strong {
+  display: block;
+  font-size: 1.1rem;
+}
+
+.marketing-push-receiver-manual {
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+}
+
+.marketing-push-receiver-manual h2,
+.marketing-push-receiver-help h2 {
+  margin: 0 0 6px;
+  font-size: 1.05rem;
+}
+
+.marketing-push-receiver-manual form {
+  display: grid;
+  gap: 13px;
+  margin-top: 14px;
+}
+
+.marketing-push-receiver-manual label {
+  display: grid;
+  gap: 6px;
+  color: #334155;
+  font-size: .85rem;
+  font-weight: 800;
+}
+
+.marketing-push-receiver-manual input {
+  min-height: 46px;
+  padding: 10px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 11px;
+  background: white;
+  color: #0f172a;
+  font: inherit;
+  font-size: 1rem;
+}
+
+.marketing-push-receiver-error {
+  margin: 14px 0 0;
+  padding: 12px 14px;
+  border: 1px solid #fecaca;
+  border-radius: 12px;
+  background: #fef2f2;
+  color: #991b1b;
+  line-height: 1.45;
+}
+
+.marketing-push-receiver-help {
+  background: #f8fafc;
+  color: #475569;
+  line-height: 1.5;
+}
+
+.marketing-push-receiver-help p:last-child {
+  margin-bottom: 0;
+  color: #7c2d12;
+}
+
+.marketing-push-internal-link {
+  width: 100%;
+  margin-top: 18px;
+  padding: 10px;
+  border: 0;
+  background: transparent;
+  color: #64748b;
+  font: inherit;
+  font-size: .82rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+@media (max-width: 520px) {
+  .marketing-push-receiver-page {
+    padding-top: 14px;
+  }
+  .marketing-push-receiver-card {
+    border-radius: 20px;
+  }
+}
