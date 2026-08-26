@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { SantaMariaBrand } from "../../components/SantaMariaBrand";
 import { CaptureSchedulePicker } from "./CaptureSchedulePicker";
 import { ExclusiveChoice } from "./ExclusiveChoice";
+import { MarketingPushSetupCard } from "./MarketingPushSetupCard";
 import {
   formatCaptureRange,
   formatDuration,
@@ -9,6 +10,7 @@ import {
   MARKETING_CONTENT_OPTIONS,
   type MarketingCaptureSelection,
 } from "./marketingConfig";
+import { prepareMarketingPush, type MarketingPushSetup } from "./marketingPushClient";
 import {
   getPublicMarketingErrorMessage,
   loadPublicMarketingData,
@@ -71,6 +73,9 @@ export function PublicMarketingRequestPage() {
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState("");
   const [receipt, setReceipt] = useState<PublicMarketingReceipt | null>(null);
+  const [pushSetup, setPushSetup] = useState<MarketingPushSetup | null>(null);
+  const [pushPreparing, setPushPreparing] = useState(false);
+  const [pushPrepareFailed, setPushPrepareFailed] = useState(false);
   const continuingCaptureGroup = Boolean(captureGroupId);
 
   useEffect(() => {
@@ -166,6 +171,15 @@ export function PublicMarketingRequestPage() {
       });
       if (nextReceipt.captureGroupId && !captureGroupId) setCaptureGroupId(nextReceipt.captureGroupId);
       setReceipt(nextReceipt);
+      setPushSetup(null);
+      setPushPrepareFailed(false);
+      if (form.requestKind === "capture_edit") {
+        setPushPreparing(true);
+        void prepareMarketingPush(submissionId)
+          .then((setup) => setPushSetup(setup))
+          .catch(() => setPushPrepareFailed(true))
+          .finally(() => setPushPreparing(false));
+      }
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (error) {
       setMessage(getPublicMarketingErrorMessage(error));
@@ -189,6 +203,9 @@ export function PublicMarketingRequestPage() {
       hasMultipleProperties: true,
     });
     setReceipt(null);
+    setPushSetup(null);
+    setPushPreparing(false);
+    setPushPrepareFailed(false);
     setMessage("");
     setPickerOpen(false);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -213,6 +230,9 @@ export function PublicMarketingRequestPage() {
               <small>Equipe: {receipt.teamName}</small>
             </article>
             <p>O gerente da sua equipe e o Marketing poderão acompanhar o andamento pelo HUB.</p>
+            {form.requestKind === "capture_edit" && (
+              <MarketingPushSetupCard setup={pushSetup} preparing={pushPreparing} prepareFailed={pushPrepareFailed} />
+            )}
             {receipt.captureGroupId && form.hasMultipleProperties && (
               <button className="marketing-public-add-property" type="button" onClick={addAnotherProperty}>
                 ADICIONAR OUTRO IMÓVEL DESTA MESMA SAÍDA
