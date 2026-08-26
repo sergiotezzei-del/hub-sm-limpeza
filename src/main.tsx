@@ -18,6 +18,7 @@ import { MarketingPushAttentionHost } from "./modules/marketing/MarketingPushAtt
 import { MarketingPushReceiverPage } from "./modules/marketing/MarketingPushReceiverPage";
 import { PublicMarketingRequestPage } from "./modules/marketing/PublicMarketingRequestPage";
 import { isMarketingNotificationReceiver, readPendingMarketingPushSetup } from "./modules/marketing/marketingPushClient";
+import { HubAuthSessionGuard } from "./modules/security/HubAuthSessionGuard";
 import { PublicServiceRequestPage } from "./modules/service-requests/PublicServiceRequestPage";
 import { isPwaStandalone } from "./pwaInstall";
 import "./styles.css";
@@ -72,6 +73,7 @@ createRoot(document.getElementById("root")!).render(
     ) : (
       <>
         <App />
+        <HubAuthSessionGuard />
         <MarketingSessionKeepalive />
         <LiveAlertDashboardEnhancer />
         <WindowsNotificationControl />

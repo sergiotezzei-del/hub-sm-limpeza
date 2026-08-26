@@ -46,6 +46,18 @@ export function getSupabaseAccessToken() {
   return getStoredSupabaseSessionSnapshot().accessToken;
 }
 
+export async function getFreshSupabaseAccessToken() {
+  try {
+    const supabase = await getSupabaseClient();
+    if (!supabase) return undefined;
+    const { data, error } = await supabase.auth.getSession();
+    if (error) return undefined;
+    return data.session?.access_token || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export async function signOutSupabaseAuth() {
   try {
     const supabase = await getSupabaseClient();
