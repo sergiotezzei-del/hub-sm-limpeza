@@ -1,4 +1,4 @@
-const CACHE_NAME = "hub-santa-maria-v14";
+const CACHE_NAME = "hub-santa-maria-v15";
 const MARKETING_PUSH_CACHE = "hub-marketing-push-state";
 const LAST_MARKETING_PUSH_KEY = "/__hub_last_marketing_push";
 const MARKETING_PUSH_ENDPOINT = "https://dtdepfpkyiqtnsjztjit.supabase.co/functions/v1/marketing-public-push";

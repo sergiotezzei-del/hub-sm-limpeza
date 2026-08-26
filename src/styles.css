@@ -182,7 +182,14 @@ footer {
 }
 
 .login-panel-brand {
-  margin-left: auto;
+  justify-self: center !important;
+  width: fit-content;
+  margin-inline: auto !important;
+}
+
+.login-form .login-panel-brand {
+  justify-self: center !important;
+  margin-inline: auto !important;
 }
 
 .login-form,
