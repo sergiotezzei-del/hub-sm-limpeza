@@ -49,7 +49,7 @@ export function HubAuthSessionGuard() {
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onVisibilityChange);
 
-    let unsubscribe = () => undefined;
+    let unsubscribe: () => void = () => {};
     void getSupabaseClient().then((supabase) => {
       if (!supabase || cancelled) return;
       const subscription = supabase.auth.onAuthStateChange((event) => {
