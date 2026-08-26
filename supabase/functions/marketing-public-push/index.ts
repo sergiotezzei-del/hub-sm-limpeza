@@ -170,6 +170,18 @@ async function dispatchPushes(
   for (const row of rows) {
     const isReminder = Number(row.sent_count || 0) > 0;
     const payload = buildPayload(row, isReminder);
+    const ttlSeconds = pushTtlSeconds(row.confirmed_capture_at);
+    if (ttlSeconds <= 0) {
+      failed += 1;
+      await recordDelivery(
+        row.delivery_id,
+        row.lease_token,
+        false,
+        false,
+        "capture_time_passed_before_dispatch",
+      );
+      continue;
+    }
     try {
       await webpush.sendNotification(
         {
@@ -177,7 +189,7 @@ async function dispatchPushes(
           keys: { p256dh: row.p256dh, auth: row.auth },
         },
         JSON.stringify(payload),
-        { TTL: 86400, urgency: "high" },
+        { TTL: ttlSeconds, urgency: "high" },
       );
       sent += 1;
       await recordDelivery(row.delivery_id, row.lease_token, true, false, null);
@@ -191,6 +203,12 @@ async function dispatchPushes(
   }
 
   return { sent, failed };
+}
+
+function pushTtlSeconds(captureAt: string) {
+  const remainingSeconds = Math.floor((Date.parse(captureAt) - Date.now()) / 1000);
+  if (!Number.isFinite(remainingSeconds)) return 0;
+  return Math.max(0, Math.min(5 * 60, remainingSeconds));
 }
 
 function buildPayload(row: DispatchRow, isReminder: boolean) {
