@@ -17,6 +17,7 @@ type SecretsRow = {
 };
 type DispatchRow = {
   delivery_id: string;
+  lease_token: string;
   event_id: string;
   request_id: string;
   request_number: number | string;
@@ -91,7 +92,7 @@ Deno.serve(async (req: Request) => {
 
       const secrets = await ensureVapidSecrets();
       const result = await dispatchPushes(String(requestId), false, secrets);
-      return json(200, { ok: true, requestId, dispatched: result.sent });
+      return json(200, { ok: true, dispatched: result.sent });
     }
 
     if (action === "ack") {
@@ -179,13 +180,13 @@ async function dispatchPushes(
         { TTL: 86400, urgency: "high" },
       );
       sent += 1;
-      await recordDelivery(row.delivery_id, true, false, null);
+      await recordDelivery(row.delivery_id, row.lease_token, true, false, null);
     } catch (sendError) {
       failed += 1;
       const statusCode = Number((sendError as { statusCode?: number }).statusCode || 0);
       const terminal = statusCode === 404 || statusCode === 410;
       const message = sendError instanceof Error ? sendError.message : String(sendError);
-      await recordDelivery(row.delivery_id, false, terminal, message);
+      await recordDelivery(row.delivery_id, row.lease_token, false, terminal, message);
     }
   }
 
@@ -229,14 +230,15 @@ function buildPayload(row: DispatchRow, isReminder: boolean) {
   };
 }
 
-async function recordDelivery(deliveryId: string, success: boolean, terminal: boolean, errorMessage: string | null) {
-  const { error } = await supabase.rpc("marketing_push_record_delivery_server", {
+async function recordDelivery(deliveryId: string, leaseToken: string, success: boolean, terminal: boolean, errorMessage: string | null) {
+  const { data, error } = await supabase.rpc("marketing_push_record_delivery_leased_server", {
     p_delivery_id: deliveryId,
+    p_lease_token: leaseToken,
     p_success: success,
     p_terminal: terminal,
     p_error: errorMessage,
   });
-  if (error) console.error("marketing_push_record_delivery_server", error.message);
+  if (error || data !== true) console.error("marketing_push_record_delivery_leased_server", error?.message || "lease_not_owned");
 }
 
 function readSubscription(value: unknown) {

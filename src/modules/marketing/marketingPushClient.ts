@@ -7,7 +7,9 @@ import {
 
 const PUSH_FUNCTION_URL = `${SUPABASE_URL}/functions/v1/marketing-public-push`;
 const PENDING_COOKIE = "hub_mkt_push_setup";
-const PENDING_STORAGE = "hub-marketing-push-setup";
+const PENDING_SESSION_STORAGE = "hub-marketing-push-setup";
+const LEGACY_PENDING_STORAGE = "hub-marketing-push-setup";
+const CLAIM_MAX_AGE_SECONDS = 30 * 60;
 const RECEIVER_STORAGE = "hub-marketing-notification-receiver";
 const RECEIVER_COOKIE = "hub_mkt_push_receiver";
 const LAST_PUSH_CACHE = "hub-marketing-push-state";
@@ -73,11 +75,16 @@ export async function prepareMarketingPush(submissionId: string): Promise<Market
 export function rememberPendingMarketingPushSetup(setup: MarketingPushSetup) {
   const serialized = JSON.stringify(setup);
   try {
-    window.localStorage.setItem(PENDING_STORAGE, serialized);
+    window.localStorage.removeItem(LEGACY_PENDING_STORAGE);
   } catch {
-    // Cookie abaixo continua como fallback e também atravessa o Add to Home Screen no iOS.
+    // A limpeza do armazenamento legado é apenas defensiva.
   }
-  setCookie(PENDING_COOKIE, serialized, 45 * 24 * 60 * 60);
+  try {
+    window.sessionStorage.setItem(PENDING_SESSION_STORAGE, serialized);
+  } catch {
+    // O cookie curto também atravessa o Add to Home Screen no iOS.
+  }
+  setCookie(PENDING_COOKIE, serialized, claimMaxAge(setup.expiresAt));
 }
 
 export function readPendingMarketingPushSetup(): MarketingPushSetup | null {
@@ -87,19 +94,22 @@ export function readPendingMarketingPushSetup(): MarketingPushSetup | null {
     if (parsed) return parsed;
   }
   try {
-    const stored = window.localStorage.getItem(PENDING_STORAGE);
+    window.localStorage.removeItem(LEGACY_PENDING_STORAGE);
+    const stored = window.sessionStorage.getItem(PENDING_SESSION_STORAGE);
     if (stored) return safeSetup(stored);
   } catch {
-    // sem armazenamento local
+    // sem armazenamento de sessão
   }
+  clearPendingMarketingPushSetup();
   return null;
 }
 
 export function clearPendingMarketingPushSetup() {
   try {
-    window.localStorage.removeItem(PENDING_STORAGE);
+    window.localStorage.removeItem(LEGACY_PENDING_STORAGE);
+    window.sessionStorage.removeItem(PENDING_SESSION_STORAGE);
   } catch {
-    // sem armazenamento local
+    // sem armazenamento disponível
   }
   setCookie(PENDING_COOKIE, "", 0);
 }
@@ -248,16 +258,32 @@ function safeSetup(value: string): MarketingPushSetup | null {
   try {
     const parsed = JSON.parse(value) as Partial<MarketingPushSetup>;
     const requestNumber = Number(parsed.requestNumber);
-    if (!parsed.claimToken || !parsed.pairCode || !Number.isInteger(requestNumber) || requestNumber <= 0) return null;
+    const expiresAtText = parsed.expiresAt;
+    const expiresAt = expiresAtText ? Date.parse(expiresAtText) : Number.NaN;
+    if (
+      !parsed.claimToken
+      || !parsed.pairCode
+      || !expiresAtText
+      || !Number.isInteger(requestNumber)
+      || requestNumber <= 0
+      || !Number.isFinite(expiresAt)
+      || expiresAt <= Date.now()
+    ) return null;
     return {
       claimToken: parsed.claimToken,
       pairCode: parsed.pairCode,
       requestNumber,
-      expiresAt: parsed.expiresAt || "",
+      expiresAt: expiresAtText,
     };
   } catch {
     return null;
   }
+}
+
+function claimMaxAge(expiresAt: string) {
+  const secondsUntilExpiry = Math.floor((Date.parse(expiresAt) - Date.now()) / 1000);
+  if (!Number.isFinite(secondsUntilExpiry)) return CLAIM_MAX_AGE_SECONDS;
+  return Math.max(0, Math.min(CLAIM_MAX_AGE_SECONDS, secondsUntilExpiry));
 }
 
 function setCookie(name: string, value: string, maxAgeSeconds: number) {
