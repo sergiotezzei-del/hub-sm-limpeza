@@ -1,4 +1,4 @@
-import { getSupabaseClient } from "../security/services/supabaseClient";
+import { getFreshSupabaseAccessToken, getSupabaseClient } from "../security/services/supabaseClient";
 
 export type AlertTask = {
   id: string;
@@ -81,5 +81,7 @@ export async function completeAlertTask(taskId: string, _actorName: string) {
 async function getRequiredSupabaseClient() {
   const supabase = await getSupabaseClient();
   if (!supabase) throw new Error("Supabase não configurado para Afazeres.");
+  const token = await getFreshSupabaseAccessToken();
+  if (!token) throw new Error("Sessão do HUB não encontrada. Entre novamente para carregar os Afazeres.");
   return supabase;
 }
