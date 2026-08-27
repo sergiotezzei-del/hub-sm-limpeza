@@ -191,11 +191,13 @@ async function signInSupabaseAuthBridge(input: {
     try {
       const probe = await verifySupabaseAuthenticatedRest();
       if (probe.userId !== authUserId) throw new Error("SUPABASE_AUTH_USER_MISMATCH");
-    } catch {
-      await signOutSupabaseAuth();
+    } catch (probeError) {
+      // Auth already succeeded and /auth/v1/user accepted this session.
+      // Do not destroy a valid session just because a protected REST probe failed;
+      // keeping it alive lets the UI surface the precise failing module instead.
       return saveAuthBridgeStatus(input.bridgeId, {
         ok: false,
-        reason: "A sessão foi autenticada, mas o acesso REST protegido do HUB falhou.",
+        reason: readProbeFailureReason(probeError),
         checkedAt: new Date().toISOString(),
         userId: authUserId,
       });
@@ -246,6 +248,14 @@ function getStoredAuthBridgeStatus(): StoredAuthBridgeStatus {
   } catch {
     return {};
   }
+}
+
+function readProbeFailureReason(error: unknown) {
+  const message = error instanceof Error ? error.message : "SUPABASE_AUTH_REST_PROBE_FAILED";
+  if (message.startsWith("SUPABASE_AUTH_REST_PROBE_FAILED:")) {
+    return `Sessão Auth válida; diagnóstico REST: ${message.slice(0, 240)}.`;
+  }
+  return "Sessão Auth válida, mas a prova REST protegida do HUB falhou.";
 }
 
 function createAuthBridgeTimeout() {
