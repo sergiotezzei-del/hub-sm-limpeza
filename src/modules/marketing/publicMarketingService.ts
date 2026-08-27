@@ -1,6 +1,5 @@
 import {
-  SUPABASE_KEY_HEADER,
-  SUPABASE_PUBLIC_KEY,
+  publicSupabaseFetch,
   SUPABASE_URL,
   supabaseConfigured,
 } from "../security/services/supabaseClient";
@@ -156,11 +155,10 @@ async function publicRpc<T>(name: string, body: Record<string, unknown>): Promis
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
-    const response = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${name}`, {
+    const response = await publicSupabaseFetch(`${SUPABASE_URL}/rest/v1/rpc/${name}`, {
       method: "POST",
       signal: controller.signal,
       headers: {
-        [SUPABASE_KEY_HEADER]: SUPABASE_PUBLIC_KEY,
         "Content-Type": "application/json",
       },
       body: JSON.stringify(body),

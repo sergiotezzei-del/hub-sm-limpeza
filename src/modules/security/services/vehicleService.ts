@@ -1,5 +1,5 @@
 import type { VehicleLoadState, VehicleOwnerType, VehicleRecord, VehicleRecordDraft } from "../types/vehicle.types";
-import { getSupabaseAccessToken, SUPABASE_KEY_HEADER, SUPABASE_PUBLIC_KEY, SUPABASE_URL, supabaseConfigured } from "./supabaseClient";
+import { authenticatedSupabaseFetch, getSupabaseAccessToken, SUPABASE_URL, supabaseConfigured } from "./supabaseClient";
 
 const VEHICLE_RECORDS_KEY = "hub-sm-vehicle-records";
 const VEHICLE_REQUEST_TIMEOUT_MS = 8000;
@@ -136,14 +136,11 @@ export function vehicleToDraft(vehicle: VehicleRecord): VehicleRecordDraft {
 function vehicleRequest(path: string, init: RequestInit = {}) {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), VEHICLE_REQUEST_TIMEOUT_MS);
-  const accessToken = getSupabaseAccessToken();
 
-  return fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+  return authenticatedSupabaseFetch(`${SUPABASE_URL}/rest/v1/${path}`, {
     ...init,
     signal: controller.signal,
     headers: {
-      [SUPABASE_KEY_HEADER]: SUPABASE_PUBLIC_KEY,
-      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
       "Content-Type": "application/json",
       ...(init.headers as Record<string, string> | undefined),
     },

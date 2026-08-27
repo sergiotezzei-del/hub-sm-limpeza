@@ -1,25 +1,27 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-export const SUPABASE_URL = import.meta.env.VITE_DB_URL ?? "";
-export const SUPABASE_PUBLIC_KEY = import.meta.env.VITE_DB_PUBLIC_KEY ?? "";
+const rawSupabaseUrl = (import.meta.env.VITE_DB_URL ?? "").trim();
+
+export const SUPABASE_URL = rawSupabaseUrl.replace(/\/+$/, "");
+export const SUPABASE_PUBLIC_KEY = (import.meta.env.VITE_DB_PUBLIC_KEY ?? "").trim();
 export const SUPABASE_KEY_HEADER = ["api", "key"].join("");
 export const supabaseConfigured = Boolean(SUPABASE_URL && SUPABASE_PUBLIC_KEY);
 
 let clientPromise: Promise<SupabaseClient | null> | null = null;
 let activeSessionSnapshot: SupabaseSessionSnapshot = {};
 let freshAccessTokenPromise: Promise<string | undefined> | null = null;
-let nativeWindowFetch: typeof window.fetch | null = null;
-
-const HUB_FETCH_GUARD_VERSION = 2;
-
-type GuardedWindowFetch = typeof window.fetch & {
-  __hubSupabaseBaseFetch?: typeof window.fetch;
-  __hubSupabaseGuardVersion?: number;
-};
 
 export type SupabaseSessionSnapshot = {
   accessToken?: string;
   userId?: string;
+};
+
+export type SupabaseAuthDiagnostic = {
+  sessionExists: boolean;
+  userId: string | null;
+  jwtRole: string | null;
+  jwtExpiration: string | null;
+  authorizationPresent: boolean;
 };
 
 type SessionLike = {
@@ -27,21 +29,22 @@ type SessionLike = {
   user?: { id?: string | null } | null;
 } | null | undefined;
 
+export class SupabaseAuthSessionRequiredError extends Error {
+  constructor() {
+    super("SUPABASE_AUTH_SESSION_REQUIRED");
+    this.name = "SupabaseAuthSessionRequiredError";
+  }
+}
+
 export async function getSupabaseClient() {
   if (!supabaseConfigured) return null;
   if (!clientPromise) {
     clientPromise = import("@supabase/supabase-js").then(({ createClient }) => {
-      const baseFetch = getNativeWindowFetch();
-      installHubSupabaseFetchGuard(baseFetch);
-
       const client = createClient(SUPABASE_URL, SUPABASE_PUBLIC_KEY, {
         auth: {
           autoRefreshToken: true,
           detectSessionInUrl: false,
           persistSession: true,
-        },
-        global: {
-          fetch: createHubSupabaseFetch(baseFetch),
         },
       });
 
@@ -75,6 +78,8 @@ export function getStoredSupabaseSessionSnapshot(): SupabaseSessionSnapshot {
   return parseSupabaseSessionSnapshot(window.localStorage.getItem(storageKey));
 }
 
+// Synchronous compatibility hint for UI state only. REST transport must use
+// authenticatedSupabaseFetch() or getFreshSupabaseAccessToken().
 export function getSupabaseAccessToken() {
   return activeSessionSnapshot.accessToken ?? getStoredSupabaseSessionSnapshot().accessToken;
 }
@@ -100,6 +105,65 @@ export async function getFreshSupabaseAccessToken() {
   return freshAccessTokenPromise;
 }
 
+export async function authenticatedSupabaseFetch(input: RequestInfo | URL, init: RequestInit = {}) {
+  const accessToken = await getFreshSupabaseAccessToken();
+  if (!accessToken) {
+    logSupabaseAuthDiagnostic("protected-rest-missing-session", createAuthDiagnostic(undefined, false));
+    throw new SupabaseAuthSessionRequiredError();
+  }
+  return supabaseRestFetch(input, init, accessToken);
+}
+
+export async function sessionAwareSupabaseFetch(input: RequestInfo | URL, init: RequestInit = {}) {
+  const accessToken = await getFreshSupabaseAccessToken();
+  return supabaseRestFetch(input, init, accessToken);
+}
+
+export function publicSupabaseFetch(input: RequestInfo | URL, init: RequestInit = {}) {
+  return supabaseRestFetch(input, init, undefined);
+}
+
+export async function getSupabaseAuthDiagnostic(): Promise<SupabaseAuthDiagnostic> {
+  const supabase = await getSupabaseClient();
+  if (!supabase) return createAuthDiagnostic(undefined, false);
+  const { data, error } = await supabase.auth.getSession();
+  if (error) return createAuthDiagnostic(undefined, false);
+  rememberSupabaseSession(data.session);
+  return createAuthDiagnostic(data.session ?? undefined, false);
+}
+
+export async function verifySupabaseAuthenticatedRest() {
+  const supabase = await getSupabaseClient();
+  if (!supabase) throw new Error("SUPABASE_CLIENT_UNAVAILABLE");
+
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+  const session = sessionData.session;
+  const diagnostic = createAuthDiagnostic(session ?? undefined, Boolean(session?.access_token));
+  if (sessionError || !session?.access_token) {
+    logSupabaseAuthDiagnostic("post-login-session-missing", diagnostic);
+    throw new Error("SUPABASE_AUTH_SESSION_REQUIRED");
+  }
+  rememberSupabaseSession(session);
+
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError || !userData.user?.id) {
+    logSupabaseAuthProbeError("get-user", diagnostic, userError);
+    throw new Error("SUPABASE_AUTH_USER_VERIFICATION_FAILED");
+  }
+
+  const { error: restError } = await supabase
+    .from("hub_alert_rules")
+    .select("id")
+    .limit(1);
+  if (restError) {
+    logSupabaseAuthProbeError("hub-alert-rules", diagnostic, restError);
+    throw new Error(`SUPABASE_AUTH_REST_PROBE_FAILED:${restError.code || "unknown"}`);
+  }
+
+  logSupabaseAuthDiagnostic("post-login-rest-ok", diagnostic);
+  return { userId: userData.user.id, diagnostic };
+}
+
 export async function signOutSupabaseAuth() {
   activeSessionSnapshot = {};
   try {
@@ -108,6 +172,26 @@ export async function signOutSupabaseAuth() {
     await supabase.auth.signOut();
   } catch {
     // O logout local do app nao deve depender da disponibilidade do Supabase.
+  }
+}
+
+function supabaseRestFetch(input: RequestInfo | URL, init: RequestInit, accessToken?: string) {
+  assertSupabaseRestRequest(input);
+  const inputHeaders = input instanceof Request ? input.headers : undefined;
+  const headers = new Headers(inputHeaders);
+  if (init.headers) new Headers(init.headers).forEach((value, key) => headers.set(key, value));
+
+  headers.set(SUPABASE_KEY_HEADER, SUPABASE_PUBLIC_KEY);
+  if (accessToken) headers.set("Authorization", `Bearer ${accessToken}`);
+  else headers.delete("Authorization");
+
+  return fetch(input, { ...init, headers });
+}
+
+function assertSupabaseRestRequest(input: RequestInfo | URL) {
+  const requestUrl = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+  if (!SUPABASE_URL || !requestUrl.startsWith(`${SUPABASE_URL}/rest/v1/`)) {
+    throw new Error("SUPABASE_REST_URL_REQUIRED");
   }
 }
 
@@ -121,79 +205,47 @@ function getHubSupabaseAuthStorageKey() {
   }
 }
 
-function getNativeWindowFetch() {
-  if (typeof window === "undefined") return fetch;
-  if (!nativeWindowFetch) {
-    const currentFetch = window.fetch as GuardedWindowFetch;
-    nativeWindowFetch = currentFetch.__hubSupabaseBaseFetch ?? currentFetch.bind(window);
-  }
-  return nativeWindowFetch;
+function createAuthDiagnostic(session: SessionLike, authorizationPresent: boolean): SupabaseAuthDiagnostic {
+  const accessToken = readString(session?.access_token);
+  const claims = accessToken ? readJwtClaims(accessToken) : null;
+  return {
+    sessionExists: Boolean(accessToken && session?.user?.id),
+    userId: readString(session?.user?.id) ?? null,
+    jwtRole: typeof claims?.role === "string" ? claims.role : null,
+    jwtExpiration: typeof claims?.exp === "number" ? new Date(claims.exp * 1000).toISOString() : null,
+    authorizationPresent,
+  };
 }
 
-function installHubSupabaseFetchGuard(baseFetch: typeof fetch) {
-  if (typeof window === "undefined") return;
-  const currentFetch = window.fetch as GuardedWindowFetch;
-  if (currentFetch.__hubSupabaseGuardVersion === HUB_FETCH_GUARD_VERSION) return;
-
-  const guardedFetch = ((input: RequestInfo | URL, init?: RequestInit) => (
-    hubSupabaseFetch(baseFetch, input, init, "window")
-  )) as GuardedWindowFetch;
-  guardedFetch.__hubSupabaseBaseFetch = baseFetch;
-  guardedFetch.__hubSupabaseGuardVersion = HUB_FETCH_GUARD_VERSION;
-  window.fetch = guardedFetch;
+function logSupabaseAuthDiagnostic(context: string, diagnostic: SupabaseAuthDiagnostic) {
+  if (!import.meta.env.DEV) return;
+  console.info("[supabase-auth]", { context, ...diagnostic });
 }
 
-function createHubSupabaseFetch(baseFetch: typeof fetch) {
-  return (input: RequestInfo | URL, init?: RequestInit) => hubSupabaseFetch(baseFetch, input, init, "client");
-}
-
-async function hubSupabaseFetch(
-  baseFetch: typeof fetch,
-  input: RequestInfo | URL,
-  init: RequestInit | undefined,
-  source: "client" | "window",
+function logSupabaseAuthProbeError(
+  stage: string,
+  diagnostic: SupabaseAuthDiagnostic,
+  error: { code?: string; message?: string } | null,
 ) {
-  const url = getRequestUrl(input);
-  if (!isHubRestRequest(url)) return baseFetch(input, init);
+  if (!import.meta.env.DEV) return;
+  console.error("[supabase-auth] Prova de transporte REST falhou", {
+    stage,
+    ...diagnostic,
+    errorCode: error?.code ?? null,
+    errorMessage: error?.message ?? null,
+  });
+}
 
-  const inputHeaders = input instanceof Request ? input.headers : undefined;
-  const headers = new Headers(inputHeaders);
-  if (init?.headers) new Headers(init.headers).forEach((value, key) => headers.set(key, value));
-
-  if (!headers.has(SUPABASE_KEY_HEADER)) headers.set(SUPABASE_KEY_HEADER, SUPABASE_PUBLIC_KEY);
-
-  if (source === "client") {
-    // supabase-js resolves the current session immediately before this call.
-    // Preserve its user JWT instead of replacing it with a possibly stale snapshot.
-    if (isPublishableKeyBearer(headers.get("Authorization"))) headers.delete("Authorization");
-  } else {
-    const accessToken = await getFreshSupabaseAccessToken();
-    if (accessToken) headers.set("Authorization", `Bearer ${accessToken}`);
-    else headers.delete("Authorization");
+function readJwtClaims(accessToken: string) {
+  try {
+    const encodedPayload = accessToken.split(".")[1];
+    if (!encodedPayload || typeof atob !== "function") return null;
+    const normalized = encodedPayload.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
+    return JSON.parse(atob(padded)) as { role?: unknown; exp?: unknown };
+  } catch {
+    return null;
   }
-
-  if (isPublishableKeyBearer(headers.get("Authorization"))) {
-    headers.delete("Authorization");
-  }
-
-  return baseFetch(input, { ...init, headers });
-}
-
-function isHubRestRequest(url: string) {
-  return Boolean(SUPABASE_URL) && url.startsWith(`${SUPABASE_URL}/rest/v1/`);
-}
-
-function isPublishableKeyBearer(authorization: string | null) {
-  if (!authorization) return false;
-  const match = /^Bearer\s+(.+)$/i.exec(authorization.trim());
-  const token = match?.[1]?.trim();
-  return Boolean(token && (token === SUPABASE_PUBLIC_KEY || token.startsWith("sb_publishable_")));
-}
-
-function getRequestUrl(input: RequestInfo | URL) {
-  if (typeof input === "string") return input;
-  if (input instanceof URL) return input.href;
-  return input.url;
 }
 
 function parseSupabaseSessionSnapshot(raw: string | null): SupabaseSessionSnapshot {
@@ -215,8 +267,4 @@ function parseSupabaseSessionSnapshot(raw: string | null): SupabaseSessionSnapsh
 
 function readString(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
-}
-
-if (typeof window !== "undefined" && supabaseConfigured) {
-  installHubSupabaseFetchGuard(getNativeWindowFetch());
 }

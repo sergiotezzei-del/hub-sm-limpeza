@@ -5,7 +5,13 @@ import {
   getGuardSupabaseAuthEmailBinding,
   getGuardSupabaseUserBinding,
 } from "./guardSupabaseConfig";
-import { getSupabaseClient, rememberSupabaseSession, signOutSupabaseAuth, supabaseConfigured } from "./supabaseClient";
+import {
+  getSupabaseClient,
+  rememberSupabaseSession,
+  signOutSupabaseAuth,
+  supabaseConfigured,
+  verifySupabaseAuthenticatedRest,
+} from "./supabaseClient";
 
 const AUTH_BRIDGE_STATUS_KEY = "hub-sm-guard-auth-bridge-status";
 const AUTH_BRIDGE_TIMEOUT_MS = 5000;
@@ -179,6 +185,21 @@ async function signInSupabaseAuthBridge(input: {
       checkedAt: new Date().toISOString(),
       userId: authUserId,
     });
+  }
+
+  if (input.bridgeId === ADMIN_AUTH_BRIDGE_ID) {
+    try {
+      const probe = await verifySupabaseAuthenticatedRest();
+      if (probe.userId !== authUserId) throw new Error("SUPABASE_AUTH_USER_MISMATCH");
+    } catch {
+      await signOutSupabaseAuth();
+      return saveAuthBridgeStatus(input.bridgeId, {
+        ok: false,
+        reason: "A sessão foi autenticada, mas o acesso REST protegido do HUB falhou.",
+        checkedAt: new Date().toISOString(),
+        userId: authUserId,
+      });
+    }
   }
 
   return saveAuthBridgeStatus(input.bridgeId, {

@@ -10,6 +10,7 @@ import type {
   StockMovement,
 } from "./types";
 import { products as baseProducts } from "./data";
+import { sessionAwareSupabaseFetch, SUPABASE_URL, supabaseConfigured } from "./modules/security/services/supabaseClient";
 
 const ORDERS_KEY = "hub-sm-cleaning-orders";
 const PROFILES_KEY = "hub-sm-employee-profiles";
@@ -19,10 +20,8 @@ const STOCK_MOVEMENTS_KEY = "hub-sm-stock-movements";
 const OFFLINE_QUEUE_KEY = "hub-sm-cleaning-offline-queue";
 const LEGACY_PRODUCT_PHOTOS_KEY = "hub-sm-product-photos";
 const LEGACY_STOCK_BOOTSTRAP_KEY = "hub-sm-limpeza-stock-bootstrap-2026-06-24";
-const CLOUD_URL = import.meta.env.VITE_DB_URL ?? "";
-const PUBLIC_KEY = import.meta.env.VITE_DB_PUBLIC_KEY ?? "";
-const KEY_HEADER = ["api", "key"].join("");
-const cloudEnabled = Boolean(CLOUD_URL && PUBLIC_KEY);
+const CLOUD_URL = SUPABASE_URL;
+const cloudEnabled = supabaseConfigured;
 const CLEANING_CATEGORY_SLUG = "limpeza";
 const DEFAULT_PRODUCT_UNIT = "Unidade";
 const INVENTORY_STORAGE_MAX_CHARS = 4_000_000;
@@ -170,7 +169,6 @@ let offlineSyncPromise: Promise<CleaningOfflineSyncResult> | null = null;
 
 function apiHeaders(extra: Record<string, string> = {}) {
   return {
-    [KEY_HEADER]: PUBLIC_KEY,
     "Content-Type": "application/json",
     ...extra,
   };
@@ -204,7 +202,7 @@ export async function getOrders(): Promise<CleaningOrder[]> {
   if (!cloudEnabled) return getLocalOrders().filter((order) => !order.deletedAt);
 
   try {
-    const response = await fetch(
+    const response = await sessionAwareSupabaseFetch(
       `${CLOUD_URL}/rest/v1/orders?select=id,data,hora,solicitante,status,deleted_at,completed_at,order_items(id,product_name,unit,quantity,manual,observation)&deleted_at=is.null&order=created_at.desc`,
       { headers: apiHeaders() },
     );
@@ -227,7 +225,7 @@ export async function getOrderHistory(): Promise<CleaningOrder[]> {
   }
 
   try {
-    const response = await fetch(
+    const response = await sessionAwareSupabaseFetch(
       `${CLOUD_URL}/rest/v1/orders?select=id,data,hora,solicitante,status,deleted_at,completed_at,order_items(id,product_name,unit,quantity,manual,observation)&order=created_at.desc`,
       { headers: apiHeaders() },
     );
@@ -248,7 +246,7 @@ export async function getNeiaOrderHistory(): Promise<CleaningOrder[]> {
   if (!cloudEnabled) return getLocalOrders().filter((order) => order.solicitante === "Neia");
 
   try {
-    const response = await fetch(
+    const response = await sessionAwareSupabaseFetch(
       `${CLOUD_URL}/rest/v1/orders?select=id,data,hora,solicitante,status,deleted_at,completed_at,order_items(id,product_name,unit,quantity,manual,observation)&solicitante=eq.Neia&order=created_at.desc`,
       { headers: apiHeaders() },
     );
@@ -374,7 +372,7 @@ export async function getEmployeeProfiles(): Promise<Record<EmployeeId, Employee
   if (!cloudEnabled) return getLocalEmployeeProfiles();
 
   try {
-    const response = await fetch(`${CLOUD_URL}/rest/v1/employee_profiles?select=employee_id,photo_data`, {
+    const response = await sessionAwareSupabaseFetch(`${CLOUD_URL}/rest/v1/employee_profiles?select=employee_id,photo_data`, {
       headers: apiHeaders(),
     });
 
@@ -450,7 +448,7 @@ export async function getStockChecks(): Promise<StockCheck[]> {
   if (!cloudEnabled) return getLocalStockChecks();
 
   try {
-    const response = await fetch(
+    const response = await sessionAwareSupabaseFetch(
       `${CLOUD_URL}/rest/v1/stock_checks?select=id,created_at,data,hora,conferente,stock_check_items(id,product_name,unit,quantity,observation)&order=created_at.desc`,
       { headers: apiHeaders() },
     );
@@ -931,7 +929,7 @@ async function getRemoteCleaningProducts(): Promise<ProductRow[]> {
   ].join("&");
 
   try {
-    const response = await fetch(`${CLOUD_URL}/rest/v1/products?${query}`, { headers: apiHeaders() });
+    const response = await sessionAwareSupabaseFetch(`${CLOUD_URL}/rest/v1/products?${query}`, { headers: apiHeaders() });
     if (!response.ok) throw new Error(await response.text());
     return await response.json() as ProductRow[];
   } catch (error) {
@@ -941,14 +939,14 @@ async function getRemoteCleaningProducts(): Promise<ProductRow[]> {
       "active=eq.true",
       "order=name.asc",
     ].join("&");
-    const response = await fetch(`${CLOUD_URL}/rest/v1/products?${fallbackQuery}`, { headers: apiHeaders() });
+    const response = await sessionAwareSupabaseFetch(`${CLOUD_URL}/rest/v1/products?${fallbackQuery}`, { headers: apiHeaders() });
     if (!response.ok) throw error;
     return await response.json() as ProductRow[];
   }
 }
 
 async function fetchRemoteStockMovements(): Promise<StockMovementRow[]> {
-  const response = await fetch(
+  const response = await sessionAwareSupabaseFetch(
     `${CLOUD_URL}/rest/v1/stock_movements?select=id,created_at,product_slug,product_name,unit,barcode,movement_type,quantity,user_id,user_name,observation,source&order=created_at.desc`,
     { headers: apiHeaders() },
   );
@@ -1091,7 +1089,7 @@ async function request(url: string, init: RequestInit = {}) {
   let response: Response;
 
   try {
-    response = await fetch(url, {
+    response = await sessionAwareSupabaseFetch(url, {
       ...init,
       signal: init.signal ?? controller?.signal,
       headers: apiHeaders(init.headers as Record<string, string> | undefined),

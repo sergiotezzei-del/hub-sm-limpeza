@@ -1,8 +1,11 @@
-import { getSupabaseAccessToken } from "../../security/services/supabaseClient";
+import {
+  authenticatedSupabaseFetch,
+  sessionAwareSupabaseFetch,
+  SUPABASE_URL,
+  supabaseConfigured,
+} from "../../security/services/supabaseClient";
 
-const CLOUD_URL = import.meta.env.VITE_DB_URL ?? "";
-const PUBLIC_KEY = import.meta.env.VITE_DB_PUBLIC_KEY ?? "";
-const KEY_HEADER = ["api", "key"].join("");
+const CLOUD_URL = SUPABASE_URL;
 
 export type CleaningDeliveryItemRecord = {
   id: string;
@@ -153,22 +156,13 @@ type CleaningDeliveryApprovalRow = {
 
 function apiHeaders(extra: Record<string, string> = {}) {
   return {
-    [KEY_HEADER]: PUBLIC_KEY,
     "Content-Type": "application/json",
     ...extra,
   };
 }
 
-function authenticatedHeaders() {
-  const accessToken = getSupabaseAccessToken();
-  if (!accessToken) {
-    throw new Error("Entre novamente como Admin Tezzei para liberar a entrega.");
-  }
-  return apiHeaders({ Authorization: `Bearer ${accessToken}` });
-}
-
 export function isCleaningDeliveryCloudEnabled() {
-  return Boolean(CLOUD_URL && PUBLIC_KEY);
+  return supabaseConfigured;
 }
 
 export async function loadCleaningDeliveries(): Promise<CleaningDeliveryRecord[]> {
@@ -186,7 +180,7 @@ export async function loadCleaningDeliveries(): Promise<CleaningDeliveryRecord[]
     "notes",
     "cleaning_delivery_items(id,order_item_id,product_slug,product_name,unit,ordered_quantity,pre_stock_quantity,system_stock_before,adjustment_quantity,received_quantity,final_stock_quantity,observation)",
   ].join(",");
-  const response = await fetch(
+  const response = await sessionAwareSupabaseFetch(
     `${CLOUD_URL}/rest/v1/cleaning_deliveries?select=${select}&order=received_at.desc`,
     { headers: apiHeaders() },
   );
@@ -231,9 +225,10 @@ export async function loadCleaningDeliveryApprovals(filters: {
 } = {}): Promise<CleaningDeliveryApproval[]> {
   if (!isCleaningDeliveryCloudEnabled()) return [];
 
-  const response = await fetch(`${CLOUD_URL}/rest/v1/rpc/list_cleaning_delivery_approvals`, {
+  const request = filters.pendingSupervisorId ? authenticatedSupabaseFetch : sessionAwareSupabaseFetch;
+  const response = await request(`${CLOUD_URL}/rest/v1/rpc/list_cleaning_delivery_approvals`, {
     method: "POST",
-    headers: filters.pendingSupervisorId ? authenticatedHeaders() : apiHeaders(),
+    headers: apiHeaders(),
     body: JSON.stringify({
       p_requester_id: filters.requesterId ?? null,
       p_pending_supervisor_id: filters.pendingSupervisorId ?? null,
@@ -258,7 +253,7 @@ export async function validateCleaningDeliveryStockCheck(stockCheckId?: string |
     };
   }
 
-  const response = await fetch(`${CLOUD_URL}/rest/v1/rpc/validate_cleaning_delivery_stock_check`, {
+  const response = await sessionAwareSupabaseFetch(`${CLOUD_URL}/rest/v1/rpc/validate_cleaning_delivery_stock_check`, {
     method: "POST",
     headers: apiHeaders(),
     body: JSON.stringify({ p_stock_check_id: stockCheckId ?? null }),
@@ -294,7 +289,7 @@ export async function requestCleaningDeliveryApproval(input: CleaningDeliveryApp
     throw new Error("A solicitação de liberação exige conexão com o sistema online.");
   }
 
-  const response = await fetch(`${CLOUD_URL}/rest/v1/rpc/request_cleaning_delivery_approval`, {
+  const response = await sessionAwareSupabaseFetch(`${CLOUD_URL}/rest/v1/rpc/request_cleaning_delivery_approval`, {
     method: "POST",
     headers: apiHeaders(),
     body: JSON.stringify({
@@ -324,9 +319,9 @@ export async function decideCleaningDeliveryApproval(input: {
   supervisorName: string;
   note?: string;
 }) {
-  const response = await fetch(`${CLOUD_URL}/rest/v1/rpc/decide_cleaning_delivery_approval`, {
+  const response = await authenticatedSupabaseFetch(`${CLOUD_URL}/rest/v1/rpc/decide_cleaning_delivery_approval`, {
     method: "POST",
-    headers: authenticatedHeaders(),
+    headers: apiHeaders(),
     body: JSON.stringify({
       p_request_id: input.approvalId,
       p_decision: input.decision,
@@ -346,7 +341,7 @@ export async function registerCleaningDelivery(input: CleaningDeliveryInput) {
     throw new Error("A conferência de entrega exige conexão com o sistema online.");
   }
 
-  const response = await fetch(`${CLOUD_URL}/rest/v1/rpc/register_cleaning_delivery_v2`, {
+  const response = await sessionAwareSupabaseFetch(`${CLOUD_URL}/rest/v1/rpc/register_cleaning_delivery_v2`, {
     method: "POST",
     headers: apiHeaders(),
     body: JSON.stringify({

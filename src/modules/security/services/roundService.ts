@@ -15,10 +15,8 @@ import type {
 import type { GuardShiftLocation, GuardShiftSession } from "../types/shift.types";
 import { getGuardSupabaseUserBinding } from "./guardSupabaseConfig";
 import {
+  authenticatedSupabaseFetch,
   getStoredSupabaseSessionSnapshot,
-  getSupabaseAccessToken,
-  SUPABASE_KEY_HEADER,
-  SUPABASE_PUBLIC_KEY,
   SUPABASE_URL,
   supabaseConfigured,
 } from "./supabaseClient";
@@ -472,20 +470,11 @@ function createLocalRoundCheckin(input: {
 function roundRequest(path: string, init: RequestInit = {}) {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), ROUND_REQUEST_TIMEOUT_MS);
-  const accessToken = getSupabaseAccessToken();
-  const method = (init.method ?? "GET").toUpperCase();
 
-  if (method !== "GET" && !accessToken) {
-    window.clearTimeout(timeout);
-    throw new Error("MISSING_SUPABASE_AUTH_SESSION");
-  }
-
-  return fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+  return authenticatedSupabaseFetch(`${SUPABASE_URL}/rest/v1/${path}`, {
     ...init,
     signal: controller.signal,
     headers: {
-      [SUPABASE_KEY_HEADER]: SUPABASE_PUBLIC_KEY,
-      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
       "Content-Type": "application/json",
       ...(init.headers as Record<string, string> | undefined),
     },

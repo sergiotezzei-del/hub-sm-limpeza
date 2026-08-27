@@ -1,6 +1,5 @@
 import {
-  SUPABASE_KEY_HEADER,
-  SUPABASE_PUBLIC_KEY,
+  publicSupabaseFetch,
   SUPABASE_URL,
   supabaseConfigured,
 } from "../security/services/supabaseClient";
@@ -47,10 +46,9 @@ type PreparePushRow = {
 
 export async function prepareMarketingPush(submissionId: string): Promise<MarketingPushSetup> {
   if (!supabaseConfigured) throw new Error("PUSH_SUPABASE_NOT_CONFIGURED");
-  const response = await fetch(`${SUPABASE_URL}/rest/v1/rpc/marketing_public_prepare_push`, {
+  const response = await publicSupabaseFetch(`${SUPABASE_URL}/rest/v1/rpc/marketing_public_prepare_push`, {
     method: "POST",
     headers: {
-      [SUPABASE_KEY_HEADER]: SUPABASE_PUBLIC_KEY,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({ p_submission_id: submissionId }),

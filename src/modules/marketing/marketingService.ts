@@ -1,4 +1,4 @@
-import { getSupabaseAccessToken, SUPABASE_KEY_HEADER, SUPABASE_PUBLIC_KEY, SUPABASE_URL, supabaseConfigured } from "../security/services/supabaseClient";
+import { publicSupabaseFetch, SUPABASE_URL, supabaseConfigured } from "../security/services/supabaseClient";
 import { DEFAULT_MARKETING_CAPTURE_WINDOWS, type MarketingOccupiedCaptureSlot, type MarketingScheduleConfig } from "./marketingConfig";
 
 export type MarketingRole = "admin" | "marketing" | "sales_manager";
@@ -497,14 +497,11 @@ async function rpc<T>(name: string, body: Record<string, unknown>): Promise<T> {
   if (!supabaseConfigured) throw new MarketingRemoteError(0, "Supabase não configurado.");
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-  const accessToken = getSupabaseAccessToken();
   try {
-    const response = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${name}`, {
+    const response = await publicSupabaseFetch(`${SUPABASE_URL}/rest/v1/rpc/${name}`, {
       method: "POST",
       signal: controller.signal,
       headers: {
-        [SUPABASE_KEY_HEADER]: SUPABASE_PUBLIC_KEY,
-        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
         "Content-Type": "application/json",
       },
       body: JSON.stringify(body),

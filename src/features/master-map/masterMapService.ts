@@ -1,4 +1,9 @@
-import { getSupabaseAccessToken, SUPABASE_KEY_HEADER, SUPABASE_PUBLIC_KEY, SUPABASE_URL, supabaseConfigured } from "../../modules/security/services/supabaseClient";
+import {
+  authenticatedSupabaseFetch,
+  getSupabaseAccessToken,
+  SUPABASE_URL,
+  supabaseConfigured,
+} from "../../modules/security/services/supabaseClient";
 import { defaultMasterMapEdges, defaultMasterMapNodes, defaultMasterMaps } from "./masterMapDefaults";
 import type { MasterMapPositionPatch } from "./layout/masterMapLayoutTypes";
 import type { MasterMap, MasterMapData, MasterMapDestinationType, MasterMapEdge, MasterMapNode, MasterMapNodeVisualStyle, MasterMapRelationType, MasterMapStatus } from "./masterMapTypes";
@@ -391,14 +396,11 @@ export function createMasterMapEdgeDraft(mapId: string, sourceNodeId: string, ta
 export function masterMapRequest(path: string, init: RequestInit = {}) {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), MASTER_MAP_REQUEST_TIMEOUT_MS);
-  const accessToken = getSupabaseAccessToken();
 
-  return fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+  return authenticatedSupabaseFetch(`${SUPABASE_URL}/rest/v1/${path}`, {
     ...init,
     signal: controller.signal,
     headers: {
-      [SUPABASE_KEY_HEADER]: SUPABASE_PUBLIC_KEY,
-      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
       "Content-Type": "application/json",
       ...(init.headers as Record<string, string> | undefined),
     },
