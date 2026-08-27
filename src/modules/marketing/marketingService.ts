@@ -497,13 +497,14 @@ async function rpc<T>(name: string, body: Record<string, unknown>): Promise<T> {
   if (!supabaseConfigured) throw new MarketingRemoteError(0, "Supabase não configurado.");
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const accessToken = getSupabaseAccessToken();
   try {
     const response = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${name}`, {
       method: "POST",
       signal: controller.signal,
       headers: {
         [SUPABASE_KEY_HEADER]: SUPABASE_PUBLIC_KEY,
-        Authorization: `Bearer ${getSupabaseAccessToken() ?? SUPABASE_PUBLIC_KEY}`,
+        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
         "Content-Type": "application/json",
       },
       body: JSON.stringify(body),

@@ -74,7 +74,6 @@ export async function submitPublicServiceRequest(
       signal: controller.signal,
       headers: {
         [SUPABASE_KEY_HEADER]: SUPABASE_PUBLIC_KEY,
-        Authorization: `Bearer ${SUPABASE_PUBLIC_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({

@@ -51,7 +51,6 @@ export async function prepareMarketingPush(submissionId: string): Promise<Market
     method: "POST",
     headers: {
       [SUPABASE_KEY_HEADER]: SUPABASE_PUBLIC_KEY,
-      Authorization: `Bearer ${SUPABASE_PUBLIC_KEY}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({ p_submission_id: submissionId }),

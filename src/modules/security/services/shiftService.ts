@@ -510,13 +510,14 @@ async function readRemoteHistory<T>(tableName: "shift_sessions" | "audit_logs", 
 function publicHistoryRequest(path: string, init: RequestInit = {}) {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), REMOTE_HISTORY_TIMEOUT_MS);
+  const accessToken = getSupabaseAccessToken();
 
   return fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
     ...init,
     signal: controller.signal,
     headers: {
       [SUPABASE_KEY_HEADER]: SUPABASE_PUBLIC_KEY,
-      Authorization: `Bearer ${getRemoteHistoryAuthorization()}`,
+      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
       "Content-Type": "application/json",
       ...(init.headers as Record<string, string> | undefined),
     },
@@ -528,10 +529,6 @@ function publicHistoryRequest(path: string, init: RequestInit = {}) {
   }).finally(() => {
     window.clearTimeout(timeout);
   });
-}
-
-function getRemoteHistoryAuthorization() {
-  return getSupabaseAccessToken() ?? SUPABASE_PUBLIC_KEY;
 }
 
 function getRemoteSummaryFromRows(shiftData: RemoteHistoryRead<ShiftSessionRow> | null, auditData: RemoteHistoryRead<AuditLogRow> | null) {

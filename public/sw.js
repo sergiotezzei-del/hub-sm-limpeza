@@ -1,4 +1,4 @@
-const CACHE_NAME = "hub-santa-maria-v15";
+const CACHE_NAME = "hub-santa-maria-v17";
 const MARKETING_PUSH_CACHE = "hub-marketing-push-state";
 const LAST_MARKETING_PUSH_KEY = "/__hub_last_marketing_push";
 const MARKETING_PUSH_ENDPOINT = "https://dtdepfpkyiqtnsjztjit.supabase.co/functions/v1/marketing-public-push";
@@ -90,16 +90,19 @@ self.addEventListener("fetch", (event) => {
   if (request.method !== "GET") return;
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
+  if (url.pathname.startsWith("/api/")) return;
 
   if (request.mode === "navigate") {
     event.respondWith(
       fetch(request)
         .then((response) => {
-          const copy = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put("/", copy));
+          if (response.ok && response.headers.get("content-type")?.includes("text/html")) {
+            const copy = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put("/", copy));
+          }
           return response;
         })
-        .catch(() => caches.match("/")),
+        .catch(async () => (await caches.match("/")) || Response.error()),
     );
     return;
   }
