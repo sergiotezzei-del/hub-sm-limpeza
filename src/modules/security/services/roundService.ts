@@ -485,7 +485,7 @@ function roundRequest(path: string, init: RequestInit = {}) {
     signal: controller.signal,
     headers: {
       [SUPABASE_KEY_HEADER]: SUPABASE_PUBLIC_KEY,
-      Authorization: `Bearer ${accessToken ?? SUPABASE_PUBLIC_KEY}`,
+      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
       "Content-Type": "application/json",
       ...(init.headers as Record<string, string> | undefined),
     },

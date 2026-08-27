@@ -99,17 +99,25 @@ function AlertDashboardPanel() {
   useEffect(() => {
     let active = true;
     setLoading(true);
-    Promise.all([loadAlertDataset(), loadAlertTasks()])
-      .then(([dataset, tasks]) => {
+    Promise.allSettled([loadAlertDataset(), loadAlertTasks()])
+      .then(([datasetResult, tasksResult]) => {
         if (!active) return;
-        setRules(dataset.rules);
-        setCompletions(dataset.completions);
-        setAlertTasks(tasks);
-        setMessage("");
-      })
-      .catch(() => {
-        if (!active) return;
-        setMessage("Não foi possível carregar os alertas.");
+
+        if (datasetResult.status === "fulfilled") {
+          setRules(datasetResult.value.rules);
+          setCompletions(datasetResult.value.completions);
+        }
+        if (tasksResult.status === "fulfilled") setAlertTasks(tasksResult.value);
+
+        if (datasetResult.status === "rejected" && tasksResult.status === "rejected") {
+          setMessage("Não foi possível carregar os alertas nem os Afazeres.");
+        } else if (datasetResult.status === "rejected") {
+          setMessage("Afazeres carregados, mas os alertas recorrentes estão temporariamente indisponíveis.");
+        } else if (tasksResult.status === "rejected") {
+          setMessage("Alertas carregados. Afazeres estão temporariamente indisponíveis.");
+        } else {
+          setMessage("");
+        }
       })
       .finally(() => {
         if (active) setLoading(false);

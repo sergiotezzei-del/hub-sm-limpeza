@@ -144,14 +144,14 @@ function ensureManagedUsersRemoteReady() {
 
 function managedUsersRequest(path: string, init: RequestInit = {}) {
   const accessToken = getSupabaseAccessToken();
-  return managedUsersRemoteRequest(path, init, "admin", accessToken ?? SUPABASE_PUBLIC_KEY);
+  return managedUsersRemoteRequest(path, init, "admin", accessToken);
 }
 
 function managedUsersPublicRequest(path: string, init: RequestInit = {}) {
-  return managedUsersRemoteRequest(path, init, "public", SUPABASE_PUBLIC_KEY);
+  return managedUsersRemoteRequest(path, init, "public");
 }
 
-function managedUsersRemoteRequest(path: string, init: RequestInit, requestMode: ManagedUsersRequestMode, authorizationToken: string) {
+function managedUsersRemoteRequest(path: string, init: RequestInit, requestMode: ManagedUsersRequestMode, authorizationToken?: string) {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), MANAGED_USERS_REQUEST_TIMEOUT_MS);
 
@@ -160,7 +160,7 @@ function managedUsersRemoteRequest(path: string, init: RequestInit, requestMode:
     signal: controller.signal,
     headers: {
       [SUPABASE_KEY_HEADER]: SUPABASE_PUBLIC_KEY,
-      Authorization: `Bearer ${authorizationToken}`,
+      ...(authorizationToken ? { Authorization: `Bearer ${authorizationToken}` } : {}),
       "Content-Type": "application/json",
       ...(init.headers as Record<string, string> | undefined),
     },
