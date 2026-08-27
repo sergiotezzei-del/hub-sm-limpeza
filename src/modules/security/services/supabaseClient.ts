@@ -133,19 +133,20 @@ export function publicSupabaseFetch(input: RequestInfo | URL, init: RequestInit 
 
 export async function readSupabaseRestError(response: Response): Promise<SupabaseRestErrorDiagnostic> {
   const text = await response.text();
-  let parsed: { code?: unknown; message?: unknown; details?: unknown; hint?: unknown } | null = null;
+  let parsed: Record<string, unknown> = {};
   try {
-    parsed = text ? JSON.parse(text) as typeof parsed : null;
+    const value: unknown = text ? JSON.parse(text) : {};
+    if (value && typeof value === "object") parsed = value as Record<string, unknown>;
   } catch {
-    parsed = null;
+    parsed = {};
   }
 
   return {
     status: response.status,
-    code: readDiagnosticString(parsed?.code),
-    message: readDiagnosticString(parsed?.message) ?? readDiagnosticString(text),
-    details: readDiagnosticString(parsed?.details),
-    hint: readDiagnosticString(parsed?.hint),
+    code: readDiagnosticString(parsed.code),
+    message: readDiagnosticString(parsed.message) ?? readDiagnosticString(text),
+    details: readDiagnosticString(parsed.details),
+    hint: readDiagnosticString(parsed.hint),
   };
 }
 
