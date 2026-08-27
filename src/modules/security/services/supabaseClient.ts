@@ -24,6 +24,14 @@ export type SupabaseAuthDiagnostic = {
   authorizationPresent: boolean;
 };
 
+export type SupabaseRestErrorDiagnostic = {
+  status: number;
+  code: string | null;
+  message: string | null;
+  details: string | null;
+  hint: string | null;
+};
+
 type SessionLike = {
   access_token?: string | null;
   user?: { id?: string | null } | null;
@@ -123,6 +131,24 @@ export function publicSupabaseFetch(input: RequestInfo | URL, init: RequestInit 
   return supabaseRestFetch(input, init, undefined);
 }
 
+export async function readSupabaseRestError(response: Response): Promise<SupabaseRestErrorDiagnostic> {
+  const text = await response.text();
+  let parsed: { code?: unknown; message?: unknown; details?: unknown; hint?: unknown } | null = null;
+  try {
+    parsed = text ? JSON.parse(text) as typeof parsed : null;
+  } catch {
+    parsed = null;
+  }
+
+  return {
+    status: response.status,
+    code: readDiagnosticString(parsed?.code),
+    message: readDiagnosticString(parsed?.message) ?? readDiagnosticString(text),
+    details: readDiagnosticString(parsed?.details),
+    hint: readDiagnosticString(parsed?.hint),
+  };
+}
+
 export async function getSupabaseAuthDiagnostic(): Promise<SupabaseAuthDiagnostic> {
   const supabase = await getSupabaseClient();
   if (!supabase) return createAuthDiagnostic(undefined, false);
@@ -151,17 +177,39 @@ export async function verifySupabaseAuthenticatedRest() {
     throw new Error("SUPABASE_AUTH_USER_VERIFICATION_FAILED");
   }
 
-  const { error: restError } = await supabase
+  const manualResponse = await authenticatedSupabaseFetch(
+    `${SUPABASE_URL}/rest/v1/hub_alert_rules?select=id&limit=1`,
+    { headers: { Accept: "application/json" } },
+  );
+
+  if (!manualResponse.ok) {
+    const restError = await readSupabaseRestError(manualResponse);
+    console.error("[supabase-auth] Protected REST manual probe failed", {
+      ...diagnostic,
+      status: restError.status,
+      errorCode: restError.code,
+      errorMessage: restError.message,
+      errorDetails: restError.details,
+      errorHint: restError.hint,
+    });
+    throw new Error(
+      `SUPABASE_AUTH_REST_PROBE_FAILED:${restError.status}:${restError.code ?? "unknown"}:${restError.message ?? "unknown"}`,
+    );
+  }
+
+  // Keep a non-blocking comparison with supabase-js native PostgREST transport.
+  // A native transport failure must never invalidate an Auth session that was
+  // already accepted by /auth/v1/user and by the explicit JWT REST probe above.
+  const { error: nativeRestError } = await supabase
     .from("hub_alert_rules")
     .select("id")
     .limit(1);
-  if (restError) {
-    logSupabaseAuthProbeError("hub-alert-rules", diagnostic, restError);
-    throw new Error(`SUPABASE_AUTH_REST_PROBE_FAILED:${restError.code || "unknown"}`);
+  if (nativeRestError) {
+    logSupabaseAuthProbeError("hub-alert-rules-native", diagnostic, nativeRestError);
   }
 
   logSupabaseAuthDiagnostic("post-login-rest-ok", diagnostic);
-  return { userId: userData.user.id, diagnostic };
+  return { userId: userData.user.id, diagnostic, nativeRestOk: !nativeRestError };
 }
 
 export async function signOutSupabaseAuth() {
@@ -263,6 +311,10 @@ function parseSupabaseSessionSnapshot(raw: string | null): SupabaseSessionSnapsh
   } catch {
     return {};
   }
+}
+
+function readDiagnosticString(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim().slice(0, 500) : null;
 }
 
 function readString(value: unknown) {
