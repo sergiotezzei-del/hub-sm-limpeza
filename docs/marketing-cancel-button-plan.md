@@ -1,0 +1,1 @@
+Plan: expose the existing cancel action to Marketing users (Arthur and Maria) for active requests. Cancellation keeps history and removes the request from capture scheduling because status becomes `cancelado`. No schema change required.
