@@ -1,6 +1,5 @@
 import {
   authenticatedSupabaseFetch,
-  getSupabaseClient,
   publicSupabaseFetch,
   SupabaseAuthSessionRequiredError,
   SUPABASE_URL,
@@ -188,7 +187,10 @@ export function getAdminServiceRequestErrorMessage(error: unknown) {
   const message = error instanceof Error ? error.message : "Falha desconhecida.";
   const normalized = normalize(message);
 
-  if (normalized.includes("JWT EXPIRED") || normalized.includes("PGRST303")) {
+  if (normalized.includes("JWT ISSUED AT FUTURE")) {
+    return "O serviço de autenticação recusou temporariamente o horário do token. Tente novamente em instantes.";
+  }
+  if (normalized.includes("JWT EXPIRED")) {
     return "Sua sessão expirou. Entre novamente para continuar.";
   }
   if (normalized.includes("ROW-LEVEL SECURITY") || normalized.includes("SEM PERMISSAO")) {
@@ -206,7 +208,7 @@ export function getAdminServiceRequestErrorMessage(error: unknown) {
   return message || "Não foi possível concluir a operação.";
 }
 
-async function adminRequestJson<T>(path: string, init: RequestInit = {}, allowRefresh = true): Promise<T> {
+async function adminRequestJson<T>(path: string, init: RequestInit = {}): Promise<T> {
   ensureReady();
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -223,10 +225,6 @@ async function adminRequestJson<T>(path: string, init: RequestInit = {}, allowRe
 
     if (!response.ok) {
       const details = await response.text();
-      if (allowRefresh && shouldRefresh(response.status, details)) {
-        await refreshSupabaseSession();
-        return adminRequestJson<T>(path, init, false);
-      }
       throw new ServiceRequestRemoteError(response.status, extractRemoteMessage(details), details);
     }
 
@@ -244,18 +242,6 @@ async function adminRequestJson<T>(path: string, init: RequestInit = {}, allowRe
   } finally {
     window.clearTimeout(timeout);
   }
-}
-
-async function refreshSupabaseSession() {
-  const supabase = await getSupabaseClient();
-  if (!supabase) return;
-  const { error } = await supabase.auth.refreshSession();
-  if (error) throw new ServiceRequestRemoteError(401, "Não foi possível renovar a sessão.", error.message);
-}
-
-function shouldRefresh(status: number, details: string) {
-  const normalized = normalize(details);
-  return status === 401 || normalized.includes("JWT EXPIRED") || normalized.includes("PGRST303");
 }
 
 function mapServiceRequest(row: ServiceRequestRow): ServiceRequest {

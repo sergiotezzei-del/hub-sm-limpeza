@@ -232,8 +232,12 @@ function createPostgrestDiagnostic(response: Response, rawBody: string) {
     .toUpperCase();
 
   let category = "unknown";
-  if (normalized.includes("JWT EXPIRED") || normalized.includes("TOKEN IS EXPIRED") || normalized.includes("PGRST303")) {
+  if (normalized.includes("JWT ISSUED AT FUTURE")) {
+    category = "jwt_issued_at_future";
+  } else if (normalized.includes("JWT EXPIRED") || normalized.includes("TOKEN IS EXPIRED")) {
     category = "jwt_expired";
+  } else if (normalized.includes("PGRST303")) {
+    category = "jwt_claims_invalid";
   } else if (normalized.includes("MISSING JWT") || normalized.includes("JWT MISSING") || normalized.includes("NO AUTHORIZATION")) {
     category = "jwt_missing";
   } else if (normalized.includes("INVALID JWT") || normalized.includes("JWT INVALID") || normalized.includes("SIGNATURE")) {

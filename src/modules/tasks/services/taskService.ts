@@ -1,6 +1,5 @@
 import {
   authenticatedSupabaseFetch,
-  getSupabaseClient,
   SupabaseAuthSessionRequiredError,
   SUPABASE_URL,
   supabaseConfigured,
@@ -180,7 +179,10 @@ export function getHubTaskErrorMessage(error: unknown) {
 
   if (normalized.includes("INFORME O TITULO")) return message;
   if (normalized.includes("TAREFA NAO ENCONTRADA")) return message;
-  if (normalized.includes("JWT EXPIRED") || normalized.includes("PGRST303")) {
+  if (normalized.includes("JWT ISSUED AT FUTURE")) {
+    return "O serviço de autenticação recusou temporariamente o horário do token. Tente novamente em instantes.";
+  }
+  if (normalized.includes("JWT EXPIRED")) {
     return "Sua sessão expirou. Entre novamente para continuar.";
   }
   if (normalized.includes("SEM PERMISSAO") || normalized.includes("ROW-LEVEL SECURITY")) {
@@ -241,7 +243,7 @@ async function createHubTaskFromServiceRequest(
   return mapTask(rows[0]);
 }
 
-async function requestJson<T>(path: string, init: RequestInit = {}, allowRefresh = true): Promise<T> {
+async function requestJson<T>(path: string, init: RequestInit = {}): Promise<T> {
   ensureReady();
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -258,10 +260,6 @@ async function requestJson<T>(path: string, init: RequestInit = {}, allowRefresh
 
     if (!response.ok) {
       const details = await response.text();
-      if (allowRefresh && shouldRefresh(response.status, details)) {
-        await refreshSupabaseSession();
-        return requestJson<T>(path, init, false);
-      }
       throw new HubTaskRemoteError(response.status, extractRemoteMessage(details), details);
     }
 
@@ -279,18 +277,6 @@ async function requestJson<T>(path: string, init: RequestInit = {}, allowRefresh
   } finally {
     window.clearTimeout(timeout);
   }
-}
-
-async function refreshSupabaseSession() {
-  const supabase = await getSupabaseClient();
-  if (!supabase) return;
-  const { error } = await supabase.auth.refreshSession();
-  if (error) throw new HubTaskRemoteError(401, "Não foi possível renovar a sessão.", error.message);
-}
-
-function shouldRefresh(status: number, details: string) {
-  const normalized = normalize(details);
-  return status === 401 || normalized.includes("JWT EXPIRED") || normalized.includes("PGRST303");
 }
 
 function extractRemoteMessage(details: string) {

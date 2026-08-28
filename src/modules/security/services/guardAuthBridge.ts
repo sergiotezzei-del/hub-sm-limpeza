@@ -14,7 +14,6 @@ import {
 } from "./supabaseClient";
 
 const AUTH_BRIDGE_STATUS_KEY = "hub-sm-guard-auth-bridge-status";
-const AUTH_BRIDGE_TIMEOUT_MS = 5000;
 const ADMIN_AUTH_BRIDGE_ID = "admin";
 
 export type GuardAuthBridgeStatus = {
@@ -41,7 +40,6 @@ export async function signInGuardSupabaseAuth(guardLocalId: GuardId, password: s
     unavailableClientReason: "Cliente Supabase indisponível; fallback local mantido.",
     missingClientReason: "Cliente Supabase indisponível.",
     networkReason: "Falha ao contatar Supabase Auth; fallback local mantido.",
-    timeoutReason: "Supabase Auth demorou para responder; fallback local mantido.",
     noSessionReason: "Supabase Auth não criou sessão para este guarda.",
     mismatchReason: `${userBinding.envName} não confere com o usuário autenticado no Supabase.`,
     successReason: "Sessão Supabase Auth criada para o guarda.",
@@ -63,7 +61,6 @@ export async function signInAdminSupabaseAuth(password: string): Promise<GuardAu
     unavailableClientReason: "Cliente Supabase indisponível; sessão Auth do admin não criada.",
     missingClientReason: "Cliente Supabase indisponível.",
     networkReason: "Falha ao contatar Supabase Auth; admin local mantido.",
-    timeoutReason: "Supabase Auth demorou para responder; admin local mantido.",
     noSessionReason: "Supabase Auth não criou sessão para o Admin.",
     mismatchReason: `${userBinding.envName} não confere com o usuário admin autenticado no Supabase.`,
     successReason: "Sessão Supabase Auth criada para o Admin.",
@@ -82,7 +79,6 @@ async function signInSupabaseAuthBridge(input: {
   unavailableClientReason: string;
   missingClientReason: string;
   networkReason: string;
-  timeoutReason: string;
   noSessionReason: string;
   mismatchReason: string;
   successReason: string;
@@ -136,29 +132,18 @@ async function signInSupabaseAuthBridge(input: {
     });
   }
 
-  let signInResult: Awaited<ReturnType<typeof supabase.auth.signInWithPassword>> | { timedOut: true };
+  let signInResult: Awaited<ReturnType<typeof supabase.auth.signInWithPassword>>;
 
   try {
-    const signInPromise = supabase.auth.signInWithPassword({
+    signInResult = await supabase.auth.signInWithPassword({
       email,
       password: input.password,
     });
-    signInPromise.catch(() => undefined);
-    signInResult = await Promise.race([signInPromise, createAuthBridgeTimeout()]);
   } catch {
     if (input.signOutOnFailure) await signOutSupabaseAuth();
     return saveAuthBridgeStatus(input.bridgeId, {
       ok: false,
       reason: input.networkReason,
-      checkedAt: new Date().toISOString(),
-    });
-  }
-
-  if ("timedOut" in signInResult) {
-    if (input.signOutOnFailure) await signOutSupabaseAuth();
-    return saveAuthBridgeStatus(input.bridgeId, {
-      ok: false,
-      reason: input.timeoutReason,
       checkedAt: new Date().toISOString(),
     });
   }
@@ -256,10 +241,4 @@ function readProbeFailureReason(error: unknown) {
     return `Sessão Auth válida; diagnóstico REST: ${message.slice(0, 240)}.`;
   }
   return "Sessão Auth válida, mas a prova REST protegida do HUB falhou.";
-}
-
-function createAuthBridgeTimeout() {
-  return new Promise<{ timedOut: true }>((resolve) => {
-    window.setTimeout(() => resolve({ timedOut: true }), AUTH_BRIDGE_TIMEOUT_MS);
-  });
 }

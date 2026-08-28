@@ -26,6 +26,8 @@ export type SupabaseAuthDiagnostic = {
   sessionExists: boolean;
   userId: string | null;
   jwtRole: string | null;
+  jwtIssuedAt: string | null;
+  jwtIssuedAtOffsetSeconds: number | null;
   jwtExpiration: string | null;
   authorizationPresent: boolean;
 };
@@ -263,10 +265,13 @@ function getHubSupabaseAuthStorageKey() {
 function createAuthDiagnostic(session: SessionLike, authorizationPresent: boolean): SupabaseAuthDiagnostic {
   const accessToken = readString(session?.access_token);
   const claims = accessToken ? readJwtClaims(accessToken) : null;
+  const issuedAt = typeof claims?.iat === "number" ? claims.iat : null;
   return {
     sessionExists: Boolean(accessToken && session?.user?.id),
     userId: readString(session?.user?.id) ?? null,
     jwtRole: typeof claims?.role === "string" ? claims.role : null,
+    jwtIssuedAt: issuedAt === null ? null : new Date(issuedAt * 1000).toISOString(),
+    jwtIssuedAtOffsetSeconds: issuedAt === null ? null : issuedAt - Math.floor(Date.now() / 1000),
     jwtExpiration: typeof claims?.exp === "number" ? new Date(claims.exp * 1000).toISOString() : null,
     authorizationPresent,
   };
@@ -297,7 +302,7 @@ function readJwtClaims(accessToken: string) {
     if (!encodedPayload || typeof atob !== "function") return null;
     const normalized = encodedPayload.replace(/-/g, "+").replace(/_/g, "/");
     const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
-    return JSON.parse(atob(padded)) as { role?: unknown; exp?: unknown };
+    return JSON.parse(atob(padded)) as { role?: unknown; iat?: unknown; exp?: unknown };
   } catch {
     return null;
   }
