@@ -1,7 +1,6 @@
 import {
-  getSupabaseAccessToken,
-  SUPABASE_KEY_HEADER,
-  SUPABASE_PUBLIC_KEY,
+  authenticatedSupabaseFetch,
+  SupabaseAuthSessionRequiredError,
   SUPABASE_URL,
   supabaseConfigured,
 } from "../../security/services/supabaseClient";
@@ -388,19 +387,14 @@ export function getPatrimonyErrorMessage(error: unknown) {
 
 async function requestJson<T>(path: string, init: RequestInit = {}): Promise<T> {
   ensureReady();
-  const token = getSupabaseAccessToken();
-  if (!token) throw new PatrimonyRemoteError(401, "Sessão Supabase Auth do Admin não encontrada.");
-
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
   try {
-    const response = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+    const response = await authenticatedSupabaseFetch(`${SUPABASE_URL}/rest/v1/${path}`, {
       ...init,
       signal: controller.signal,
       headers: {
-        [SUPABASE_KEY_HEADER]: SUPABASE_PUBLIC_KEY,
-        Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
         ...(init.headers as Record<string, string> | undefined),
       },
@@ -415,6 +409,9 @@ async function requestJson<T>(path: string, init: RequestInit = {}): Promise<T> 
     return await response.json() as T;
   } catch (error) {
     if (error instanceof PatrimonyRemoteError) throw error;
+    if (error instanceof SupabaseAuthSessionRequiredError) {
+      throw new PatrimonyRemoteError(401, "Sessão Supabase Auth do Admin não encontrada.");
+    }
     if (error instanceof DOMException && error.name === "AbortError") {
       throw new PatrimonyRemoteError(408, "Tempo esgotado ao conectar com o Supabase.");
     }

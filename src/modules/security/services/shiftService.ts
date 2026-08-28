@@ -23,10 +23,9 @@ import {
   type GuardSupabaseUserBinding,
 } from "./guardSupabaseConfig";
 import {
+  authenticatedSupabaseFetch,
   getStoredSupabaseSessionSnapshot,
-  getSupabaseAccessToken,
-  SUPABASE_KEY_HEADER,
-  SUPABASE_PUBLIC_KEY,
+  sessionAwareSupabaseFetch,
   SUPABASE_URL,
   supabaseConfigured,
 } from "./supabaseClient";
@@ -510,14 +509,11 @@ async function readRemoteHistory<T>(tableName: "shift_sessions" | "audit_logs", 
 function publicHistoryRequest(path: string, init: RequestInit = {}) {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), REMOTE_HISTORY_TIMEOUT_MS);
-  const accessToken = getSupabaseAccessToken();
 
-  return fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+  return sessionAwareSupabaseFetch(`${SUPABASE_URL}/rest/v1/${path}`, {
     ...init,
     signal: controller.signal,
     headers: {
-      [SUPABASE_KEY_HEADER]: SUPABASE_PUBLIC_KEY,
-      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
       "Content-Type": "application/json",
       ...(init.headers as Record<string, string> | undefined),
     },
@@ -875,14 +871,9 @@ async function fetchShiftRows(query: string) {
 }
 
 function request(url: string, init: RequestInit = {}) {
-  const accessToken = getSupabaseAccessToken();
-  if (!accessToken) throw new Error("MISSING_SUPABASE_AUTH_SESSION");
-
-  return fetch(url, {
+  return authenticatedSupabaseFetch(url, {
     ...init,
     headers: {
-      [SUPABASE_KEY_HEADER]: SUPABASE_PUBLIC_KEY,
-      Authorization: `Bearer ${accessToken}`,
       "Content-Type": "application/json",
       ...(init.headers as Record<string, string> | undefined),
     },

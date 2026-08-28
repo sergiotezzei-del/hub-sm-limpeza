@@ -1,5 +1,11 @@
 import type { ManagedUser } from "../../../types";
-import { getSupabaseAccessToken, SUPABASE_KEY_HEADER, SUPABASE_PUBLIC_KEY, SUPABASE_URL, supabaseConfigured } from "../../security/services/supabaseClient";
+import {
+  authenticatedSupabaseFetch,
+  publicSupabaseFetch,
+  SupabaseAuthSessionRequiredError,
+  SUPABASE_URL,
+  supabaseConfigured,
+} from "../../security/services/supabaseClient";
 
 const MANAGED_USERS_REQUEST_TIMEOUT_MS = 8000;
 const MANAGED_USERS_LOGIN_RPC_PATH = "rpc/login_managed_user";
@@ -137,30 +143,25 @@ function ensureManagedUsersRemoteReady() {
     throw new ManagedUsersRemoteUnavailableError("Supabase nao configurado.");
   }
 
-  if (!getSupabaseAccessToken()) {
-    throw new ManagedUsersRemoteUnavailableError("Sessao Supabase Auth de Admin nao encontrada.");
-  }
 }
 
 function managedUsersRequest(path: string, init: RequestInit = {}) {
-  const accessToken = getSupabaseAccessToken();
-  return managedUsersRemoteRequest(path, init, "admin", accessToken);
+  return managedUsersRemoteRequest(path, init, "admin");
 }
 
 function managedUsersPublicRequest(path: string, init: RequestInit = {}) {
   return managedUsersRemoteRequest(path, init, "public");
 }
 
-function managedUsersRemoteRequest(path: string, init: RequestInit, requestMode: ManagedUsersRequestMode, authorizationToken?: string) {
+function managedUsersRemoteRequest(path: string, init: RequestInit, requestMode: ManagedUsersRequestMode) {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), MANAGED_USERS_REQUEST_TIMEOUT_MS);
+  const request = requestMode === "admin" ? authenticatedSupabaseFetch : publicSupabaseFetch;
 
-  return fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+  return request(`${SUPABASE_URL}/rest/v1/${path}`, {
     ...init,
     signal: controller.signal,
     headers: {
-      [SUPABASE_KEY_HEADER]: SUPABASE_PUBLIC_KEY,
-      ...(authorizationToken ? { Authorization: `Bearer ${authorizationToken}` } : {}),
       "Content-Type": "application/json",
       ...(init.headers as Record<string, string> | undefined),
     },
@@ -179,16 +180,19 @@ function managedUsersRemoteRequest(path: string, init: RequestInit, requestMode:
   }).catch((error: unknown) => {
     if (error instanceof ManagedUsersRemoteError) throw error;
 
-    const details = error instanceof DOMException && error.name === "AbortError"
+    const authMissing = error instanceof SupabaseAuthSessionRequiredError;
+    const details = authMissing
+      ? "Sessao Supabase Auth de Admin nao encontrada."
+      : error instanceof DOMException && error.name === "AbortError"
       ? `Timeout depois de ${MANAGED_USERS_REQUEST_TIMEOUT_MS}ms.`
       : error instanceof Error ? error.message : "Falha de rede.";
     logManagedUsersRequestError({
       path,
       requestMode,
-      status: 0,
+      status: authMissing ? 401 : 0,
       details,
     });
-    throw new ManagedUsersRemoteError(0, details, path, requestMode);
+    throw new ManagedUsersRemoteError(authMissing ? 401 : 0, details, path, requestMode);
   }).finally(() => {
     window.clearTimeout(timeout);
   });

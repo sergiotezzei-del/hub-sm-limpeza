@@ -1,4 +1,8 @@
-import { getFreshSupabaseAccessToken, getSupabaseClient } from "../security/services/supabaseClient";
+import {
+  authenticatedSupabaseFetch,
+  readSupabaseRestError,
+  SUPABASE_URL,
+} from "../security/services/supabaseClient";
 
 export type AlertTask = {
   id: string;
@@ -20,19 +24,18 @@ type AlertTaskRow = {
   status: string;
 };
 
-export async function loadAlertTasks(): Promise<AlertTask[]> {
-  const supabase = await getRequiredSupabaseClient();
-  const result = await supabase
-    .from("hub_tasks")
-    .select("id,title,description,due_date,priority,department,status")
-    .eq("show_in_alerts", true)
-    .is("archived_at", null)
-    .neq("status", "concluido")
-    .order("due_date", { ascending: true, nullsFirst: false })
-    .order("updated_at", { ascending: false });
+const TASK_SELECT = "id,title,description,due_date,priority,department,status";
 
-  if (result.error) throw result.error;
-  return ((result.data ?? []) as AlertTaskRow[]).map((row) => ({
+export async function loadAlertTasks(): Promise<AlertTask[]> {
+  const rows = await fetchTaskRows({
+    select: TASK_SELECT,
+    show_in_alerts: "eq.true",
+    archived_at: "is.null",
+    status: "neq.concluido",
+    order: "due_date.asc.nullslast,updated_at.desc",
+  });
+
+  return rows.map((row) => ({
     id: row.id,
     title: row.title,
     description: row.description ?? undefined,
@@ -44,44 +47,74 @@ export async function loadAlertTasks(): Promise<AlertTask[]> {
 }
 
 export async function loadAlertTaskIds(): Promise<string[]> {
-  const supabase = await getRequiredSupabaseClient();
-  const result = await supabase
-    .from("hub_tasks")
-    .select("id")
-    .eq("show_in_alerts", true)
-    .is("archived_at", null)
-    .neq("status", "concluido");
-
-  if (result.error) throw result.error;
-  return (result.data ?? []).map((row) => String(row.id));
+  const response = await authenticatedSupabaseFetch(createTaskUrl({
+    select: "id",
+    show_in_alerts: "eq.true",
+    archived_at: "is.null",
+    status: "neq.concluido",
+  }), { headers: { Accept: "application/json" } });
+  const rows = await readRowsOrThrow<{ id: string }>(response, "select-alert-task-ids");
+  return rows.map((row) => String(row.id));
 }
 
 export async function setTaskAlertVisibility(taskId: string, visible: boolean, actorName: string) {
-  const supabase = await getRequiredSupabaseClient();
-  const result = await supabase
-    .from("hub_tasks")
-    .update({ show_in_alerts: visible, last_actor_name: actorName })
-    .eq("id", taskId)
-    .is("archived_at", null);
-
-  if (result.error) throw result.error;
+  const response = await authenticatedSupabaseFetch(createTaskUrl({
+    id: `eq.${taskId}`,
+    archived_at: "is.null",
+  }), {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Prefer: "return=minimal" },
+    body: JSON.stringify({ show_in_alerts: visible, last_actor_name: actorName }),
+  });
+  await ensureRestSuccess(response, "set-task-alert-visibility");
 }
 
 export async function completeAlertTask(taskId: string, _actorName: string) {
-  const supabase = await getRequiredSupabaseClient();
-  const result = await supabase
-    .from("hub_tasks")
-    .delete()
-    .eq("id", taskId)
-    .is("archived_at", null);
-
-  if (result.error) throw result.error;
+  const response = await authenticatedSupabaseFetch(createTaskUrl({
+    id: `eq.${taskId}`,
+    archived_at: "is.null",
+  }), {
+    method: "DELETE",
+    headers: { Prefer: "return=minimal" },
+  });
+  await ensureRestSuccess(response, "complete-alert-task");
 }
 
-async function getRequiredSupabaseClient() {
-  const supabase = await getSupabaseClient();
-  if (!supabase) throw new Error("Supabase não configurado para Afazeres.");
-  const token = await getFreshSupabaseAccessToken();
-  if (!token) throw new Error("Sessão do HUB não encontrada. Entre novamente para carregar os Afazeres.");
-  return supabase;
+async function fetchTaskRows(query: Record<string, string>) {
+  const response = await authenticatedSupabaseFetch(createTaskUrl(query), {
+    headers: { Accept: "application/json" },
+  });
+  return readRowsOrThrow<AlertTaskRow>(response, "select-alert-tasks");
+}
+
+function createTaskUrl(query: Record<string, string>) {
+  const url = new URL(`${SUPABASE_URL}/rest/v1/hub_tasks`);
+  Object.entries(query).forEach(([key, value]) => url.searchParams.set(key, value));
+  return url;
+}
+
+async function readRowsOrThrow<T>(response: Response, context: string): Promise<T[]> {
+  if (!response.ok) {
+    const diagnostic = await readSupabaseRestError(response);
+    throw createRestError(context, diagnostic);
+  }
+  const text = await response.text();
+  if (!text) return [];
+  const parsed = JSON.parse(text) as unknown;
+  return Array.isArray(parsed) ? parsed as T[] : [parsed as T];
+}
+
+async function ensureRestSuccess(response: Response, context: string) {
+  if (response.ok) return;
+  const diagnostic = await readSupabaseRestError(response);
+  throw createRestError(context, diagnostic);
+}
+
+function createRestError(
+  context: string,
+  diagnostic: { status: number; code: string | null; message: string | null },
+) {
+  return new Error(
+    `SUPABASE_REST_${context}:${diagnostic.status}:${diagnostic.code ?? "unknown"}:${diagnostic.message ?? "unknown"}`,
+  );
 }

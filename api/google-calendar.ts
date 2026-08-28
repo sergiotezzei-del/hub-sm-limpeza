@@ -24,6 +24,13 @@ type GoogleCalendarListItem = {
   primary?: boolean;
 };
 
+type PostgrestErrorBody = {
+  code?: string;
+  message?: string;
+  details?: string;
+  hint?: string;
+};
+
 // URL e publishable key são, por definição, configuração pública do cliente Supabase.
 // Toda autorização real continua protegida por JWT + is_hub_admin() + RLS.
 const SUPABASE_URL = "https://dtdepfpkyiqtnsjztjit.supabase.co";
@@ -172,7 +179,14 @@ async function verifyAdmin(token: string) {
     headers: supabaseHeaders(token),
     body: "{}",
   });
-  const isAdmin = adminResponse.ok ? await adminResponse.json() as boolean : false;
+  const adminResponseText = await adminResponse.text();
+  if (!adminResponse.ok) {
+    const diagnostic = createPostgrestDiagnostic(adminResponse, adminResponseText);
+    console.error("[google-calendar] Falha no is_hub_admin via PostgREST", diagnostic);
+    const status = adminResponse.status === 401 || adminResponse.status === 403 ? adminResponse.status : 500;
+    throw new ApiError(status, `supabase_rest_${diagnostic.category}`, "A sessão foi aceita pelo Auth, mas recusada pelo acesso seguro ao banco.");
+  }
+  const isAdmin = adminResponseText ? safeJson(adminResponseText) as boolean : false;
   if (isAdmin !== true) {
     throw new ApiError(403, "admin_only", "A Agenda Google está disponível somente para o Admin/Tezzei.");
   }
@@ -196,11 +210,52 @@ async function supabaseRpc<T = unknown>(token: string, functionName: string, bod
   });
   const text = await response.text();
   if (!response.ok) {
-    const parsed = safeJson(text) as { message?: string } | null;
+    const diagnostic = createPostgrestDiagnostic(response, text);
+    console.error(`[google-calendar] Falha na RPC ${functionName}`, diagnostic);
     const status = response.status === 401 || response.status === 403 ? response.status : 500;
-    throw new ApiError(status, "supabase_rpc_failed", parsed?.message ?? "Falha na integração segura com o banco.");
+    throw new ApiError(status, `supabase_rpc_${diagnostic.category}`, diagnostic.body.message ?? "Falha na integração segura com o banco.");
   }
   return (text ? safeJson(text) : undefined) as T;
+}
+
+function createPostgrestDiagnostic(response: Response, rawBody: string) {
+  const parsed = safeJson(rawBody) as PostgrestErrorBody | null;
+  const body = {
+    code: safeDiagnosticText(parsed?.code),
+    message: safeDiagnosticText(parsed?.message),
+    details: safeDiagnosticText(parsed?.details),
+    hint: safeDiagnosticText(parsed?.hint),
+  };
+  const normalized = [body.code, body.message, body.details, body.hint, rawBody]
+    .filter(Boolean)
+    .join(" ")
+    .toUpperCase();
+
+  let category = "unknown";
+  if (normalized.includes("JWT EXPIRED") || normalized.includes("TOKEN IS EXPIRED") || normalized.includes("PGRST303")) {
+    category = "jwt_expired";
+  } else if (normalized.includes("MISSING JWT") || normalized.includes("JWT MISSING") || normalized.includes("NO AUTHORIZATION")) {
+    category = "jwt_missing";
+  } else if (normalized.includes("INVALID JWT") || normalized.includes("JWT INVALID") || normalized.includes("SIGNATURE")) {
+    category = "jwt_invalid";
+  } else if (normalized.includes("API KEY") || normalized.includes("APIKEY")) {
+    category = "api_key_invalid";
+  } else if (normalized.includes("PERMISSION DENIED") || normalized.includes("INSUFFICIENT PRIVILEGE") || body.code === "42501") {
+    category = "permission_denied";
+  } else if (normalized.includes("ROLE")) {
+    category = "role_denied";
+  }
+
+  return {
+    status: response.status,
+    category,
+    body,
+    wwwAuthenticate: safeDiagnosticText(response.headers.get("www-authenticate")),
+  };
+}
+
+function safeDiagnosticText(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim().slice(0, 500) : null;
 }
 
 async function getCredentials(token: string): Promise<GoogleCalendarCredentials> {

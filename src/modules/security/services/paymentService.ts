@@ -1,6 +1,6 @@
 import type { GuardId } from "../../../types";
 import type { GuardPaymentLoadState, GuardPaymentProfile, GuardPaymentRecord, GuardPaymentStatus } from "../types/payment.types";
-import { getSupabaseAccessToken, SUPABASE_KEY_HEADER, SUPABASE_PUBLIC_KEY, SUPABASE_URL, supabaseConfigured } from "./supabaseClient";
+import { authenticatedSupabaseFetch, getSupabaseAccessToken, SUPABASE_URL, supabaseConfigured } from "./supabaseClient";
 
 const PAYMENT_PROFILES_KEY = "hub-sm-guard-payment-profiles";
 const PAYMENT_RECORDS_KEY = "hub-sm-guard-payment-records";
@@ -184,14 +184,11 @@ export async function updateGuardPaymentRecordStatus(recordId: string, status: G
 function paymentRequest(path: string, init: RequestInit = {}) {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), PAYMENT_REQUEST_TIMEOUT_MS);
-  const accessToken = getSupabaseAccessToken();
 
-  return fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+  return authenticatedSupabaseFetch(`${SUPABASE_URL}/rest/v1/${path}`, {
     ...init,
     signal: controller.signal,
     headers: {
-      [SUPABASE_KEY_HEADER]: SUPABASE_PUBLIC_KEY,
-      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
       "Content-Type": "application/json",
       ...(init.headers as Record<string, string> | undefined),
     },

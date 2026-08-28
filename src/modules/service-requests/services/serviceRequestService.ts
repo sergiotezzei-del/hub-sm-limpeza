@@ -1,8 +1,8 @@
 import {
-  getSupabaseAccessToken,
+  authenticatedSupabaseFetch,
   getSupabaseClient,
-  SUPABASE_KEY_HEADER,
-  SUPABASE_PUBLIC_KEY,
+  publicSupabaseFetch,
+  SupabaseAuthSessionRequiredError,
   SUPABASE_URL,
   supabaseConfigured,
 } from "../../security/services/supabaseClient";
@@ -69,11 +69,10 @@ export async function submitPublicServiceRequest(
   const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
   try {
-    const response = await fetch(`${SUPABASE_URL}/rest/v1/rpc/create_public_service_request`, {
+    const response = await publicSupabaseFetch(`${SUPABASE_URL}/rest/v1/rpc/create_public_service_request`, {
       method: "POST",
       signal: controller.signal,
       headers: {
-        [SUPABASE_KEY_HEADER]: SUPABASE_PUBLIC_KEY,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -209,19 +208,14 @@ export function getAdminServiceRequestErrorMessage(error: unknown) {
 
 async function adminRequestJson<T>(path: string, init: RequestInit = {}, allowRefresh = true): Promise<T> {
   ensureReady();
-  const token = await getValidAccessToken();
-  if (!token) throw new ServiceRequestRemoteError(401, "Sessão Supabase Auth do Admin não encontrada.");
-
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
   try {
-    const response = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+    const response = await authenticatedSupabaseFetch(`${SUPABASE_URL}/rest/v1/${path}`, {
       ...init,
       signal: controller.signal,
       headers: {
-        [SUPABASE_KEY_HEADER]: SUPABASE_PUBLIC_KEY,
-        Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
         ...(init.headers as Record<string, string> | undefined),
       },
@@ -240,6 +234,9 @@ async function adminRequestJson<T>(path: string, init: RequestInit = {}, allowRe
     return await response.json() as T;
   } catch (error) {
     if (error instanceof ServiceRequestRemoteError) throw error;
+    if (error instanceof SupabaseAuthSessionRequiredError) {
+      throw new ServiceRequestRemoteError(401, "Sessão Supabase Auth do Admin não encontrada.");
+    }
     if (error instanceof DOMException && error.name === "AbortError") {
       throw new ServiceRequestRemoteError(408, "Tempo limite da conexão excedido.");
     }
@@ -247,13 +244,6 @@ async function adminRequestJson<T>(path: string, init: RequestInit = {}, allowRe
   } finally {
     window.clearTimeout(timeout);
   }
-}
-
-async function getValidAccessToken() {
-  const supabase = await getSupabaseClient();
-  if (!supabase) return getSupabaseAccessToken();
-  const { data } = await supabase.auth.getSession();
-  return data.session?.access_token ?? getSupabaseAccessToken();
 }
 
 async function refreshSupabaseSession() {
