@@ -17,6 +17,7 @@ export type MarketingPushSetup = {
   pairCode: string;
   requestNumber: number;
   expiresAt: string;
+  submissionId?: string;
 };
 
 export type MarketingPushManualSetup = {
@@ -62,6 +63,7 @@ export async function prepareMarketingPush(submissionId: string): Promise<Market
     pairCode: row.pair_code,
     requestNumber: Number(row.request_number),
     expiresAt: row.expires_at,
+    submissionId,
   };
   rememberPendingMarketingPushSetup(setup);
   return setup;
@@ -136,6 +138,17 @@ export function isStandaloneDisplay() {
     || Boolean((window.navigator as Navigator & { standalone?: boolean }).standalone);
 }
 
+export function isMarketingPushSetupExpired(setup: MarketingPushSetup, skewMs = 5000) {
+  const expiresAt = Date.parse(setup.expiresAt);
+  return Number.isFinite(expiresAt) && expiresAt <= Date.now() + skewMs;
+}
+
+export async function renewMarketingPushSetup(setup: MarketingPushSetup) {
+  if (!isMarketingPushSetupExpired(setup)) return setup;
+  if (!setup.submissionId) throw new Error("MARKETING_PUSH_CLAIM_INVALID");
+  return prepareMarketingPush(setup.submissionId);
+}
+
 export async function subscribeMarketingPush(setup: MarketingPushSetup | MarketingPushManualSetup) {
   if (!isWebPushSupported()) throw new Error("PUSH_UNSUPPORTED");
   if (isIosDevice() && !isStandaloneDisplay()) throw new Error("PUSH_IOS_INSTALL_REQUIRED");
@@ -145,6 +158,7 @@ export async function subscribeMarketingPush(setup: MarketingPushSetup | Marketi
     : await Notification.requestPermission();
   if (permission !== "granted") throw new Error(permission === "denied" ? "PUSH_PERMISSION_DENIED" : "PUSH_PERMISSION_REQUIRED");
 
+  const effectiveSetup = "claimToken" in setup ? await renewMarketingPushSetup(setup) : setup;
   const publicKey = await loadVapidPublicKey();
   const registration = await navigator.serviceWorker.ready;
   let subscription = await registration.pushManager.getSubscription();
@@ -165,9 +179,9 @@ export async function subscribeMarketingPush(setup: MarketingPushSetup | Marketi
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       action: "subscribe",
-      claimToken: "claimToken" in setup ? setup.claimToken : null,
-      requestNumber: setup.requestNumber,
-      pairCode: setup.pairCode,
+      claimToken: "claimToken" in effectiveSetup ? effectiveSetup.claimToken : null,
+      requestNumber: effectiveSetup.requestNumber,
+      pairCode: effectiveSetup.pairCode,
       userAgent: navigator.userAgent,
       subscription: {
         endpoint: payload.endpoint,
@@ -225,7 +239,7 @@ export function getMarketingPushErrorMessage(error: unknown) {
   if (normalized.includes("PUSH_PERMISSION_DENIED")) return "As notificações foram bloqueadas. Libere as notificações do HUB nas configurações do aparelho/navegador.";
   if (normalized.includes("PUSH_PERMISSION_REQUIRED")) return "É necessário permitir as notificações para receber a confirmação do Marketing.";
   if (normalized.includes("PUSH_UNSUPPORTED")) return "Este navegador não oferece suporte às notificações do HUB. Use Chrome, Edge ou o aplicativo adicionado à Tela de Início.";
-  if (normalized.includes("MARKETING_PUSH_CLAIM_INVALID") || normalized.includes("CLAIM_REQUIRED")) return "O código deste pedido expirou ou não é válido. Gere um novo pedido ou chame a Infraestrutura.";
+  if (normalized.includes("MARKETING_PUSH_CLAIM_INVALID") || normalized.includes("CLAIM_REQUIRED")) return "O código de vinculação expirou. Volte à tela do pedido para o HUB gerar outro código automaticamente.";
   return "Não foi possível ativar as notificações neste aparelho. Veja o passo a passo ou chame a Infraestrutura.";
 }
 
@@ -251,6 +265,7 @@ function safeSetup(value: string): MarketingPushSetup | null {
       pairCode: parsed.pairCode,
       requestNumber,
       expiresAt: parsed.expiresAt || "",
+      submissionId: typeof parsed.submissionId === "string" && parsed.submissionId ? parsed.submissionId : undefined,
     };
   } catch {
     return null;
