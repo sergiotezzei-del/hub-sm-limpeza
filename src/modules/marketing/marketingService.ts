@@ -1,4 +1,4 @@
-import { publicSupabaseFetch, SUPABASE_URL, supabaseConfigured } from "../security/services/supabaseClient";
+import { publicSupabaseFetch, sessionAwareSupabaseFetch, SUPABASE_URL, supabaseConfigured } from "../security/services/supabaseClient";
 import { DEFAULT_MARKETING_CAPTURE_WINDOWS, type MarketingOccupiedCaptureSlot, type MarketingScheduleConfig } from "./marketingConfig";
 
 export type MarketingRole = "admin" | "marketing" | "sales_manager";
@@ -240,6 +240,7 @@ export async function startMarketingSession(accessCode: string): Promise<Marketi
   const rows = await rpc<Array<{ session_token: string; user_id: string; expires_at: string }>>(
     "marketing_start_session",
     { p_access_code: accessCode },
+    true,
   );
   const session = rows?.[0];
   if (!session?.session_token || !session.user_id) {
@@ -493,12 +494,13 @@ function toIsoOrNull(value?: string) {
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
-async function rpc<T>(name: string, body: Record<string, unknown>): Promise<T> {
+async function rpc<T>(name: string, body: Record<string, unknown>, sessionAware = false): Promise<T> {
   if (!supabaseConfigured) throw new MarketingRemoteError(0, "Supabase não configurado.");
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
-    const response = await publicSupabaseFetch(`${SUPABASE_URL}/rest/v1/rpc/${name}`, {
+    const transport = sessionAware ? sessionAwareSupabaseFetch : publicSupabaseFetch;
+    const response = await transport(`${SUPABASE_URL}/rest/v1/rpc/${name}`, {
       method: "POST",
       signal: controller.signal,
       headers: {
