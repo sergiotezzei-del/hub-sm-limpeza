@@ -11,6 +11,12 @@ import {
   type AlertRecurrenceType,
 } from "./alertService";
 import { completeAlertTask, loadAlertTasks, type AlertTask } from "./alertTaskService";
+import {
+  acknowledgeEmailInbox,
+  loadEmailInboxStatus,
+  saveEmailInboxConfig,
+  type EmailInboxStatus,
+} from "./emailInboxService";
 import "./alerts.css";
 
 const ACTOR_NAME = "Admin Tezzei";
@@ -94,6 +100,10 @@ function AlertDashboardPanel() {
   const [markingKey, setMarkingKey] = useState("");
   const [togglingId, setTogglingId] = useState("");
   const [deletingId, setDeletingId] = useState("");
+  const [emailInbox, setEmailInbox] = useState<EmailInboxStatus | null>(null);
+  const [emailAddress, setEmailAddress] = useState("");
+  const [emailPassword, setEmailPassword] = useState("");
+  const [emailSaving, setEmailSaving] = useState(false);
   const today = getTodayIso();
 
   useEffect(() => {
@@ -125,6 +135,32 @@ function AlertDashboardPanel() {
     return () => { active = false; };
   }, []);
 
+  useEffect(() => {
+  let active = true;
+
+  const refreshEmailStatus = async () => {
+    try {
+      const status = await loadEmailInboxStatus();
+      if (!active) return;
+      setEmailInbox(status);
+      setEmailAddress((current) => current || status.emailAddress);
+    } catch {
+      // O monitor de e-mail é independente dos demais Alertas.
+    }
+  };
+
+  void refreshEmailStatus();
+  const intervalId = window.setInterval(() => { void refreshEmailStatus(); }, 60_000);
+  const onFocus = () => { void refreshEmailStatus(); };
+  window.addEventListener("focus", onFocus);
+
+  return () => {
+    active = false;
+    window.clearInterval(intervalId);
+    window.removeEventListener("focus", onFocus);
+  };
+}, []);
+
   const pendingAlerts = useMemo(
     () => buildPendingAlerts(rules, completions, today),
     [rules, completions, today],
@@ -132,7 +168,7 @@ function AlertDashboardPanel() {
 
   const overdueCount = pendingAlerts.filter((alert) => !alert.isToday).length
     + alertTasks.filter((task) => Boolean(task.dueDate && task.dueDate < today)).length;
-  const totalPending = pendingAlerts.length + alertTasks.length;
+  const totalPending = pendingAlerts.length + alertTasks.length + (emailInbox?.pendingNewCount ? 1 : 0);
 
   async function markDone(alert: PendingAlert) {
     const key = `${alert.rule.id}:${alert.occurrenceDate}`;
@@ -252,6 +288,44 @@ function AlertDashboardPanel() {
     }
   }
 
+  async function saveEmailConfiguration(event: FormEvent<HTMLFormElement>) {
+  event.preventDefault();
+  const email = emailAddress.trim();
+  if (!email || !email.includes("@")) {
+    setMessage("Informe o e-mail completo da Locaweb.");
+    return;
+  }
+  if (!emailPassword) {
+    setMessage("Informe a senha da caixa de e-mail para salvar a configuração.");
+    return;
+  }
+
+  setEmailSaving(true);
+  setMessage("");
+  try {
+    await saveEmailInboxConfig(email, emailPassword);
+    setEmailPassword("");
+    setMessage("E-mail Locaweb configurado. A primeira verificação será feita em instantes.");
+    const status = await loadEmailInboxStatus();
+    setEmailInbox(status);
+    setEmailAddress(status.emailAddress || email);
+  } catch {
+    setMessage("Não foi possível salvar a configuração do e-mail.");
+  } finally {
+    setEmailSaving(false);
+  }
+}
+
+  async function openEmailInbox() {
+    window.open("https://webmail-seguro.com.br/", "_blank", "noopener,noreferrer");
+    try {
+      await acknowledgeEmailInbox();
+      setEmailInbox((current) => current ? { ...current, pendingNewCount: 0 } : current);
+    } catch {
+      // O Webmail já foi aberto; a confirmação pode ser refeita na próxima vez.
+    }
+  }
+
   return (
     <section className="hub-alert-panel" aria-label="Alertas e rotinas recorrentes">
       <header className="hub-alert-panel-head">
@@ -273,6 +347,18 @@ function AlertDashboardPanel() {
       )}
 
       <div className="hub-alert-cards">
+  {emailInbox && emailInbox.pendingNewCount > 0 && (
+    <article className="hub-alert-card is-email">
+      <div className="hub-alert-card-status">
+        <span>NOVO E-MAIL</span>
+        <time>CAIXA DE ENTRADA</time>
+      </div>
+      <h3>📧 Você tem e-mail novo</h3>
+      <p>{emailInbox.pendingNewCount === 1 ? "Chegou 1 novo e-mail na sua caixa de entrada." : `Chegaram ${emailInbox.pendingNewCount} novos e-mails na sua caixa de entrada.`}</p>
+      <small>O HUB detecta somente que chegou mensagem nova. Assunto, remetente, conteúdo e anexos não são lidos nem armazenados.</small>
+      <button className="hub-alert-email-button" type="button" onClick={() => { void openEmailInbox(); }}>ABRIR WEBMAIL</button>
+    </article>
+  )}
         {alertTasks.map((task) => {
           const key = `task:${task.id}`;
           const overdue = Boolean(task.dueDate && task.dueDate < today);
@@ -336,7 +422,32 @@ function AlertDashboardPanel() {
               <button type="button" className="hub-alert-close-button" onClick={() => setManagerOpen(false)} aria-label="Fechar">×</button>
             </header>
 
-            <form className="hub-alert-form" onSubmit={saveRule}>
+            <section className="hub-email-config">
+    <div className="hub-email-config-head">
+      <div>
+        <p className="hub-alert-kicker">CAIXA DE ENTRADA</p>
+        <h3>E-mail Locaweb</h3>
+      </div>
+      <span className={emailInbox?.configured ? "is-connected" : ""}>{emailInbox?.configured ? "MONITOR ATIVO" : "NÃO CONFIGURADO"}</span>
+    </div>
+    <p>O HUB verifica a cada 5 minutos somente se chegou mensagem nova. Não lê assunto, remetente, conteúdo nem anexos.</p>
+    <form className="hub-email-config-form" onSubmit={saveEmailConfiguration}>
+      <label>
+        E-mail
+        <input type="email" autoComplete="username" value={emailAddress} placeholder="seuemail@santamariatem.com.br" onChange={(event) => setEmailAddress(event.target.value)} />
+      </label>
+      <label>
+        Senha da caixa de e-mail
+        <input type="password" autoComplete="current-password" value={emailPassword} placeholder={emailInbox?.configured ? "Digite apenas para atualizar a senha" : "Senha do e-mail"} onChange={(event) => setEmailPassword(event.target.value)} />
+      </label>
+      <button type="submit" disabled={emailSaving}>{emailSaving ? "SALVANDO..." : emailInbox?.configured ? "ATUALIZAR E TESTAR" : "SALVAR E TESTAR"}</button>
+    </form>
+    {emailInbox?.configured && <small>Conta monitorada: <strong>{emailInbox.emailAddress}</strong></small>}
+    {emailInbox?.lastCheckedAt && <small>Última verificação: {new Date(emailInbox.lastCheckedAt).toLocaleString("pt-BR")}</small>}
+    {emailInbox?.lastError && <p className="hub-email-config-error">{emailInbox.lastError}</p>}
+  </section>
+
+  <form className="hub-alert-form" onSubmit={saveRule}>
               <label>
                 Nome da rotina
                 <input type="text" value={draft.title} placeholder="Ex.: Fechamento da fatura do cartão" onChange={(event) => setDraft({ ...draft, title: event.target.value })} />
