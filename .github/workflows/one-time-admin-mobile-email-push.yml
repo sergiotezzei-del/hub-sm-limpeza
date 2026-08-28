@@ -1,0 +1,76 @@
+name: One-time Admin mobile email push
+on:
+  push:
+    paths:
+      - '.github/workflows/one-time-admin-mobile-email-push.yml'
+permissions:
+  contents: write
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Patch admin push UI
+        shell: python
+        run: |
+          from pathlib import Path
+
+          page = Path('src/modules/alerts/AlertDashboardEnhancer.tsx')
+          text = page.read_text()
+
+          import_marker = '''} from "./emailInboxService";\nimport "./alerts.css";'''
+          import_repl = '''} from "./emailInboxService";\nimport {\n  activateAdminPush,\n  getAdminPushErrorMessage,\n  isAdminPushSupported,\n  isIosDevice as isAdminPushIosDevice,\n  isStandaloneDisplay as isAdminPushStandalone,\n  loadAdminPushStatus,\n  type AdminPushStatus,\n} from "./adminPushService";\nimport "./alerts.css";'''
+          if import_marker not in text:
+              raise SystemExit('email inbox import marker not found')
+          text = text.replace(import_marker, import_repl, 1)
+
+          state_marker = '''  const [emailSaving, setEmailSaving] = useState(false);\n  const today = getTodayIso();'''
+          state_repl = '''  const [emailSaving, setEmailSaving] = useState(false);\n  const [adminPushStatus, setAdminPushStatus] = useState<AdminPushStatus | null>(null);\n  const [adminPushBusy, setAdminPushBusy] = useState(false);\n  const [adminPushMessage, setAdminPushMessage] = useState(\"\");\n  const today = getTodayIso();'''
+          if state_marker not in text:
+              raise SystemExit('state marker not found')
+          text = text.replace(state_marker, state_repl, 1)
+
+          effect_marker = '''    window.removeEventListener("focus", onFocus);\n  };\n}, []);\n\n  const pendingAlerts = useMemo('''
+          effect_repl = '''    window.removeEventListener("focus", onFocus);\n  };\n}, []);\n\n  useEffect(() => {\n    let active = true;\n    const syncPush = async () => {\n      try {\n        if (isAdminPushSupported()\n          && typeof Notification !== \"undefined\"\n          && Notification.permission === \"granted\"\n          && (!isAdminPushIosDevice() || isAdminPushStandalone())) {\n          await activateAdminPush();\n        }\n        const status = await loadAdminPushStatus();\n        if (active) setAdminPushStatus(status);\n      } catch {\n        // A ativação manual continua disponível abaixo.\n      }\n    };\n    void syncPush();\n    return () => { active = false; };\n  }, []);\n\n  const pendingAlerts = useMemo('''
+          if effect_marker not in text:
+              raise SystemExit('email status effect marker not found')
+          text = text.replace(effect_marker, effect_repl, 1)
+
+          fn_marker = '''  async function openEmailInbox() {'''
+          fn_repl = '''  async function activatePushForThisDevice() {\n    if (adminPushBusy) return;\n    setAdminPushBusy(true);\n    setAdminPushMessage(\"\");\n    try {\n      await activateAdminPush();\n      const status = await loadAdminPushStatus();\n      setAdminPushStatus(status);\n      setAdminPushMessage(\"Notificações ativadas neste aparelho.\");\n    } catch (error) {\n      setAdminPushMessage(getAdminPushErrorMessage(error));\n    } finally {\n      setAdminPushBusy(false);\n    }\n  }\n\n  async function openEmailInbox() {'''
+          if fn_marker not in text:
+              raise SystemExit('openEmailInbox marker not found')
+          text = text.replace(fn_marker, fn_repl, 1)
+
+          ui_marker = '''    <p>O HUB verifica a cada 5 minutos somente se chegou mensagem nova. Não lê assunto, remetente, conteúdo nem anexos.</p>\n    <form className="hub-email-config-form" onSubmit={saveEmailConfiguration}>'''
+          ui_repl = '''    <p>O HUB verifica a cada 5 minutos somente se chegou mensagem nova. Não lê assunto, remetente, conteúdo nem anexos.</p>\n    <div className="hub-admin-push-box">\n      <div>\n        <strong>🔔 Notificações nos seus aparelhos</strong>\n        <small>{adminPushStatus ? `${adminPushStatus.activeCount} aparelho(s) ativo(s)` : \"Verificando aparelhos...\"}</small>\n      </div>\n      <button type="button" disabled={adminPushBusy || !isAdminPushSupported()} onClick={() => { void activatePushForThisDevice(); }}>\n        {adminPushBusy ? \"ATIVANDO...\" : \"ATIVAR NESTE APARELHO\"}\n      </button>\n      {isAdminPushIosDevice() && !isAdminPushStandalone() && (\n        <small className="hub-admin-push-help">No iPhone: abra no Safari, use “Adicionar à Tela de Início”, abra o HUB pelo ícone e ative por lá.</small>\n      )}\n      {adminPushMessage && <small className="hub-admin-push-message">{adminPushMessage}</small>}\n    </div>\n    <form className="hub-email-config-form" onSubmit={saveEmailConfiguration}>'''
+          if ui_marker not in text:
+              raise SystemExit('email config UI marker not found')
+          text = text.replace(ui_marker, ui_repl, 1)
+          page.write_text(text)
+
+          css = Path('src/modules/alerts/alerts.css')
+          css_text = css.read_text()
+          css_text += '''\n\n.hub-admin-push-box {\n  display: grid;\n  grid-template-columns: minmax(0, 1fr) auto;\n  gap: 8px 12px;\n  align-items: center;\n  margin: 12px 0;\n  padding: 12px;\n  border: 1px solid rgba(37, 99, 235, 0.2);\n  border-radius: 12px;\n  background: #f7faff;\n}\n\n.hub-admin-push-box > div {\n  display: grid;\n  gap: 3px;\n}\n\n.hub-admin-push-box button {\n  min-height: 40px;\n  padding: 8px 12px;\n  border: 0;\n  border-radius: 10px;\n  background: #1d4ed8;\n  color: #fff;\n  font-weight: 900;\n  cursor: pointer;\n}\n\n.hub-admin-push-box button:disabled {\n  cursor: not-allowed;\n  opacity: 0.55;\n}\n\n.hub-admin-push-help,\n.hub-admin-push-message {\n  grid-column: 1 / -1;\n}\n\n.hub-admin-push-help { color: #92400e; }\n.hub-admin-push-message { color: #166534; font-weight: 700; }\n\n@media (max-width: 560px) {\n  .hub-admin-push-box { grid-template-columns: 1fr; }\n  .hub-admin-push-box button { width: 100%; }\n}\n'''
+          css.write_text(css_text)
+
+          Path('.github/workflows/one-time-admin-mobile-email-push.yml').unlink()
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run build
+      - run: npx tsc --noEmit
+      - name: Commit verified implementation
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'fix(push): ativar alertas de email no celular e desktop'
+          git push origin HEAD:fix/admin-mobile-email-push
