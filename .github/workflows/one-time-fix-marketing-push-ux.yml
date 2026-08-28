@@ -1,0 +1,81 @@
+name: One-time fix Marketing push UX
+on:
+  push:
+    paths:
+      - '.github/workflows/one-time-fix-marketing-push-ux.yml'
+permissions:
+  contents: write
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Patch Marketing push flow
+        shell: python
+        run: |
+          from pathlib import Path
+
+          card = Path('src/modules/marketing/MarketingPushSetupCard.tsx')
+          text = card.read_text()
+          text = text.replace('import { useEffect, useMemo, useState } from "react";', 'import { useEffect, useMemo, useRef, useState } from "react";')
+          text = text.replace('  prepareFailed: boolean;\n};', '  prepareFailed: boolean;\n  onRefreshSetup?: () => Promise<void>;\n};')
+          text = text.replace('type SetupStatus = "idle" | "installing" | "activating" | "active" | "error";', 'type SetupStatus = "idle" | "installing" | "activating" | "refreshing" | "active" | "error";')
+          text = text.replace('export function MarketingPushSetupCard({ setup, preparing, prepareFailed }: MarketingPushSetupCardProps) {', 'export function MarketingPushSetupCard({ setup, preparing, prepareFailed, onRefreshSetup }: MarketingPushSetupCardProps) {')
+          text = text.replace('  const ios = useMemo(() => isIosDevice(), []);\n', '  const ios = useMemo(() => isIosDevice(), []);\n  const refreshedExpiredSetup = useRef(\"\");\n  const permissionBlocked = typeof Notification !== \"undefined\" && Notification.permission === \"denied\";\n  const setupExpired = Boolean(setup?.expiresAt && new Date(setup.expiresAt).getTime() <= Date.now());\n')
+          marker = '  useEffect(() => {\n    if (!setup || status !== "idle" || !isMarketingNotificationReceiver()) return;'
+          insert = '''  useEffect(() => {\n    if (!setup || !setupExpired || !onRefreshSetup) return;\n    const setupKey = `${setup.requestNumber}:${setup.expiresAt}`;\n    if (refreshedExpiredSetup.current === setupKey) return;\n    refreshedExpiredSetup.current = setupKey;\n    setStatus("refreshing");\n    setMessage("Atualizando o código de notificações...");\n    void onRefreshSetup()\n      .then(() => {\n        setStatus("idle");\n        setMessage("Código de notificações atualizado.");\n      })\n      .catch(() => {\n        setStatus("error");\n        setMessage("Não foi possível renovar o código de notificações. Atualize a página e tente novamente.");\n      });\n  }, [onRefreshSetup, setup, setupExpired]);\n\n'''
+          if marker not in text:
+              raise SystemExit('marker for expired setup effect not found')
+          text = text.replace(marker, insert + marker)
+          text = text.replace('  const canActivateHere = Boolean(setup) && !unsupported && (!ios || standalone);', '  const canActivateHere = Boolean(setup) && !unsupported && !permissionBlocked && !setupExpired && (!ios || standalone);')
+          actions_marker = '            {setup && !prepareFailed && (\n              <div className="marketing-push-actions">'
+          actions_repl = '''            {setup && !prepareFailed && (\n              <div className="marketing-push-actions">\n                {permissionBlocked && (\n                  <p className="marketing-push-error">As notificações estão bloqueadas neste navegador. Libere a permissão de notificações do HUB nas configurações do navegador/aparelho e depois volte a esta tela.</p>\n                )}\n                {setupExpired && status === "refreshing" && (\n                  <p className="marketing-push-preparing">O código anterior venceu. Gerando um novo código automaticamente...</p>\n                )}'''
+          if actions_marker not in text:
+              raise SystemExit('actions marker not found')
+          text = text.replace(actions_marker, actions_repl)
+          text = text.replace('                <div className="marketing-push-code-box">', '                {!setupExpired && <div className="marketing-push-code-box">')
+          text = text.replace('                </div>\n                <p className="marketing-push-support"><strong>Não conseguiu?</strong>', '                </div>}\n                <p className="marketing-push-support"><strong>Não conseguiu?</strong>')
+          card.write_text(text)
+
+          page = Path('src/modules/marketing/PublicMarketingRequestPage.tsx')
+          text = page.read_text()
+          before_submit = '  async function submit(event: FormEvent<HTMLFormElement>) {'
+          helper = '''  async function refreshPushSetup() {\n    setPushPreparing(true);\n    setPushPrepareFailed(false);\n    try {\n      const setup = await prepareMarketingPush(submissionId);\n      setPushSetup(setup);\n    } catch (error) {\n      setPushPrepareFailed(true);\n      throw error;\n    } finally {\n      setPushPreparing(false);\n    }\n  }\n\n'''
+          if before_submit not in text:
+              raise SystemExit('submit marker not found')
+          text = text.replace(before_submit, helper + before_submit, 1)
+          old_prepare = '''        setPushPreparing(true);\n        void prepareMarketingPush(submissionId)\n          .then((setup) => setPushSetup(setup))\n          .catch(() => setPushPrepareFailed(true))\n          .finally(() => setPushPreparing(false));'''
+          if old_prepare not in text:
+              raise SystemExit('old prepare block not found')
+          text = text.replace(old_prepare, '        void refreshPushSetup();')
+          old_card = '<MarketingPushSetupCard setup={pushSetup} preparing={pushPreparing} prepareFailed={pushPrepareFailed} />'
+          new_card = '<MarketingPushSetupCard setup={pushSetup} preparing={pushPreparing} prepareFailed={pushPrepareFailed} onRefreshSetup={refreshPushSetup} />'
+          if old_card not in text:
+              raise SystemExit('setup card marker not found')
+          text = text.replace(old_card, new_card)
+          page.write_text(text)
+
+          migration = Path('supabase/migrations/20260828154500_extend_marketing_push_claim_lifetime.sql')
+          migration.write_text("""do $$\ndeclare\n  v_definition text;\nbegin\n  select pg_get_functiondef('public.marketing_public_prepare_push(uuid)'::regprocedure)\n    into v_definition;\n\n  if position('interval ''30 minutes''' in v_definition) > 0 then\n    v_definition := replace(v_definition, 'interval ''30 minutes''', 'interval ''45 days''');\n    execute v_definition;\n  end if;\nend;\n$$;\n""")
+
+          workflow = Path('.github/workflows/one-time-fix-marketing-push-ux.yml')
+          workflow.unlink()
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run build
+      - run: npx tsc --noEmit
+      - name: Commit verified fix
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'fix(marketing): corrigir ativação e validade das notificações'
+          git push origin HEAD:main
