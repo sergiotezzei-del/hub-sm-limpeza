@@ -106,6 +106,20 @@ export function PublicMarketingRequestPage() {
     }));
   }
 
+  async function refreshPushSetup() {
+    setPushPreparing(true);
+    setPushPrepareFailed(false);
+    try {
+      const setup = await prepareMarketingPush(submissionId);
+      setPushSetup(setup);
+    } catch (error) {
+      setPushPrepareFailed(true);
+      throw error;
+    } finally {
+      setPushPreparing(false);
+    }
+  }
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (submitting) return;
@@ -174,11 +188,7 @@ export function PublicMarketingRequestPage() {
       setPushSetup(null);
       setPushPrepareFailed(false);
       if (form.requestKind === "capture_edit") {
-        setPushPreparing(true);
-        void prepareMarketingPush(submissionId)
-          .then((setup) => setPushSetup(setup))
-          .catch(() => setPushPrepareFailed(true))
-          .finally(() => setPushPreparing(false));
+        void refreshPushSetup();
       }
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (error) {
@@ -231,7 +241,7 @@ export function PublicMarketingRequestPage() {
             </article>
             <p>O gerente da sua equipe e o Marketing poderão acompanhar o andamento pelo HUB.</p>
             {form.requestKind === "capture_edit" && (
-              <MarketingPushSetupCard setup={pushSetup} preparing={pushPreparing} prepareFailed={pushPrepareFailed} />
+              <MarketingPushSetupCard setup={pushSetup} preparing={pushPreparing} prepareFailed={pushPrepareFailed} onRefreshSetup={refreshPushSetup} />
             )}
             {receipt.captureGroupId && form.hasMultipleProperties && (
               <button className="marketing-public-add-property" type="button" onClick={addAnotherProperty}>

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { canPromptPwaInstall, isPwaStandalone, promptPwaInstall } from "../../pwaInstall";
 import {
   formatMarketingPairCode,
@@ -15,11 +15,12 @@ type MarketingPushSetupCardProps = {
   setup: MarketingPushSetup | null;
   preparing: boolean;
   prepareFailed: boolean;
+  onRefreshSetup?: () => Promise<void>;
 };
 
-type SetupStatus = "idle" | "installing" | "activating" | "active" | "error";
+type SetupStatus = "idle" | "installing" | "activating" | "refreshing" | "active" | "error";
 
-export function MarketingPushSetupCard({ setup, preparing, prepareFailed }: MarketingPushSetupCardProps) {
+export function MarketingPushSetupCard({ setup, preparing, prepareFailed, onRefreshSetup }: MarketingPushSetupCardProps) {
   const [status, setStatus] = useState<SetupStatus>("idle");
   const [message, setMessage] = useState("");
   const [guideOpen, setGuideOpen] = useState(false);
@@ -27,6 +28,9 @@ export function MarketingPushSetupCard({ setup, preparing, prepareFailed }: Mark
   const [standalone, setStandalone] = useState(() => isPwaStandalone());
   const [copyDone, setCopyDone] = useState(false);
   const ios = useMemo(() => isIosDevice(), []);
+  const refreshedExpiredSetup = useRef("");
+  const permissionBlocked = typeof Notification !== "undefined" && Notification.permission === "denied";
+  const setupExpired = Boolean(setup?.expiresAt && new Date(setup.expiresAt).getTime() <= Date.now());
 
   useEffect(() => {
     const sync = () => {
@@ -43,6 +47,24 @@ export function MarketingPushSetupCard({ setup, preparing, prepareFailed }: Mark
       window.matchMedia("(display-mode: standalone)").removeEventListener?.("change", sync);
     };
   }, []);
+
+  useEffect(() => {
+    if (!setup || !setupExpired || !onRefreshSetup) return;
+    const setupKey = `${setup.requestNumber}:${setup.expiresAt}`;
+    if (refreshedExpiredSetup.current === setupKey) return;
+    refreshedExpiredSetup.current = setupKey;
+    setStatus("refreshing");
+    setMessage("Atualizando o código de notificações...");
+    void onRefreshSetup()
+      .then(() => {
+        setStatus("idle");
+        setMessage("Código de notificações atualizado.");
+      })
+      .catch(() => {
+        setStatus("error");
+        setMessage("Não foi possível renovar o código de notificações. Atualize a página e tente novamente.");
+      });
+  }, [onRefreshSetup, setup, setupExpired]);
 
   useEffect(() => {
     if (!setup || status !== "idle" || !isMarketingNotificationReceiver()) return;
@@ -107,7 +129,7 @@ export function MarketingPushSetupCard({ setup, preparing, prepareFailed }: Mark
   }
 
   const unsupported = !isWebPushSupported();
-  const canActivateHere = Boolean(setup) && !unsupported && (!ios || standalone);
+  const canActivateHere = Boolean(setup) && !unsupported && !permissionBlocked && !setupExpired && (!ios || standalone);
 
   return (
     <section className={`marketing-push-setup-card status-${status}`} aria-label="Receber confirmação do agendamento">
@@ -134,6 +156,12 @@ export function MarketingPushSetupCard({ setup, preparing, prepareFailed }: Mark
 
             {setup && !prepareFailed && (
               <div className="marketing-push-actions">
+                {permissionBlocked && (
+                  <p className="marketing-push-error">As notificações estão bloqueadas neste navegador. Libere a permissão de notificações do HUB nas configurações do navegador/aparelho e depois volte a esta tela.</p>
+                )}
+                {setupExpired && status === "refreshing" && (
+                  <p className="marketing-push-preparing">O código anterior venceu. Gerando um novo código automaticamente...</p>
+                )}
                 {installAvailable && !standalone && !ios && (
                   <button type="button" className="marketing-push-primary" disabled={status === "installing"} onClick={() => { void installApp(); }}>
                     {status === "installing" ? "ABRINDO INSTALAÇÃO..." : "1. INSTALAR O APLICATIVO"}
@@ -171,12 +199,12 @@ export function MarketingPushSetupCard({ setup, preparing, prepareFailed }: Mark
                     <li>Abra o HUB instalado e permita as notificações quando solicitado.</li>
                   </ol>
                 )}
-                <div className="marketing-push-code-box">
+                {!setupExpired && <div className="marketing-push-code-box">
                   <span>Se o HUB instalado pedir o vínculo:</span>
                   <strong>Pedido #{setup.requestNumber}</strong>
                   <code>{formatMarketingPairCode(setup.pairCode)}</code>
                   <button type="button" onClick={() => { void copyCode(); }}>{copyDone ? "COPIADO ✓" : "COPIAR CÓDIGO"}</button>
-                </div>
+                </div>}
                 <p className="marketing-push-support"><strong>Não conseguiu?</strong> Chame a Infraestrutura / Tezzei e informe o pedido <strong>#{setup.requestNumber}</strong> e o código acima.</p>
               </div>
             )}
