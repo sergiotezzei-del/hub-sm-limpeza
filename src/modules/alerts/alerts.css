@@ -577,3 +577,50 @@
     animation: none;
   }
 }
+
+
+.hub-admin-push-box {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px 12px;
+  align-items: center;
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid rgba(37, 99, 235, 0.2);
+  border-radius: 12px;
+  background: #f7faff;
+}
+
+.hub-admin-push-box > div {
+  display: grid;
+  gap: 3px;
+}
+
+.hub-admin-push-box button {
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 10px;
+  background: #1d4ed8;
+  color: #fff;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.hub-admin-push-box button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.hub-admin-push-help,
+.hub-admin-push-message {
+  grid-column: 1 / -1;
+}
+
+.hub-admin-push-help { color: #92400e; }
+.hub-admin-push-message { color: #166534; font-weight: 700; }
+
+@media (max-width: 560px) {
+  .hub-admin-push-box { grid-template-columns: 1fr; }
+  .hub-admin-push-box button { width: 100%; }
+}

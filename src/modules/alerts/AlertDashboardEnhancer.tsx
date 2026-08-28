@@ -17,6 +17,15 @@ import {
   saveEmailInboxConfig,
   type EmailInboxStatus,
 } from "./emailInboxService";
+import {
+  activateAdminPush,
+  getAdminPushErrorMessage,
+  isAdminPushSupported,
+  isIosDevice as isAdminPushIosDevice,
+  isStandaloneDisplay as isAdminPushStandalone,
+  loadAdminPushStatus,
+  type AdminPushStatus,
+} from "./adminPushService";
 import "./alerts.css";
 
 const ACTOR_NAME = "Admin Tezzei";
@@ -104,6 +113,9 @@ function AlertDashboardPanel() {
   const [emailAddress, setEmailAddress] = useState("");
   const [emailPassword, setEmailPassword] = useState("");
   const [emailSaving, setEmailSaving] = useState(false);
+  const [adminPushStatus, setAdminPushStatus] = useState<AdminPushStatus | null>(null);
+  const [adminPushBusy, setAdminPushBusy] = useState(false);
+  const [adminPushMessage, setAdminPushMessage] = useState("");
   const today = getTodayIso();
 
   useEffect(() => {
@@ -160,6 +172,26 @@ function AlertDashboardPanel() {
     window.removeEventListener("focus", onFocus);
   };
 }, []);
+
+  useEffect(() => {
+    let active = true;
+    const syncPush = async () => {
+      try {
+        if (isAdminPushSupported()
+          && typeof Notification !== "undefined"
+          && Notification.permission === "granted"
+          && (!isAdminPushIosDevice() || isAdminPushStandalone())) {
+          await activateAdminPush();
+        }
+        const status = await loadAdminPushStatus();
+        if (active) setAdminPushStatus(status);
+      } catch {
+        // A ativação manual continua disponível abaixo.
+      }
+    };
+    void syncPush();
+    return () => { active = false; };
+  }, []);
 
   const pendingAlerts = useMemo(
     () => buildPendingAlerts(rules, completions, today),
@@ -316,6 +348,22 @@ function AlertDashboardPanel() {
   }
 }
 
+  async function activatePushForThisDevice() {
+    if (adminPushBusy) return;
+    setAdminPushBusy(true);
+    setAdminPushMessage("");
+    try {
+      await activateAdminPush();
+      const status = await loadAdminPushStatus();
+      setAdminPushStatus(status);
+      setAdminPushMessage("Notificações ativadas neste aparelho.");
+    } catch (error) {
+      setAdminPushMessage(getAdminPushErrorMessage(error));
+    } finally {
+      setAdminPushBusy(false);
+    }
+  }
+
   async function openEmailInbox() {
     window.open("https://webmail-seguro.com.br/", "_blank", "noopener,noreferrer");
     try {
@@ -431,6 +479,19 @@ function AlertDashboardPanel() {
       <span className={emailInbox?.configured ? "is-connected" : ""}>{emailInbox?.configured ? "MONITOR ATIVO" : "NÃO CONFIGURADO"}</span>
     </div>
     <p>O HUB verifica a cada 5 minutos somente se chegou mensagem nova. Não lê assunto, remetente, conteúdo nem anexos.</p>
+    <div className="hub-admin-push-box">
+      <div>
+        <strong>🔔 Notificações nos seus aparelhos</strong>
+        <small>{adminPushStatus ? `${adminPushStatus.activeCount} aparelho(s) ativo(s)` : "Verificando aparelhos..."}</small>
+      </div>
+      <button type="button" disabled={adminPushBusy || !isAdminPushSupported()} onClick={() => { void activatePushForThisDevice(); }}>
+        {adminPushBusy ? "ATIVANDO..." : "ATIVAR NESTE APARELHO"}
+      </button>
+      {isAdminPushIosDevice() && !isAdminPushStandalone() && (
+        <small className="hub-admin-push-help">No iPhone: abra no Safari, use “Adicionar à Tela de Início”, abra o HUB pelo ícone e ative por lá.</small>
+      )}
+      {adminPushMessage && <small className="hub-admin-push-message">{adminPushMessage}</small>}
+    </div>
     <form className="hub-email-config-form" onSubmit={saveEmailConfiguration}>
       <label>
         E-mail

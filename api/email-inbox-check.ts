@@ -2,12 +2,19 @@ import { ImapFlow } from "imapflow";
 
 const SUPABASE_URL = "https://dtdepfpkyiqtnsjztjit.supabase.co";
 const SUPABASE_PUBLIC_KEY = "sb_publishable_ahFq0EsMxM-zGaqM7WJKig_2ikkb6NX";
+const ADMIN_PUSH_URL = `${SUPABASE_URL}/functions/v1/hub-admin-push`;
 
 type ServerCredentials = {
   email_address?: string | null;
   mailbox_password?: string | null;
   imap_host?: string | null;
   imap_port?: number | string | null;
+};
+
+type CheckResult = {
+  new_count?: number | string | null;
+  push_count?: number | string | null;
+  current_uidnext?: number | string | null;
 };
 
 export default {
@@ -60,11 +67,34 @@ export default {
         throw new Error("invalid_imap_status");
       }
 
-      await supabaseRpc("hub_email_inbox_server_record_check", {
+      const checkRows = await supabaseRpc<CheckResult[]>("hub_email_inbox_server_record_check_v2", {
         p_secret: secret,
         p_uidnext: uidNext,
         p_uidvalidity: uidValidity,
       });
+      const check = Array.isArray(checkRows) ? checkRows[0] : undefined;
+      const pushCount = Math.max(0, Number(check?.push_count || 0));
+      const currentUidNext = Math.max(0, Number(check?.current_uidnext || uidNext));
+
+      if (pushCount > 0) {
+        try {
+          const pushResponse = await fetch(ADMIN_PUSH_URL, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-hub-email-secret": secret,
+            },
+            body: JSON.stringify({
+              action: "dispatch_email",
+              count: pushCount,
+              uidNext: currentUidNext,
+            }),
+          });
+          if (!pushResponse.ok) console.warn("[email-inbox-check] admin push dispatch failed", pushResponse.status);
+        } catch {
+          console.warn("[email-inbox-check] admin push dispatch unavailable");
+        }
+      }
 
       return jsonResponse(200, { ok: true, configured: true });
     } catch (error) {
