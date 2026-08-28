@@ -5,7 +5,9 @@ import {
   getMarketingPushErrorMessage,
   isIosDevice,
   isMarketingNotificationReceiver,
+  isMarketingPushSetupExpired,
   isWebPushSupported,
+  renewMarketingPushSetup,
   subscribeMarketingPush,
   type MarketingPushSetup,
 } from "./marketingPushClient";
@@ -26,7 +28,13 @@ export function MarketingPushSetupCard({ setup, preparing, prepareFailed }: Mark
   const [installAvailable, setInstallAvailable] = useState(() => canPromptPwaInstall());
   const [standalone, setStandalone] = useState(() => isPwaStandalone());
   const [copyDone, setCopyDone] = useState(false);
+  const [currentSetup, setCurrentSetup] = useState<MarketingPushSetup | null>(setup);
+  const [permission, setPermission] = useState<NotificationPermission>(() => ("Notification" in window ? Notification.permission : "default"));
   const ios = useMemo(() => isIosDevice(), []);
+
+  useEffect(() => {
+    setCurrentSetup(setup);
+  }, [setup]);
 
   useEffect(() => {
     const sync = () => {
@@ -45,10 +53,48 @@ export function MarketingPushSetupCard({ setup, preparing, prepareFailed }: Mark
   }, []);
 
   useEffect(() => {
-    if (!setup || status !== "idle" || !isMarketingNotificationReceiver()) return;
+    const syncPermission = () => {
+      if (!("Notification" in window)) return;
+      const next = Notification.permission;
+      setPermission(next);
+      if (next !== "denied" && status === "error") {
+        setStatus("idle");
+        setMessage("");
+      }
+    };
+    window.addEventListener("focus", syncPermission);
+    document.addEventListener("visibilitychange", syncPermission);
+    return () => {
+      window.removeEventListener("focus", syncPermission);
+      document.removeEventListener("visibilitychange", syncPermission);
+    };
+  }, [status]);
+
+  useEffect(() => {
+    if (!currentSetup || preparing || status !== "idle" || !isMarketingPushSetupExpired(currentSetup)) return;
+    let active = true;
+    setStatus("activating");
+    setMessage("Atualizando o código de vinculação...");
+    void renewMarketingPushSetup(currentSetup)
+      .then((next) => {
+        if (!active) return;
+        setCurrentSetup(next);
+        setStatus("idle");
+        setMessage("Código de vinculação atualizado automaticamente.");
+      })
+      .catch((error) => {
+        if (!active) return;
+        setStatus("error");
+        setMessage(getMarketingPushErrorMessage(error));
+      });
+    return () => { active = false; };
+  }, [currentSetup, preparing, status]);
+
+  useEffect(() => {
+    if (!currentSetup || status !== "idle" || !isMarketingNotificationReceiver()) return;
     if (!("Notification" in window) || Notification.permission !== "granted") return;
     setStatus("activating");
-    void subscribeMarketingPush(setup)
+    void subscribeMarketingPush(currentSetup)
       .then(() => {
         setStatus("active");
         setMessage("Este pedido já está vinculado às notificações deste aparelho.");
@@ -57,10 +103,10 @@ export function MarketingPushSetupCard({ setup, preparing, prepareFailed }: Mark
         setStatus("error");
         setMessage(getMarketingPushErrorMessage(error));
       });
-  }, [setup, status]);
+  }, [currentSetup, status]);
 
   async function installApp() {
-    if (!setup || status === "installing") return;
+    if (!currentSetup || status === "installing") return;
     setStatus("installing");
     setMessage("");
     try {
@@ -80,11 +126,19 @@ export function MarketingPushSetupCard({ setup, preparing, prepareFailed }: Mark
   }
 
   async function activateNotifications() {
-    if (!setup || status === "activating") return;
+    if (!currentSetup || status === "activating") return;
+    if (permission === "denied") {
+      setStatus("error");
+      setMessage("As notificações estão bloqueadas neste navegador. Libere a permissão nas configurações do site e volte a esta tela.");
+      setGuideOpen(true);
+      return;
+    }
     setStatus("activating");
     setMessage("");
     try {
-      await subscribeMarketingPush(setup);
+      const freshSetup = await renewMarketingPushSetup(currentSetup);
+      setCurrentSetup(freshSetup);
+      await subscribeMarketingPush(freshSetup);
       setStatus("active");
       setMessage("Pronto. Este aparelho receberá a confirmação e os lembretes deste agendamento.");
     } catch (error) {
@@ -95,8 +149,8 @@ export function MarketingPushSetupCard({ setup, preparing, prepareFailed }: Mark
   }
 
   async function copyCode() {
-    if (!setup) return;
-    const text = `Pedido #${setup.requestNumber} · Código ${formatMarketingPairCode(setup.pairCode)}`;
+    if (!currentSetup) return;
+    const text = `Pedido #${currentSetup.requestNumber} · Código ${formatMarketingPairCode(currentSetup.pairCode)}`;
     try {
       await navigator.clipboard.writeText(text);
       setCopyDone(true);
@@ -106,8 +160,21 @@ export function MarketingPushSetupCard({ setup, preparing, prepareFailed }: Mark
     }
   }
 
+  function recheckPermission() {
+    if (!("Notification" in window)) return;
+    const next = Notification.permission;
+    setPermission(next);
+    if (next !== "denied") {
+      setStatus("idle");
+      setMessage("");
+    } else {
+      setStatus("error");
+      setMessage("A permissão ainda está bloqueada. Altere Notificações para Permitir nas configurações deste site.");
+    }
+  }
+
   const unsupported = !isWebPushSupported();
-  const canActivateHere = Boolean(setup) && !unsupported && (!ios || standalone);
+  const canActivateHere = Boolean(currentSetup) && permission !== "denied" && !unsupported && (!ios || standalone);
 
   return (
     <section className={`marketing-push-setup-card status-${status}`} aria-label="Receber confirmação do agendamento">
@@ -132,11 +199,17 @@ export function MarketingPushSetupCard({ setup, preparing, prepareFailed }: Mark
               <p className="marketing-push-error">Seu pedido foi enviado, mas não conseguimos preparar a notificação. Chame a Infraestrutura e informe o número do pedido.</p>
             )}
 
-            {setup && !prepareFailed && (
+            {currentSetup && !prepareFailed && (
               <div className="marketing-push-actions">
                 {installAvailable && !standalone && !ios && (
                   <button type="button" className="marketing-push-primary" disabled={status === "installing"} onClick={() => { void installApp(); }}>
                     {status === "installing" ? "ABRINDO INSTALAÇÃO..." : "1. INSTALAR O APLICATIVO"}
+                  </button>
+                )}
+
+                {permission === "denied" && (
+                  <button type="button" className="marketing-push-guide-button" onClick={() => setGuideOpen(true)}>
+                    NOTIFICAÇÕES BLOQUEADAS — COMO LIBERAR
                   </button>
                 )}
 
@@ -154,9 +227,16 @@ export function MarketingPushSetupCard({ setup, preparing, prepareFailed }: Mark
 
             {message && <p className={status === "error" ? "marketing-push-error" : "marketing-push-message"} role="status">{message}</p>}
 
-            {guideOpen && setup && (
+            {guideOpen && currentSetup && (
               <div className="marketing-push-guide">
                 <h3>Como fazer</h3>
+                {permission === "denied" && (
+                  <div className="marketing-push-error">
+                    <strong>As notificações estão bloqueadas neste navegador.</strong>
+                    <p>Abra as configurações deste site no Chrome/Edge, altere <strong>Notificações</strong> para <strong>Permitir</strong>, volte para esta tela e clique abaixo.</p>
+                    <button type="button" className="marketing-push-guide-button" onClick={recheckPermission}>JÁ LIBEREI NAS CONFIGURAÇÕES</button>
+                  </div>
+                )}
                 {ios ? (
                   <ol>
                     <li>Abra esta página no <strong>Safari</strong>.</li>
@@ -173,15 +253,15 @@ export function MarketingPushSetupCard({ setup, preparing, prepareFailed }: Mark
                 )}
                 <div className="marketing-push-code-box">
                   <span>Se o HUB instalado pedir o vínculo:</span>
-                  <strong>Pedido #{setup.requestNumber}</strong>
-                  <code>{formatMarketingPairCode(setup.pairCode)}</code>
+                  <strong>Pedido #{currentSetup.requestNumber}</strong>
+                  <code>{formatMarketingPairCode(currentSetup.pairCode)}</code>
                   <button type="button" onClick={() => { void copyCode(); }}>{copyDone ? "COPIADO ✓" : "COPIAR CÓDIGO"}</button>
                 </div>
-                <p className="marketing-push-support"><strong>Não conseguiu?</strong> Chame a Infraestrutura / Tezzei e informe o pedido <strong>#{setup.requestNumber}</strong> e o código acima.</p>
+                <p className="marketing-push-support"><strong>Não conseguiu?</strong> Chame a Infraestrutura / Tezzei e informe o pedido <strong>#{currentSetup.requestNumber}</strong> e o código acima.</p>
               </div>
             )}
 
-            {unsupported && setup && (
+            {unsupported && currentSetup && (
               <p className="marketing-push-error">Este navegador não suporta as notificações do HUB. Abra o pedido no Chrome/Edge ou siga o passo a passo acima.</p>
             )}
           </>
