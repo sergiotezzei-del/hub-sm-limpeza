@@ -7,6 +7,7 @@ import { CleaningActivityAlertEnhancer } from "./modules/alerts/CleaningActivity
 import { GoogleCalendarAlertEnhancer } from "./modules/alerts/GoogleCalendarAlertEnhancer";
 import { WindowsNotificationControl } from "./modules/alerts/WindowsNotificationControl";
 import "./modules/alerts/browserAlertAttention";
+import { AuditorioPublicPushEnhancer } from "./modules/auditorio/AuditorioPublicPushEnhancer";
 import { PublicAuditorioPage } from "./modules/auditorio/PublicAuditorioPage";
 import { CleaningDeliveryFeature } from "./modules/cleaning/components/CleaningDeliveryFeature";
 import { NeiaDeliveryShortcutFeature } from "./modules/cleaning/components/NeiaDeliveryShortcutFeature";
@@ -19,6 +20,9 @@ import { MarketingPushAttentionHost } from "./modules/marketing/MarketingPushAtt
 import { MarketingPushReceiverPage } from "./modules/marketing/MarketingPushReceiverPage";
 import { PublicMarketingRequestPage } from "./modules/marketing/PublicMarketingRequestPage";
 import { isMarketingNotificationReceiver, readPendingMarketingPushSetup } from "./modules/marketing/marketingPushClient";
+import { HubPublicPushReceiverPage } from "./modules/public-push/HubPublicPushReceiverPage";
+import { PublicPushBroadcastEnhancer } from "./modules/public-push/PublicPushBroadcastEnhancer";
+import { readPendingHubPublicPushSetup } from "./modules/public-push/hubPublicPushClient";
 import { HubAuthSessionGuard } from "./modules/security/HubAuthSessionGuard";
 import { PublicServiceRequestPage } from "./modules/service-requests/PublicServiceRequestPage";
 import { isPwaStandalone } from "./pwaInstall";
@@ -50,18 +54,28 @@ try {
   // Sem sessionStorage, apenas o parâmetro explícito funciona.
 }
 
-const shouldOpenNotificationReceiver = isMarketingNotificationPage
+const pendingHubPublicPush = readPendingHubPublicPushSetup();
+const shouldOpenHubPublicPushReceiver = normalizedPath === "/"
+  && isPwaStandalone()
+  && !internalBypass
+  && Boolean(pendingHubPublicPush);
+
+const shouldOpenMarketingNotificationReceiver = isMarketingNotificationPage
   || (
     normalizedPath === "/"
     && isPwaStandalone()
     && !internalBypass
+    && !shouldOpenHubPublicPushReceiver
     && (Boolean(readPendingMarketingPushSetup()) || isMarketingNotificationReceiver())
   );
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     {isPublicAuditorioPage ? (
-      <PublicAuditorioPage />
+      <>
+        <PublicAuditorioPage />
+        <AuditorioPublicPushEnhancer />
+      </>
     ) : isPublicMarketingRequestPage ? (
       <>
         <PublicMarketingRequestPage />
@@ -69,7 +83,9 @@ createRoot(document.getElementById("root")!).render(
       </>
     ) : isPublicServiceRequestPage ? (
       <PublicServiceRequestPage />
-    ) : shouldOpenNotificationReceiver ? (
+    ) : shouldOpenHubPublicPushReceiver ? (
+      <HubPublicPushReceiverPage />
+    ) : shouldOpenMarketingNotificationReceiver ? (
       <>
         <MarketingPushReceiverPage />
         <MarketingPushAttentionHost />
@@ -91,6 +107,7 @@ createRoot(document.getElementById("root")!).render(
         <PatrimonyPeopleEquipmentFeature />
         <PatrimonySpaceMapsFeature />
         <MarketingPushAttentionHost />
+        <PublicPushBroadcastEnhancer />
       </>
     )}
   </StrictMode>,
