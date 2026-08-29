@@ -11,6 +11,8 @@ import {
   type AlertRecurrenceType,
 } from "./alertService";
 import { completeAlertTask, loadAlertTasks, type AlertTask } from "./alertTaskService";
+import { completeAlertServiceRequest, loadAlertServiceRequests, type AlertServiceRequest } from "./alertServiceRequestService";
+import { acknowledgeAttentionEvent, loadAttentionEvents, type AttentionEvent } from "./attentionEventService";
 import {
   acknowledgeEmailInbox,
   loadEmailInboxStatus,
@@ -101,6 +103,8 @@ function AlertDashboardPanel() {
   const [rules, setRules] = useState<HubAlertRule[]>([]);
   const [completions, setCompletions] = useState<HubAlertCompletion[]>([]);
   const [alertTasks, setAlertTasks] = useState<AlertTask[]>([]);
+  const [alertServiceRequests, setAlertServiceRequests] = useState<AlertServiceRequest[]>([]);
+  const [attentionEvents, setAttentionEvents] = useState<AttentionEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
   const [managerOpen, setManagerOpen] = useState(false);
@@ -144,6 +148,19 @@ function AlertDashboardPanel() {
       .finally(() => {
         if (active) setLoading(false);
       });
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    Promise.allSettled([loadAlertServiceRequests(), loadAttentionEvents()]).then(([requestsResult, eventsResult]) => {
+      if (!active) return;
+      if (requestsResult.status === "fulfilled") setAlertServiceRequests(requestsResult.value);
+      if (eventsResult.status === "fulfilled") setAttentionEvents(eventsResult.value);
+      if (requestsResult.status === "rejected" || eventsResult.status === "rejected") {
+        setMessage((current) => current || "Parte dos avisos operacionais está temporariamente indisponível.");
+      }
+    });
     return () => { active = false; };
   }, []);
 
@@ -200,7 +217,7 @@ function AlertDashboardPanel() {
 
   const overdueCount = pendingAlerts.filter((alert) => !alert.isToday).length
     + alertTasks.filter((task) => Boolean(task.dueDate && task.dueDate < today)).length;
-  const totalPending = pendingAlerts.length + alertTasks.length + (emailInbox?.pendingNewCount ? 1 : 0);
+  const totalPending = pendingAlerts.length + alertTasks.length + alertServiceRequests.length + attentionEvents.length + (emailInbox?.pendingNewCount ? 1 : 0);
 
   async function markDone(alert: PendingAlert) {
     const key = `${alert.rule.id}:${alert.occurrenceDate}`;
@@ -238,6 +255,38 @@ function AlertDashboardPanel() {
       setMessage(`${task.title} concluído nos Afazeres.`);
     } catch {
       setMessage("Não foi possível concluir o Afazer.");
+    } finally {
+      setMarkingKey("");
+    }
+  }
+
+  async function markServiceRequestDone(request: AlertServiceRequest) {
+    const key = `request:${request.id}`;
+    if (markingKey) return;
+    setMarkingKey(key);
+    setMessage("");
+    try {
+      await completeAlertServiceRequest(request.id);
+      setAlertServiceRequests((current) => current.filter((item) => item.id !== request.id));
+      setMessage(`Chamado #${request.protocolNumber} concluído e removido de Chamados.`);
+    } catch {
+      setMessage("Não foi possível concluir o Chamado.");
+    } finally {
+      setMarkingKey("");
+    }
+  }
+
+  async function acknowledgeOperationalEvent(event: AttentionEvent) {
+    const key = `event:${event.id}`;
+    if (markingKey) return;
+    setMarkingKey(key);
+    setMessage("");
+    try {
+      await acknowledgeAttentionEvent(event.id, ACTOR_NAME);
+      setAttentionEvents((current) => current.filter((item) => item.id !== event.id));
+      setMessage("Aviso retirado do painel.");
+    } catch {
+      setMessage("Não foi possível confirmar o aviso.");
     } finally {
       setMarkingKey("");
     }
@@ -375,10 +424,10 @@ function AlertDashboardPanel() {
   }
 
   return (
-    <section className="hub-alert-panel" aria-label="Alertas e rotinas recorrentes">
+    <section className="hub-alert-panel" aria-label="Central de alertas e pendências">
       <header className="hub-alert-panel-head">
         <div>
-          <p className="hub-alert-kicker">ROTINAS DO DIA</p>
+          <p className="hub-alert-kicker">PAINEL DO DIA</p>
           <h2>ALERTAS</h2>
           <small>{loading ? "Carregando..." : totalPending === 0 ? "Nenhuma pendência hoje" : `${totalPending} alerta(s) pendente(s)${overdueCount ? ` · ${overdueCount} atrasado(s)` : ""}`}</small>
         </div>
@@ -390,7 +439,7 @@ function AlertDashboardPanel() {
       {!loading && totalPending === 0 && (
         <article className="hub-alert-empty">
           <strong>✓ Nenhum alerta pendente hoje.</strong>
-          <span>As próximas rotinas e Afazeres marcados aparecerão aqui.</span>
+          <span>Rotinas, Afazeres, Chamados e novos avisos operacionais aparecerão aqui.</span>
         </article>
       )}
 
@@ -407,6 +456,53 @@ function AlertDashboardPanel() {
       <button className="hub-alert-email-button" type="button" onClick={() => { void openEmailInbox(); }}>ABRIR WEBMAIL</button>
     </article>
   )}
+        {alertServiceRequests.map((request) => {
+          const key = `request:${request.id}`;
+          return (
+            <article className="hub-alert-card is-service-request" key={key}>
+              <div className="hub-alert-card-status">
+                <span>NOVO CHAMADO</span>
+                <time>#{request.protocolNumber}</time>
+              </div>
+              <h3>{request.requesterName}</h3>
+              <p>{request.requestText}</p>
+              <small>Chamados · {request.department} · {formatDateTimeShort(request.openedAt)}</small>
+              <button
+                className="hub-alert-done-button"
+                type="button"
+                disabled={Boolean(markingKey)}
+                onClick={() => { void markServiceRequestDone(request); }}
+              >
+                {markingKey === key ? "Salvando..." : "FEITO"}
+              </button>
+            </article>
+          );
+        })}
+
+        {attentionEvents.map((event) => {
+          const key = `event:${event.id}`;
+          const isOrder = event.sourceType === "order";
+          return (
+            <article className="hub-alert-card is-operational" key={key}>
+              <div className="hub-alert-card-status">
+                <span>{isOrder ? "NOVO PEDIDO" : "CONFERÊNCIA"}</span>
+                <time>{formatDateTimeShort(event.createdAt)}</time>
+              </div>
+              <h3>{event.title}</h3>
+              {event.description && <p>{event.description}</p>}
+              <small>{isOrder ? "Pedidos / Estoque" : "Conferência de estoque"}</small>
+              <button
+                className="hub-alert-done-button"
+                type="button"
+                disabled={Boolean(markingKey)}
+                onClick={() => { void acknowledgeOperationalEvent(event); }}
+              >
+                {markingKey === key ? "Salvando..." : "CIENTE"}
+              </button>
+            </article>
+          );
+        })}
+
         {alertTasks.map((task) => {
           const key = `task:${task.id}`;
           const overdue = Boolean(task.dueDate && task.dueDate < today);
@@ -702,6 +798,16 @@ function formatOccurrenceDate(dateIso: string, isToday: boolean) {
 function formatDateShort(dateIso: string) {
   const [year, month, day] = dateIso.split("-");
   return `${day}/${month}/${year}`;
+}
+
+function formatDateTimeShort(value: string) {
+  return new Intl.DateTimeFormat("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
 }
 
 function getTodayIso() {

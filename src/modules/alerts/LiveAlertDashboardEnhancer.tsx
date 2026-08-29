@@ -1,62 +1,89 @@
 import { useEffect, useRef, useState } from "react";
 import { AlertDashboardEnhancer } from "./AlertDashboardEnhancer";
-import { loadAlertTasks, type AlertTask } from "./alertTaskService";
+import { loadAlertTasks } from "./alertTaskService";
+import { loadAlertServiceRequests } from "./alertServiceRequestService";
+import { loadAttentionEvents } from "./attentionEventService";
 
-const TASK_POLL_MS = 10000;
+const ALERT_POLL_MS = 10000;
 
-type TaskSnapshot = Pick<AlertTask, "id" | "title">;
+type AlertSnapshot = {
+  key: string;
+  title: string;
+  body: string;
+};
 
 export function LiveAlertDashboardEnhancer() {
   const [revision, setRevision] = useState(0);
-  const knownTasks = useRef<TaskSnapshot[] | null>(null);
+  const knownItems = useRef<AlertSnapshot[] | null>(null);
   const knownDate = useRef(getLocalDateKey());
 
   useEffect(() => {
     let cancelled = false;
 
-    const checkTasks = async () => {
+    const checkItems = async () => {
       const nextDate = getLocalDateKey();
       if (nextDate !== knownDate.current) {
         knownDate.current = nextDate;
-        knownTasks.current = null;
+        knownItems.current = null;
         setRevision((current) => current + 1);
       }
 
       try {
-        const tasks = await loadAlertTasks();
+        const [tasks, requests, events] = await Promise.all([
+          loadAlertTasks(),
+          loadAlertServiceRequests(),
+          loadAttentionEvents(),
+        ]);
         if (cancelled) return;
 
-        const nextTasks = stableTasks(tasks.map(({ id, title }) => ({ id, title })));
-        const previousTasks = knownTasks.current;
-        if (previousTasks === null) {
-          knownTasks.current = nextTasks;
+        const nextItems = stableItems([
+          ...tasks.map((task) => ({
+            key: `task:${task.id}`,
+            title: `Afazer: ${task.title}`,
+            body: task.dueDate ? `Prazo ${formatDate(task.dueDate)} · ${task.department}` : task.department,
+          })),
+          ...requests.map((request) => ({
+            key: `request:${request.id}`,
+            title: `Novo chamado — ${request.requesterName}`,
+            body: `${request.department}: ${request.requestText}`,
+          })),
+          ...events.map((event) => ({
+            key: `event:${event.id}`,
+            title: event.title,
+            body: event.description || "Novo aviso operacional no HUB.",
+          })),
+        ]);
+
+        const previousItems = knownItems.current;
+        if (previousItems === null) {
+          knownItems.current = nextItems;
           return;
         }
-        if (sameTasks(previousTasks, nextTasks)) return;
+        if (sameItems(previousItems, nextItems)) return;
 
-        const previousIds = new Set(previousTasks.map((task) => task.id));
-        const addedTasks = nextTasks.filter((task) => !previousIds.has(task.id));
-        knownTasks.current = nextTasks;
+        const previousKeys = new Set(previousItems.map((item) => item.key));
+        const addedItems = nextItems.filter((item) => !previousKeys.has(item.key));
+        knownItems.current = nextItems;
 
-        if (addedTasks.length > 0) {
-          document.dispatchEvent(new CustomEvent("hub:new-alert-tasks", {
-            detail: { tasks: addedTasks },
+        addedItems.forEach((item) => {
+          document.dispatchEvent(new CustomEvent("hub:show-alert-toast", {
+            detail: item,
           }));
-        }
+        });
 
         setRevision((current) => current + 1);
       } catch {
-        // A tela de Alertas continua exibindo seu tratamento normal de erro.
+        // O painel principal mantém o tratamento normal de erro de cada fonte.
       }
     };
 
-    const onFocus = () => { void checkTasks(); };
+    const onFocus = () => { void checkItems(); };
     const onVisibilityChange = () => {
-      if (document.visibilityState === "visible") void checkTasks();
+      if (document.visibilityState === "visible") void checkItems();
     };
 
-    void checkTasks();
-    const timer = window.setInterval(() => { void checkTasks(); }, TASK_POLL_MS);
+    void checkItems();
+    const timer = window.setInterval(() => { void checkItems(); }, ALERT_POLL_MS);
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onVisibilityChange);
 
@@ -71,19 +98,27 @@ export function LiveAlertDashboardEnhancer() {
   return <AlertDashboardEnhancer key={revision} />;
 }
 
-function stableTasks(tasks: TaskSnapshot[]) {
-  return [...tasks].sort((first, second) => first.id.localeCompare(second.id));
+function stableItems(items: AlertSnapshot[]) {
+  return [...items].sort((first, second) => first.key.localeCompare(second.key));
 }
 
-function sameTasks(first: TaskSnapshot[], second: TaskSnapshot[]) {
+function sameItems(first: AlertSnapshot[], second: AlertSnapshot[]) {
   return first.length === second.length
-    && first.every((task, index) => task.id === second[index].id && first[index].title === second[index].title);
+    && first.every((item, index) => item.key === second[index].key
+      && item.title === second[index].title
+      && item.body === second[index].body);
 }
 
 function getLocalDateKey() {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  const day = String(now.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
+function formatDate(value: string) {
+  const [year, month, day] = value.split("-");
+  return year && month && day ? `${day}/${month}/${year}` : value;
 }
