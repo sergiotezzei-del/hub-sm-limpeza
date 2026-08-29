@@ -187,9 +187,7 @@ export function PublicMarketingRequestPage() {
       setReceipt(nextReceipt);
       setPushSetup(null);
       setPushPrepareFailed(false);
-      if (form.requestKind === "capture_edit") {
-        void refreshPushSetup();
-      }
+      void refreshPushSetup();
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (error) {
       setMessage(getPublicMarketingErrorMessage(error));
@@ -240,9 +238,7 @@ export function PublicMarketingRequestPage() {
               <small>Equipe: {receipt.teamName}</small>
             </article>
             <p>O gerente da sua equipe e o Marketing poderão acompanhar o andamento pelo HUB.</p>
-            {form.requestKind === "capture_edit" && (
-              <MarketingPushSetupCard setup={pushSetup} preparing={pushPreparing} prepareFailed={pushPrepareFailed} onRefreshSetup={refreshPushSetup} />
-            )}
+            <MarketingPushSetupCard setup={pushSetup} preparing={pushPreparing} prepareFailed={pushPrepareFailed} onRefreshSetup={refreshPushSetup} />
             {receipt.captureGroupId && form.hasMultipleProperties && (
               <button className="marketing-public-add-property" type="button" onClick={addAnotherProperty}>
                 ADICIONAR OUTRO IMÓVEL DESTA MESMA SAÍDA
