@@ -15,7 +15,8 @@ export function AuditorioPublicPushEnhancer() {
 
   useEffect(() => {
     const sync = () => {
-      const next = document.querySelector<HTMLElement>(".auditorio-public-success");
+      const next = document.querySelector<HTMLElement>(".auditorio-public-success")
+        || document.querySelector<HTMLElement>(".auditorio-status-card");
       setHost((current) => current === next ? current : next);
     };
     sync();
@@ -34,8 +35,7 @@ export function AuditorioPublicPushEnhancer() {
       return;
     }
 
-    const protocolText = host.querySelector<HTMLElement>(".auditorio-receipt:not(.code) strong")?.textContent?.trim() || "";
-    const accessCode = host.querySelector<HTMLElement>(".auditorio-receipt.code strong")?.textContent?.trim() || "";
+    const { protocolText, accessCode } = readAccessData(host);
     const protocolNumber = parseProtocolNumber(protocolText);
     if (!protocolNumber || !accessCode) return;
 
@@ -62,6 +62,21 @@ export function AuditorioPublicPushEnhancer() {
     />,
     host,
   );
+}
+
+function readAccessData(host: HTMLElement) {
+  if (host.classList.contains("auditorio-public-success")) {
+    return {
+      protocolText: host.querySelector<HTMLElement>(".auditorio-receipt:not(.code) strong")?.textContent?.trim() || "",
+      accessCode: host.querySelector<HTMLElement>(".auditorio-receipt.code strong")?.textContent?.trim() || "",
+    };
+  }
+
+  const inputs = document.querySelectorAll<HTMLInputElement>(".auditorio-consult-form input");
+  return {
+    protocolText: inputs[0]?.value?.trim() || "",
+    accessCode: inputs[1]?.value?.trim() || "",
+  };
 }
 
 function parseProtocolNumber(value: string) {
