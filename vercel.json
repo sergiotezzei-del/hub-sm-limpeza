@@ -3,6 +3,10 @@
     { "source": "/chamados", "destination": "/" },
     { "source": "/chamados/", "destination": "/" },
     { "source": "/marketing/pedido", "destination": "/" },
-    { "source": "/marketing/pedido/", "destination": "/" }
+    { "source": "/marketing/pedido/", "destination": "/" },
+    { "source": "/auditorio", "destination": "/" },
+    { "source": "/auditorio/", "destination": "/" },
+    { "source": "/auditorio/consulta", "destination": "/" },
+    { "source": "/auditorio/consulta/", "destination": "/" }
   ]
 }
