@@ -1,0 +1,78 @@
+.hub-public-broadcast {
+  width: 100%;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(148, 163, 184, 0.35);
+}
+
+.hub-public-broadcast-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.hub-public-broadcast-head strong,
+.hub-public-broadcast-head small {
+  display: block;
+}
+
+.hub-public-broadcast-head small {
+  margin-top: 3px;
+  color: #64748b;
+}
+
+.hub-public-broadcast form {
+  display: grid;
+  gap: 9px;
+}
+
+.hub-public-broadcast label {
+  display: grid;
+  gap: 4px;
+  color: #334155;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.hub-public-broadcast input,
+.hub-public-broadcast select,
+.hub-public-broadcast textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #cbd5e1;
+  border-radius: 9px;
+  background: #fff;
+  color: #0f172a;
+  padding: 9px 10px;
+  font: inherit;
+  font-weight: 500;
+}
+
+.hub-public-broadcast textarea {
+  resize: vertical;
+}
+
+.hub-public-broadcast button {
+  min-height: 42px;
+  border: 0;
+  border-radius: 9px;
+  background: #0f172a;
+  color: #fff;
+  padding: 9px 12px;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.hub-public-broadcast button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.hub-public-broadcast-message {
+  display: block;
+  color: #475569;
+  line-height: 1.35;
+}
