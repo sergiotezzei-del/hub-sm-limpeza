@@ -1,6 +1,11 @@
 import { FormEvent, useEffect, useState } from "react";
 import { SantaMariaBrand } from "../../components/SantaMariaBrand";
 import { santaMariaRequestSectors } from "../../config/santaMariaSectors";
+import { HubPublicPushSetupCard } from "../public-push/HubPublicPushSetupCard";
+import {
+  prepareHubPublicPushBySubmission,
+  type HubPublicPushSetup,
+} from "../public-push/hubPublicPushClient";
 import {
   getPublicServiceRequestErrorMessage,
   submitPublicServiceRequest,
@@ -36,6 +41,9 @@ export function PublicServiceRequestPage() {
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState("");
   const [receipt, setReceipt] = useState<PublicServiceRequestReceipt | null>(null);
+  const [pushSetup, setPushSetup] = useState<HubPublicPushSetup | null>(null);
+  const [pushPreparing, setPushPreparing] = useState(false);
+  const [pushPrepareFailed, setPushPrepareFailed] = useState(false);
 
   useEffect(() => {
     document.title = "Abrir chamado | HUB Santa Maria";
@@ -55,6 +63,13 @@ export function PublicServiceRequestPage() {
         requestText,
       });
       setReceipt(nextReceipt);
+      setPushSetup(null);
+      setPushPrepareFailed(false);
+      setPushPreparing(true);
+      void prepareHubPublicPushBySubmission("service_request", submissionId)
+        .then(setPushSetup)
+        .catch(() => setPushPrepareFailed(true))
+        .finally(() => setPushPreparing(false));
     } catch (error) {
       setMessage(getPublicServiceRequestErrorMessage(error));
     } finally {
@@ -69,6 +84,9 @@ export function PublicServiceRequestPage() {
     setRequestText("");
     setMessage("");
     setReceipt(null);
+    setPushSetup(null);
+    setPushPreparing(false);
+    setPushPrepareFailed(false);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -96,6 +114,13 @@ export function PublicServiceRequestPage() {
             <p className="public-request-keep-protocol">
               Guarde o número do protocolo caso precise identificar esta solicitação.
             </p>
+
+            <HubPublicPushSetupCard
+              setup={pushSetup}
+              preparing={pushPreparing}
+              prepareFailed={pushPrepareFailed}
+              contextLabel="Chamado"
+            />
 
             <button className="public-request-primary" type="button" onClick={startAnotherRequest}>
               Abrir outro chamado
