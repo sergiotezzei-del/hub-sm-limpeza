@@ -15,6 +15,7 @@ import { SantaMariaBrand } from "../../components/SantaMariaBrand";
 import type { ManagedUser, UserPermission } from "../../types";
 import { loadAlertTaskIds, setTaskAlertVisibility } from "../alerts/alertTaskService";
 import {
+  completeHubTask,
   deleteHubTask,
   getHubTaskErrorMessage,
   isServiceRequestTaskDuplicateError,
@@ -259,7 +260,7 @@ export function TaskBoardScreen({
     setBusyTaskId(task.id);
     setNotice("");
     try {
-      await deleteHubTask(task.id);
+      await completeHubTask(task.id, currentUser.name);
       setDataset((current) => ({
         ...current,
         tasks: current.tasks.filter((item) => item.id !== task.id),
@@ -700,7 +701,7 @@ function TaskCard({
           <div className="task-card-actions" role="group" aria-label={`Ações da tarefa ${task.title}`}>
             <button type="button" onClick={() => onMove(task, -1)} disabled={busy || statusIndex === 0}>{previousButtonLabel}</button>
             <button type="button" onClick={() => onMove(task, 1)} disabled={busy}>{nextButtonLabel}</button>
-            <button type="button" onClick={() => onToggleAlert(task)} disabled={busy}>{inAlerts ? "Tirar dos alertas" : "Alertar"}</button>
+            <button type="button" onClick={() => onToggleAlert(task)} disabled={busy}>{inAlerts ? "Tirar dos alertas" : "Mostrar nos alertas"}</button>
             <button type="button" onClick={() => onDelete(task)} disabled={busy}>Excluir</button>
             <button type="button" className="task-card-edit" onClick={() => onOpen(task)} disabled={busy}>Editar tarefa</button>
           </div>

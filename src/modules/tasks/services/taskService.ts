@@ -157,6 +157,14 @@ export async function moveHubTask(
   return mapTask(rows[0]);
 }
 
+export async function completeHubTask(taskId: string, actorName: string): Promise<void> {
+  const completed = await requestJson<boolean>("rpc/complete_hub_task_and_source", {
+    method: "POST",
+    body: JSON.stringify({ p_task_id: taskId, p_actor_name: actorName }),
+  });
+  if (completed !== true) throw new HubTaskRemoteError(404, "Tarefa não encontrada ou já concluída.");
+}
+
 export async function deleteHubTask(taskId: string): Promise<void> {
   const rows = await requestJson<TaskRow[]>(`hub_tasks?id=eq.${encodeURIComponent(taskId)}&select=*`, {
     method: "DELETE",

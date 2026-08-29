@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { AppIcon } from "../../components/AppIcon";
 import { SantaMariaBrand } from "../../components/SantaMariaBrand";
+import { loadAlertServiceRequestIds, setServiceRequestAlertVisibility } from "../alerts/alertServiceRequestService";
 import { santaMariaRequestSectors } from "../../config/santaMariaSectors";
 import { getHubTaskErrorMessage, loadActiveHubTaskByServiceRequestId } from "../tasks/services/taskService";
 import type { HubTask } from "../tasks/types/task.types";
@@ -66,6 +67,7 @@ export function ServiceRequestsScreen({
   const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null);
   const [noteDraft, setNoteDraft] = useState("");
   const [busyRequestId, setBusyRequestId] = useState("");
+  const [alertRequestIds, setAlertRequestIds] = useState<string[]>([]);
   const [linkCopied, setLinkCopied] = useState(false);
   const [linkedTaskByRequestId, setLinkedTaskByRequestId] = useState<Record<string, HubTask | null>>({});
   const [linkedTaskLoadingId, setLinkedTaskLoadingId] = useState("");
@@ -126,7 +128,12 @@ export function ServiceRequestsScreen({
     setLoadState("loading");
     setNotice("");
     try {
-      setDataset(await loadServiceRequestDataset());
+      const [nextDataset, nextAlertRequestIds] = await Promise.all([
+        loadServiceRequestDataset(),
+        loadAlertServiceRequestIds(),
+      ]);
+      setDataset(nextDataset);
+      setAlertRequestIds(nextAlertRequestIds);
       setLoadState("ready");
     } catch (error) {
       setLoadState("error");
@@ -185,6 +192,24 @@ export function ServiceRequestsScreen({
       setNoteDraft(updated.adminNotes ?? "");
       await refreshEventsOnly();
       setNotice("Observação salva.");
+    } catch (error) {
+      setNotice(getAdminServiceRequestErrorMessage(error));
+    } finally {
+      setBusyRequestId("");
+    }
+  }
+
+  async function toggleRequestAlert(request: ServiceRequest) {
+    if (busyRequestId) return;
+    const visible = !alertRequestIds.includes(request.id);
+    setBusyRequestId(`alert:${request.id}`);
+    setNotice("");
+    try {
+      await setServiceRequestAlertVisibility(request.id, visible, currentUser.name);
+      setAlertRequestIds((current) => visible
+        ? [...new Set([...current, request.id])]
+        : current.filter((id) => id !== request.id));
+      setNotice(visible ? "Chamado adicionado aos Alertas." : "Chamado retirado dos Alertas.");
     } catch (error) {
       setNotice(getAdminServiceRequestErrorMessage(error));
     } finally {
@@ -399,6 +424,14 @@ export function ServiceRequestsScreen({
             <div className="service-request-detail-actions">
               <button className="secondary-button" type="button" onClick={() => void saveNote(selectedRequest)} disabled={Boolean(busyRequestId)}>
                 Salvar observação
+              </button>
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={() => { void toggleRequestAlert(selectedRequest); }}
+                disabled={Boolean(busyRequestId)}
+              >
+                {alertRequestIds.includes(selectedRequest.id) ? "Tirar dos alertas" : "Mostrar nos alertas"}
               </button>
               {renderStatusActions(selectedRequest, busyRequestId, changeStatus)}
             </div>
