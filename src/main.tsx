@@ -7,6 +7,8 @@ import { CleaningActivityAlertEnhancer } from "./modules/alerts/CleaningActivity
 import { GoogleCalendarAlertEnhancer } from "./modules/alerts/GoogleCalendarAlertEnhancer";
 import { WindowsNotificationControl } from "./modules/alerts/WindowsNotificationControl";
 import "./modules/alerts/browserAlertAttention";
+import { AuditorioOperationalAlerts } from "./modules/auditorio/AuditorioOperationalAlerts";
+import { PublicAuditorioPage } from "./modules/auditorio/PublicAuditorioPage";
 import { CleaningDeliveryFeature } from "./modules/cleaning/components/CleaningDeliveryFeature";
 import { NeiaDeliveryShortcutFeature } from "./modules/cleaning/components/NeiaDeliveryShortcutFeature";
 import { NeiaHistoryEnhancer } from "./modules/cleaning/components/NeiaHistoryEnhancer";
@@ -30,6 +32,7 @@ import "./modules/tasks/taskBoardSimplified.css";
 const normalizedPath = window.location.pathname.replace(/\/+$/, "") || "/";
 const isPublicServiceRequestPage = normalizedPath === "/chamados";
 const isPublicMarketingRequestPage = normalizedPath === "/marketing/pedido";
+const isPublicAuditorioPage = normalizedPath === "/auditorio" || normalizedPath === "/auditorio/consulta";
 const isMarketingNotificationPage = normalizedPath === "/marketing/notificacoes";
 const queryRequestsInternalHub = new URLSearchParams(window.location.search).get("hub") === "interno";
 
@@ -58,7 +61,9 @@ const shouldOpenNotificationReceiver = isMarketingNotificationPage
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    {isPublicMarketingRequestPage ? (
+    {isPublicAuditorioPage ? (
+      <PublicAuditorioPage />
+    ) : isPublicMarketingRequestPage ? (
       <>
         <PublicMarketingRequestPage />
         <MarketingPushAttentionHost />
@@ -80,6 +85,7 @@ createRoot(document.getElementById("root")!).render(
         <AlertToastHost />
         <CleaningActivityAlertEnhancer />
         <GoogleCalendarAlertEnhancer />
+        <AuditorioOperationalAlerts />
         <CleaningDeliveryFeature />
         <NeiaDeliveryShortcutFeature />
         <NeiaHistoryEnhancer />

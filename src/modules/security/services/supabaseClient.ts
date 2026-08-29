@@ -1,13 +1,16 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-const rawSupabaseUrl = (import.meta.env.VITE_DB_URL ?? "").trim();
-const configuredPublicKey = (import.meta.env.VITE_DB_PUBLIC_KEY ?? "").trim();
+const FALLBACK_SUPABASE_URL = "https://dtdepfpkyiqtnsjztjit.supabase.co";
 const LEGACY_ANON_COMPAT_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR0ZGVwZnBreWlxdG5zanp0aml0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMxODkyMTcsImV4cCI6MjA5ODc2NTIxN30.kNYAYQTw8gqUaYqRTqdcPtthXO5vbZD6XwxeBvhpRgo";
+const rawSupabaseUrl = (import.meta.env.VITE_DB_URL ?? FALLBACK_SUPABASE_URL).trim();
+const configuredPublicKey = (import.meta.env.VITE_DB_PUBLIC_KEY ?? "").trim();
 
 export const SUPABASE_URL = rawSupabaseUrl.replace(/\/+$/, "");
 // Temporary compatibility path for the hosted project's active legacy anon key.
 // User authorization still comes exclusively from the session JWT in Authorization.
-export const SUPABASE_PUBLIC_KEY = configuredPublicKey.startsWith("sb_publishable_")
+export const SUPABASE_PUBLIC_KEY = !configuredPublicKey
+  ? LEGACY_ANON_COMPAT_KEY
+  : configuredPublicKey.startsWith("sb_publishable_")
   ? LEGACY_ANON_COMPAT_KEY
   : configuredPublicKey;
 export const SUPABASE_KEY_HEADER = ["api", "key"].join("");

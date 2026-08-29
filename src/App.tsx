@@ -70,6 +70,7 @@ const MasterMapScreen = lazy(() => import("./features/master-map/MasterMapScreen
 const PatrimonyScreen = lazy(() => import("./modules/patrimony/PatrimonyScreen").then((module) => ({ default: module.PatrimonyScreen })));
 const TaskBoardScreen = lazy(() => import("./modules/tasks/TaskBoardScreen").then((module) => ({ default: module.TaskBoardScreen })));
 const ServiceRequestsScreen = lazy(() => import("./modules/service-requests/ServiceRequestsScreen").then((module) => ({ default: module.ServiceRequestsScreen })));
+const AuditorioScreen = lazy(() => import("./modules/auditorio/AuditorioFeature").then((module) => ({ default: module.AuditorioFeature })));
 
 type View =
   | "login"
@@ -81,6 +82,7 @@ type View =
   | "admin"
   | "tasks-board"
   | "marketing"
+  | "auditorio"
   | "service-requests"
   | "cleaning-dashboard"
   | "orders"
@@ -334,6 +336,7 @@ const permissionOptions: Array<{ id: UserPermission; label: string }> = [
   { id: "chaves", label: "Chaves" },
   { id: "patrimonio", label: "Patrimônio" },
   { id: "marketing", label: "Marketing" },
+  { id: "auditorio", label: "Auditório" },
   { id: "afazeres", label: "Afazeres" },
   { id: "chamados", label: "Chamados" },
   { id: "relatorios", label: "Relatórios" },
@@ -627,6 +630,17 @@ function App() {
     }
     setNotice("");
     setView("marketing");
+  }
+
+  function openAuditorio() {
+    if (!hasAnyCurrentPermission(["auditorio", "painel-admin"])) {
+      setNotice("Sem permissão para acessar Auditório.");
+      return;
+    }
+
+    setNotice("");
+    setSelectedGuardName(null);
+    setView("auditorio");
   }
 
   const handleMarketingSessionInvalid = useCallback(() => {
@@ -1893,6 +1907,7 @@ function App() {
           onOpenHubAdministration={openHubAdministrationMenu}
           onOpenSecurity={openSecurityMenu}
           onOpenMarketing={openMarketing}
+          onOpenAuditorio={openAuditorio}
           marketingAttention={marketingSummary.newCount + marketingSummary.urgencyCount + marketingSummary.unreadCount + marketingSummary.queueOverrideCount + marketingSummary.managerReviewCount > 0}
           onProfilePhotoChange={handleCurrentUserPhoto}
         />
@@ -2043,6 +2058,7 @@ function App() {
           onOpenAssetsMaterials={openAssetsMaterialsMenu}
           onOpenHubAdministration={openHubAdministrationMenu}
           onOpenMarketing={openMarketing}
+          onOpenAuditorio={openAuditorio}
           marketingAttention={marketingSummary.newCount + marketingSummary.urgencyCount + marketingSummary.unreadCount + marketingSummary.queueOverrideCount + marketingSummary.managerReviewCount > 0}
         />
       )}
@@ -2075,6 +2091,21 @@ function App() {
               onAddToTasks={openTaskBoardFromServiceRequest}
               onOpenLinkedTask={openLinkedTaskFromServiceRequest}
               onBack={() => setView("admin")}
+              onLogout={goToLogin}
+            />
+          </Suspense>
+        ) : (
+          <AccessDeniedScreen onBack={() => setView(getCurrentHomeView())} onLogout={goToLogin} />
+        )
+      )}
+
+      {view === "auditorio" && (
+        currentManagedUser && hasAnyCurrentPermission(["auditorio", "painel-admin"]) ? (
+          <Suspense fallback={<section className="screen"><TopBar title="Auditório" subtitle="Carregando agenda do auditório." onLogout={goToLogin} /><section className="empty-state"><h2>Carregando Auditório...</h2></section></section>}>
+            <AuditorioScreen
+              currentUser={currentManagedUser}
+              permissions={getManagedUserPermissions(currentUser, managedUsers)}
+              onBack={() => setView(getCurrentHomeView())}
               onLogout={goToLogin}
             />
           </Suspense>
@@ -2984,7 +3015,7 @@ function AccessDeniedScreen({ onBack, onLogout }: { onBack: () => void; onLogout
   );
 }
 
-function UserSectorHomeScreen({ user, permissions, notice, onLogout, onOpenCleaningDashboard, onOpenStockExit, onOpenCopaCafe, onOpenMaintenance, onOpenAssetsMaterials, onOpenHubAdministration, onOpenSecurity, onOpenMarketing, marketingAttention, onProfilePhotoChange }: { user: ManagedUser; permissions: UserPermission[]; notice: string; onLogout: () => void; onOpenCleaningDashboard: () => void; onOpenStockExit: () => void; onOpenCopaCafe: () => void; onOpenMaintenance: () => void; onOpenAssetsMaterials: () => void; onOpenHubAdministration: () => void; onOpenSecurity: () => void; onOpenMarketing: () => void; marketingAttention: boolean; onProfilePhotoChange: (file: File | null) => void | Promise<void> }) {
+function UserSectorHomeScreen({ user, permissions, notice, onLogout, onOpenCleaningDashboard, onOpenStockExit, onOpenCopaCafe, onOpenMaintenance, onOpenAssetsMaterials, onOpenHubAdministration, onOpenSecurity, onOpenMarketing, onOpenAuditorio, marketingAttention, onProfilePhotoChange }: { user: ManagedUser; permissions: UserPermission[]; notice: string; onLogout: () => void; onOpenCleaningDashboard: () => void; onOpenStockExit: () => void; onOpenCopaCafe: () => void; onOpenMaintenance: () => void; onOpenAssetsMaterials: () => void; onOpenHubAdministration: () => void; onOpenSecurity: () => void; onOpenMarketing: () => void; onOpenAuditorio: () => void; marketingAttention: boolean; onProfilePhotoChange: (file: File | null) => void | Promise<void> }) {
   const canCleaning = permissions.includes("limpeza") || permissions.includes("saida-estoque");
   const operationCards: SectorModuleCard[] = [
     { key: "limpeza", title: "Limpeza", detail: "Rotinas, produtos, pedidos e histórico da equipe.", enabled: canCleaning, onClick: permissions.includes("limpeza") ? onOpenCleaningDashboard : onOpenStockExit, icon: "cleaning" },
@@ -2994,6 +3025,7 @@ function UserSectorHomeScreen({ user, permissions, notice, onLogout, onOpenClean
   ];
   const managementCards: SectorModuleCard[] = [
     { key: "marketing", title: "Marketing", detail: "Pedidos de Vendas, agenda, fila de produção e aprovações.", enabled: permissions.includes("marketing"), onClick: onOpenMarketing, attention: marketingAttention ? "Precisa de atenção" : undefined, icon: "camera" },
+    { key: "auditorio", title: "Auditório", detail: "Calendário, solicitações e reservas do auditório.", enabled: permissions.includes("auditorio") || permissions.includes("painel-admin"), onClick: onOpenAuditorio, icon: "calendar" },
     { key: "bens-materiais", title: "Bens e Materiais", detail: "Patrimônio, alocações, ferramentas e suprimentos.", enabled: permissions.includes("estoque") || permissions.includes("patrimonio"), onClick: onOpenAssetsMaterials, icon: "stock" },
     { key: "administracao-hub", title: "Administração do HUB", detail: "Relatórios e ferramentas administrativas liberadas.", enabled: permissions.includes("relatorios") || permissions.includes("painel-admin"), onClick: onOpenHubAdministration, className: "users-card", icon: "users" },
   ];
@@ -3035,7 +3067,7 @@ function UserSectorHomeScreen({ user, permissions, notice, onLogout, onOpenClean
   );
 }
 
-function AdminSectorHomeScreen({ user, notice, newOrdersCount, onlineEnabled, permissions, onLogout, onProfilePhotoChange, onOpenCleaningDashboard, onOpenCopaCafe, onOpenSecurity, onOpenMaintenance, onOpenTasks, onOpenServiceRequests, onOpenAssetsMaterials, onOpenHubAdministration, onOpenMarketing, marketingAttention }: { user: ManagedUser; notice: string; newOrdersCount: number; onlineEnabled: boolean; permissions: UserPermission[]; onLogout: () => void; onProfilePhotoChange: (file: File | null) => void | Promise<void>; onOpenCleaningDashboard: () => void; onOpenCopaCafe: () => void; onOpenSecurity: () => void; onOpenMaintenance: () => void; onOpenTasks: () => void; onOpenServiceRequests: () => void; onOpenAssetsMaterials: () => void; onOpenHubAdministration: () => void; onOpenMarketing: () => void; marketingAttention: boolean }) {
+function AdminSectorHomeScreen({ user, notice, newOrdersCount, onlineEnabled, permissions, onLogout, onProfilePhotoChange, onOpenCleaningDashboard, onOpenCopaCafe, onOpenSecurity, onOpenMaintenance, onOpenTasks, onOpenServiceRequests, onOpenAssetsMaterials, onOpenHubAdministration, onOpenMarketing, onOpenAuditorio, marketingAttention }: { user: ManagedUser; notice: string; newOrdersCount: number; onlineEnabled: boolean; permissions: UserPermission[]; onLogout: () => void; onProfilePhotoChange: (file: File | null) => void | Promise<void>; onOpenCleaningDashboard: () => void; onOpenCopaCafe: () => void; onOpenSecurity: () => void; onOpenMaintenance: () => void; onOpenTasks: () => void; onOpenServiceRequests: () => void; onOpenAssetsMaterials: () => void; onOpenHubAdministration: () => void; onOpenMarketing: () => void; onOpenAuditorio: () => void; marketingAttention: boolean }) {
   const operationCards: SectorModuleCard[] = [
     { key: "limpeza", title: "Limpeza", detail: "Rotinas, produtos, pedidos e histórico da equipe.", enabled: permissions.includes("limpeza"), onClick: onOpenCleaningDashboard, icon: "cleaning" },
     { key: "copa-cafe", title: "Copa & Café", detail: "Café, água, bebidas e insumos da copa.", enabled: permissions.includes("cafe") || permissions.includes("agua"), onClick: onOpenCopaCafe, icon: "coffee" },
@@ -3044,6 +3076,7 @@ function AdminSectorHomeScreen({ user, notice, newOrdersCount, onlineEnabled, pe
   ];
   const managementCards: SectorModuleCard[] = [
     { key: "marketing", title: "Marketing", detail: "Pedidos de Vendas, agenda, fila de produção e aprovações.", enabled: permissions.includes("marketing"), onClick: onOpenMarketing, attention: marketingAttention ? "Precisa de atenção" : undefined, icon: "camera" },
+    { key: "auditorio", title: "Auditório", detail: "Agenda, solicitações pendentes, aprovações e histórico de uso.", enabled: permissions.includes("auditorio") || permissions.includes("painel-admin"), onClick: onOpenAuditorio, icon: "calendar" },
     { key: "chamados", title: "Chamados", detail: "Solicitações internas, atendimento e histórico.", enabled: permissions.includes("chamados"), onClick: onOpenServiceRequests, icon: "reports" },
     { key: "afazeres", title: "Afazeres", detail: "Tarefas, prazos, prioridades e acompanhamento diário.", enabled: permissions.includes("afazeres"), onClick: onOpenTasks, icon: "reports" },
     { key: "bens-materiais", title: "Bens e Materiais", detail: "Patrimônio, alocações, ferramentas e suprimentos.", enabled: permissions.includes("estoque") || permissions.includes("patrimonio"), onClick: onOpenAssetsMaterials, icon: "stock" },
@@ -3129,6 +3162,7 @@ function SystemStatusScreen({ permissions, users, onBack, onLogout }: { permissi
     createSystemStatusCard({ key: "payments", title: "Pagamentos", icon: "payment", available: hasAdmin, restricted: true, note: "Fechamento / Pagamento restrito ao Admin/Tezzei em Segurança > Guardas." }),
     createSystemStatusCard({ key: "tasks", title: "Afazeres", icon: "reports", available: permissions.includes("afazeres"), restricted: true, note: "Quadro de tarefas e prazos disponível para o Admin Tezzei." }),
     createSystemStatusCard({ key: "service-requests", title: "Chamados", icon: "reports", available: permissions.includes("chamados"), restricted: true, note: "Portal público de abertura e painel de atendimento disponíveis para o Admin Tezzei." }),
+    createSystemStatusCard({ key: "auditorio", title: "Auditório", icon: "calendar", available: permissions.includes("auditorio") || hasAdmin, restricted: true, note: "Agenda pública, aprovação interna e consulta por protocolo disponíveis para o Auditório." }),
     createSystemStatusCard({ key: "users", title: "Usuários & Permissões", icon: "users", available: hasAdmin, note: "Cadastro e sincronização de usuários disponíveis somente para Admin." }),
     { key: "plate-ocr", title: "OCR de Placas", icon: "camera", status: "Atenção", tone: "attention", note: "OCR auxiliar. Requer validação com placa real." },
   ];

@@ -19,6 +19,7 @@ export type AppIconName =
   | "stock"
   | "users"
   | "reports"
+  | "calendar"
   | "qr"
   | "payment"
   | "settings"
@@ -168,6 +169,19 @@ const iconPaths: Record<AppIconName, ReactNode> = {
       <path d="M9 17v-4" />
       <path d="M12 17v-7" />
       <path d="M15 17v-2" />
+    </>
+  ),
+  calendar: (
+    <>
+      <path d="M5 4h14a2 2 0 0 1 2 2v13H3V6a2 2 0 0 1 2-2Z" />
+      <path d="M8 2v4" />
+      <path d="M16 2v4" />
+      <path d="M3 9h18" />
+      <path d="M8 13h.01" />
+      <path d="M12 13h.01" />
+      <path d="M16 13h.01" />
+      <path d="M8 17h.01" />
+      <path d="M12 17h.01" />
     </>
   ),
   qr: (

@@ -1,0 +1,694 @@
+.auditorio-public-page {
+  min-height: 100vh;
+  padding: 22px 16px 34px;
+  background: #f5f7f8;
+  color: #172033;
+}
+
+.auditorio-public-shell {
+  width: min(100%, 1120px);
+  margin: 0 auto;
+}
+
+.auditorio-public-brand {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 78px;
+  margin-bottom: 14px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid #d9dfe2;
+}
+
+.auditorio-public-logo {
+  flex: 0 1 auto;
+}
+
+.auditorio-public-logo img {
+  width: 190px;
+  max-height: none;
+}
+
+.auditorio-public-brand div {
+  display: grid;
+  gap: 3px;
+  text-align: right;
+}
+
+.auditorio-public-brand strong {
+  color: #172033;
+  font-size: 1.06rem;
+}
+
+.auditorio-public-brand span {
+  color: #667085;
+  font-size: .82rem;
+  font-weight: 800;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.auditorio-public-tabs {
+  display: inline-flex;
+  gap: 6px;
+  margin: 0 0 16px;
+  padding: 4px;
+  border: 1px solid #d9dfe2;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.auditorio-public-tabs button {
+  min-height: 38px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #4b5563;
+  cursor: pointer;
+  font: inherit;
+  font-size: .9rem;
+  font-weight: 800;
+  padding: 0 13px;
+}
+
+.auditorio-public-tabs button.active {
+  background: #236b57;
+  color: #fff;
+}
+
+.auditorio-public-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
+  gap: 16px;
+  align-items: start;
+}
+
+.auditorio-public-card,
+.auditorio-public-success {
+  border: 1px solid #d9dfe2;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 14px 30px rgba(23, 33, 38, .08);
+  padding: 20px;
+}
+
+.auditorio-public-eyebrow {
+  margin: 0 0 7px;
+  color: #9b352c;
+  font-size: .75rem;
+  font-weight: 900;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.auditorio-public-card h1,
+.auditorio-public-success h1,
+.auditorio-public-card h2 {
+  margin: 0;
+  color: #172033;
+}
+
+.auditorio-public-card h1 {
+  font-size: 1.6rem;
+}
+
+.auditorio-public-card h2,
+.auditorio-public-success h1 {
+  font-size: 1.32rem;
+}
+
+.auditorio-public-intro {
+  margin: 10px 0 18px;
+  color: #667085;
+  line-height: 1.5;
+}
+
+.auditorio-calendar-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.auditorio-month-actions {
+  display: inline-flex;
+  gap: 7px;
+}
+
+.auditorio-month-actions button {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  border: 1px solid #d9dfe2;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #172033;
+  cursor: pointer;
+  font-size: 1.3rem;
+  font-weight: 900;
+}
+
+.auditorio-calendar {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.auditorio-weekday {
+  color: #667085;
+  font-size: .72rem;
+  font-weight: 900;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.auditorio-day {
+  display: grid;
+  align-content: space-between;
+  min-height: 76px;
+  border: 1px solid #d9dfe2;
+  border-radius: 8px;
+  background: #fff;
+  color: #172033;
+  cursor: pointer;
+  padding: 9px;
+  text-align: left;
+}
+
+.auditorio-day strong {
+  font-size: 1rem;
+}
+
+.auditorio-day span {
+  overflow: hidden;
+  color: #667085;
+  font-size: .72rem;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.auditorio-day:hover:not(:disabled),
+.auditorio-day.selected {
+  border-color: #236b57;
+  box-shadow: 0 0 0 3px rgba(35, 107, 87, .12);
+}
+
+.auditorio-day.selected {
+  background: #eaf5f0;
+}
+
+.auditorio-day.muted {
+  background: #f3f4f6;
+  color: #8b949e;
+}
+
+.auditorio-day.disabled {
+  cursor: not-allowed;
+  opacity: .42;
+}
+
+.auditorio-loading,
+.auditorio-empty-text {
+  margin: 13px 0 0;
+  color: #667085;
+  font-size: .9rem;
+  font-weight: 700;
+}
+
+.availability-card {
+  position: sticky;
+  top: 12px;
+}
+
+.auditorio-day-segments {
+  display: grid;
+  gap: 9px;
+  margin-top: 14px;
+}
+
+.auditorio-segment {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 54px;
+  border: 1px solid #d9dfe2;
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.auditorio-segment span {
+  color: #172033;
+  font-weight: 850;
+}
+
+.auditorio-segment strong {
+  justify-self: end;
+  border-radius: 999px;
+  font-size: .72rem;
+  font-weight: 900;
+  padding: 4px 8px;
+  text-transform: uppercase;
+}
+
+.auditorio-segment.available {
+  background: #f6fbf8;
+  border-color: #c6e3d6;
+}
+
+.auditorio-segment.available strong {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.auditorio-segment.reserved {
+  background: #fff7ed;
+  border-color: #fed7aa;
+}
+
+.auditorio-segment.reserved strong {
+  background: #ffedd5;
+  color: #9a3412;
+}
+
+.auditorio-segment button {
+  grid-column: 1 / -1;
+  justify-self: start;
+  min-height: 32px;
+  border: 0;
+  border-radius: 6px;
+  background: #236b57;
+  color: #fff;
+  cursor: pointer;
+  font: inherit;
+  font-size: .82rem;
+  font-weight: 900;
+  padding: 0 10px;
+}
+
+.form-card {
+  grid-column: 1 / -1;
+}
+
+.auditorio-public-card form {
+  display: grid;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.auditorio-public-card fieldset {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 13px;
+  margin: 0;
+  padding: 15px;
+  border: 1px solid #d9dfe2;
+  border-radius: 8px;
+}
+
+.auditorio-public-card legend {
+  padding: 0 6px;
+  color: #344054;
+  font-size: .86rem;
+  font-weight: 900;
+}
+
+.auditorio-public-card label,
+.auditorio-full-field {
+  display: grid;
+  gap: 7px;
+  color: #344054;
+  font-size: .88rem;
+  font-weight: 800;
+}
+
+.auditorio-public-card input,
+.auditorio-public-card select,
+.auditorio-public-card textarea {
+  width: 100%;
+  border: 1px solid #cfd7dc;
+  border-radius: 8px;
+  background: #fff;
+  color: #172033;
+  font: inherit;
+  outline: 0;
+}
+
+.auditorio-public-card input,
+.auditorio-public-card select {
+  min-height: 46px;
+  padding: 0 12px;
+}
+
+.auditorio-public-card textarea {
+  padding: 12px;
+  resize: vertical;
+}
+
+.auditorio-public-card input:focus,
+.auditorio-public-card select:focus,
+.auditorio-public-card textarea:focus {
+  border-color: #236b57;
+  box-shadow: 0 0 0 3px rgba(35, 107, 87, .13);
+}
+
+.auditorio-checkbox-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+}
+
+.auditorio-check-label {
+  display: flex !important;
+  align-items: center;
+  gap: 9px !important;
+  min-height: 42px;
+  padding: 9px 10px;
+  border: 1px solid #d9dfe2;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.auditorio-check-label input {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  min-height: auto;
+  padding: 0;
+}
+
+.auditorio-check-label span {
+  min-width: 0;
+}
+
+.auditorio-checkbox-grid .wide {
+  grid-column: 1 / -1;
+}
+
+.auditorio-full-field {
+  display: grid !important;
+}
+
+.auditorio-public-warning,
+.auditorio-public-error {
+  grid-column: 1 / -1;
+  margin: 0;
+  border-radius: 8px;
+  font-size: .9rem;
+  font-weight: 700;
+  line-height: 1.45;
+  padding: 11px 12px;
+}
+
+.auditorio-public-warning {
+  border: 1px solid #fed7aa;
+  background: #fff7ed;
+  color: #9a3412;
+}
+
+.auditorio-public-error {
+  border: 1px solid #fecaca;
+  background: #fef2f2;
+  color: #b42318;
+}
+
+.auditorio-public-primary,
+.auditorio-public-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  border-radius: 8px;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 900;
+  padding: 0 16px;
+  text-decoration: none;
+}
+
+.auditorio-public-primary {
+  border: 0;
+  background: #236b57;
+  color: #fff;
+  box-shadow: 0 10px 20px rgba(35, 107, 87, .2);
+}
+
+.auditorio-public-primary:hover:not(:disabled) {
+  background: #1c5748;
+}
+
+.auditorio-public-primary:disabled {
+  cursor: wait;
+  opacity: .7;
+}
+
+.auditorio-public-secondary {
+  border: 1px solid #d9dfe2;
+  background: #fff;
+  color: #172033;
+}
+
+.auditorio-honeypot {
+  position: absolute;
+  left: -10000px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+
+.auditorio-public-success {
+  max-width: 660px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.auditorio-success-icon {
+  display: grid;
+  width: 58px;
+  height: 58px;
+  margin: 0 auto 16px;
+  place-items: center;
+  border-radius: 50%;
+  background: #dcfce7;
+  color: #15803d;
+  font-size: 1.8rem;
+  font-weight: 900;
+}
+
+.auditorio-receipt {
+  display: grid;
+  gap: 5px;
+  margin: 18px 0 0;
+  padding: 17px;
+  border: 1px dashed #86b7a6;
+  border-radius: 8px;
+  background: #f6fbf8;
+}
+
+.auditorio-receipt.code {
+  border-color: #fdba74;
+  background: #fff7ed;
+}
+
+.auditorio-receipt span,
+.auditorio-receipt small {
+  color: #667085;
+  font-size: .86rem;
+  font-weight: 700;
+}
+
+.auditorio-receipt strong {
+  color: #155440;
+  font-size: 1.45rem;
+  letter-spacing: .04em;
+}
+
+.auditorio-receipt.code strong {
+  color: #9a3412;
+}
+
+.auditorio-success-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.auditorio-consult-form {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.auditorio-consult-form .auditorio-public-error,
+.auditorio-consult-form .auditorio-public-primary {
+  grid-column: 1 / -1;
+}
+
+.auditorio-status-card {
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+  padding: 16px;
+  border: 1px solid #d9dfe2;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.auditorio-status-card h2 {
+  margin: 0;
+  color: #172033;
+}
+
+.auditorio-status-card dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+
+.auditorio-status-card div {
+  display: grid;
+  gap: 4px;
+}
+
+.auditorio-status-card dt {
+  color: #667085;
+  font-size: .75rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.auditorio-status-card dd {
+  margin: 0;
+  color: #172033;
+  font-weight: 800;
+}
+
+.auditorio-status-pill {
+  justify-self: start;
+  border-radius: 999px;
+  font-size: .74rem;
+  font-weight: 900;
+  padding: 5px 9px;
+  text-transform: uppercase;
+}
+
+.auditorio-status-pill.status-pendente {
+  background: #fff7ed;
+  color: #9a3412;
+}
+
+.auditorio-status-pill.status-aprovado,
+.auditorio-status-pill.status-concluido {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.auditorio-status-pill.status-recusado,
+.auditorio-status-pill.status-cancelado {
+  background: #fef2f2;
+  color: #b42318;
+}
+
+.auditorio-admin-note {
+  margin: 0;
+  border-left: 3px solid #236b57;
+  color: #344054;
+  line-height: 1.45;
+  padding: 8px 0 8px 12px;
+}
+
+.auditorio-public-footer {
+  padding: 18px 4px 0;
+  color: #98a2b3;
+  font-size: .72rem;
+  font-weight: 800;
+  letter-spacing: .06em;
+  text-align: center;
+}
+
+.auditorio-public-footer::before {
+  content: none !important;
+  display: none !important;
+}
+
+@media (max-width: 860px) {
+  .auditorio-public-grid,
+  .auditorio-consult-form {
+    grid-template-columns: 1fr;
+  }
+
+  .availability-card {
+    position: static;
+  }
+
+  .auditorio-public-card fieldset,
+  .auditorio-checkbox-grid,
+  .auditorio-status-card dl {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+@media (max-width: 560px) {
+  .auditorio-public-page {
+    padding: 14px 10px 26px;
+  }
+
+  .auditorio-public-brand {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .auditorio-public-brand div {
+    text-align: left;
+  }
+
+  .auditorio-public-logo img {
+    width: 168px;
+  }
+
+  .auditorio-public-tabs {
+    display: grid;
+    grid-template-columns: 1fr;
+    width: 100%;
+  }
+
+  .auditorio-public-card,
+  .auditorio-public-success {
+    padding: 16px;
+  }
+
+  .auditorio-calendar {
+    gap: 5px;
+  }
+
+  .auditorio-day {
+    min-height: 60px;
+    padding: 7px;
+  }
+
+  .auditorio-day span {
+    font-size: .66rem;
+  }
+
+  .auditorio-calendar-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .auditorio-month-actions {
+    justify-content: space-between;
+  }
+
+  .auditorio-month-actions button {
+    width: 48%;
+  }
+
+  .auditorio-success-actions,
+  .auditorio-public-secondary,
+  .auditorio-public-primary {
+    width: 100%;
+  }
+}
