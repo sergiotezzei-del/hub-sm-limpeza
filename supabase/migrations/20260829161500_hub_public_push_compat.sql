@@ -70,25 +70,6 @@ begin
     new.user_agent
   );
 
-  if new.active is false then
-    update private.hub_public_push_devices d
-    set active = case
-      when exists (
-        select 1
-        from private.hub_public_push_links l
-        join private.marketing_push_subscriptions s
-          on s.request_id = l.source_id
-         and s.endpoint_hash = d.endpoint_hash
-        where l.device_id = d.id
-          and l.source_type = 'marketing'
-          and s.active = true
-      ) then d.active
-      else d.active
-    end,
-    updated_at = clock_timestamp()
-    where d.endpoint_hash = new.endpoint_hash;
-  end if;
-
   return new;
 end;
 $$;
