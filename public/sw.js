@@ -1,4 +1,4 @@
-const CACHE_NAME = "hub-santa-maria-v17";
+const CACHE_NAME = "hub-santa-maria-v18";
 const MARKETING_PUSH_CACHE = "hub-marketing-push-state";
 const LAST_MARKETING_PUSH_KEY = "/__hub_last_marketing_push";
 const MARKETING_PUSH_ENDPOINT = "https://dtdepfpkyiqtnsjztjit.supabase.co/functions/v1/marketing-public-push";
@@ -31,38 +31,44 @@ self.addEventListener("push", (event) => {
     payload = event.data ? event.data.json() : {};
   } catch {
     payload = {
-      title: "🔔 Atualização do Marketing",
-      body: event.data ? event.data.text() : "Abra o HUB para conferir seu agendamento.",
-      data: { url: "/marketing/notificacoes" },
+      title: "🔔 Atualização do HUB",
+      body: event.data ? event.data.text() : "Abra o HUB para conferir.",
+      data: { url: "/" },
     };
   }
 
-  const title = payload.title || "🔔 Atualização do Marketing";
   const data = payload.data || {};
+  const isEmail = data.kind === "email";
+  const title = payload.title || (isEmail ? "📧 Novo e-mail" : "🔔 Atualização do Marketing");
   const options = {
-    body: payload.body || "Abra o HUB para conferir seu agendamento.",
+    body: payload.body || (isEmail ? "Você recebeu um novo e-mail na caixa de entrada." : "Abra o HUB para conferir seu agendamento."),
     icon: payload.icon || "/icons/icon-192.png",
     badge: payload.badge || "/icons/icon-192.png",
-    tag: payload.tag || `marketing-push-${Date.now()}`,
+    tag: payload.tag || `hub-push-${Date.now()}`,
     data: {
       ...data,
-      url: data.url || "/marketing/notificacoes",
+      url: data.url || (isEmail ? "/" : "/marketing/notificacoes"),
     },
-    requireInteraction: payload.requireInteraction !== false,
+    requireInteraction: payload.requireInteraction === true,
     renotify: payload.renotify !== false,
     silent: false,
     vibrate: [300, 120, 300, 120, 650],
     actions: [
-      { action: "view", title: "VER AGENDAMENTO" },
+      { action: "view", title: data.actionTitle || (isEmail ? "ABRIR HUB" : "VER AGENDAMENTO") },
     ],
   };
 
-  event.waitUntil(Promise.all([
-    rememberMarketingPush(payload),
-    notifyOpenClients(payload),
-    setMarketingBadge(),
+  const jobs = [
+    setHubBadge(),
     self.registration.showNotification(title, options),
-  ]));
+  ];
+
+  if (!isEmail) {
+    jobs.push(rememberMarketingPush(payload));
+    jobs.push(notifyOpenClients(payload));
+  }
+
+  event.waitUntil(Promise.all(jobs));
 });
 
 self.addEventListener("notificationclick", (event) => {
@@ -73,7 +79,7 @@ self.addEventListener("notificationclick", (event) => {
 
   event.waitUntil((async () => {
     if (ackToken) await acknowledgeMarketingPush(ackToken);
-    await clearMarketingBadge();
+    await clearHubBadge();
     const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
     for (const client of windows) {
       if ("focus" in client) {
@@ -152,11 +158,11 @@ async function acknowledgeMarketingPush(ackToken) {
       body: JSON.stringify({ action: "ack", ackToken }),
     });
   } catch {
-    // Se a confirmação falhar, o servidor enviará outro lembrete; isso é mais seguro do que marcar como visto sem confirmação.
+    // Se a confirmação falhar, o servidor enviará outro lembrete.
   }
 }
 
-async function setMarketingBadge() {
+async function setHubBadge() {
   try {
     if (self.navigator && typeof self.navigator.setAppBadge === "function") {
       await self.navigator.setAppBadge(1);
@@ -166,7 +172,7 @@ async function setMarketingBadge() {
   }
 }
 
-async function clearMarketingBadge() {
+async function clearHubBadge() {
   try {
     if (self.navigator && typeof self.navigator.clearAppBadge === "function") {
       await self.navigator.clearAppBadge();

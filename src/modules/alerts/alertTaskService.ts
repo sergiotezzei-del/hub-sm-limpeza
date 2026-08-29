@@ -34,16 +34,19 @@ export async function loadAlertTasks(): Promise<AlertTask[]> {
     status: "neq.concluido",
     order: "due_date.asc.nullslast,updated_at.desc",
   });
+  const today = getSaoPauloDateKey();
 
-  return rows.map((row) => ({
-    id: row.id,
-    title: row.title,
-    description: row.description ?? undefined,
-    dueDate: row.due_date ?? undefined,
-    priority: row.priority,
-    department: row.department,
-    status: row.status,
-  }));
+  return rows
+    .filter((row) => !row.due_date || row.due_date <= today)
+    .map((row) => ({
+      id: row.id,
+      title: row.title,
+      description: row.description ?? undefined,
+      dueDate: row.due_date ?? undefined,
+      priority: row.priority,
+      department: row.department,
+      status: row.status,
+    }));
 }
 
 export async function loadAlertTaskIds(): Promise<string[]> {
@@ -69,13 +72,11 @@ export async function setTaskAlertVisibility(taskId: string, visible: boolean, a
   await ensureRestSuccess(response, "set-task-alert-visibility");
 }
 
-export async function completeAlertTask(taskId: string, _actorName: string) {
-  const response = await authenticatedSupabaseFetch(createTaskUrl({
-    id: `eq.${taskId}`,
-    archived_at: "is.null",
-  }), {
-    method: "DELETE",
-    headers: { Prefer: "return=minimal" },
+export async function completeAlertTask(taskId: string, actorName: string) {
+  const response = await authenticatedSupabaseFetch(`${SUPABASE_URL}/rest/v1/rpc/complete_hub_task_and_source`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ p_task_id: taskId, p_actor_name: actorName }),
   });
   await ensureRestSuccess(response, "complete-alert-task");
 }
@@ -117,4 +118,13 @@ function createRestError(
   return new Error(
     `SUPABASE_REST_${context}:${diagnostic.status}:${diagnostic.code ?? "unknown"}:${diagnostic.message ?? "unknown"}`,
   );
+}
+
+function getSaoPauloDateKey() {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
 }

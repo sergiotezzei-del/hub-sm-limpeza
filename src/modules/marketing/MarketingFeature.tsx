@@ -1343,6 +1343,7 @@ function RequestDetail(props: { sessionToken: string; dashboard: MarketingDashbo
             {props.role === "admin" && <small>A equipe de Marketing deve justificar a alteração antes da aprovação administrativa.</small>}
           </section>
         )}
+        {(props.dashboard.context.userId === "arthur" || props.dashboard.context.userId === "maria") && !["pronto", "cancelado"].includes(props.request.status) && <button type="button" className="marketing-cancel-request" disabled={busy} onClick={() => { if (window.confirm("Cancelar este agendamento? O pedido ficará como cancelado e sairá da agenda.")) void run("cancel", { reason: "Cancelado pelo Marketing a pedido do corretor." }); }}>CANCELAR AGENDAMENTO</button>}
         {!canManage && !["pronto", "cancelado"].includes(props.request.status) && <button type="button" className="marketing-cancel-request" disabled={busy} onClick={() => void run("cancel")}>Cancelar pedido</button>}
         {deleteOpen && <AdminDeleteRequestModal sessionToken={props.sessionToken} request={props.request} onClose={() => setDeleteOpen(false)} onError={props.onError} onDeleted={async () => { props.onNotice(`Pedido #${props.request.requestNumber} excluído da operação com o histórico preservado.`); setDeleteOpen(false); await props.onChanged(); props.onClose(); }} />}
       </section>

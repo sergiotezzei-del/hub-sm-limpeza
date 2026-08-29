@@ -11,6 +11,23 @@ import {
   type AlertRecurrenceType,
 } from "./alertService";
 import { completeAlertTask, loadAlertTasks, type AlertTask } from "./alertTaskService";
+import { completeAlertServiceRequest, loadAlertServiceRequests, type AlertServiceRequest } from "./alertServiceRequestService";
+import { acknowledgeAttentionEvent, loadAttentionEvents, type AttentionEvent } from "./attentionEventService";
+import {
+  acknowledgeEmailInbox,
+  loadEmailInboxStatus,
+  saveEmailInboxConfig,
+  type EmailInboxStatus,
+} from "./emailInboxService";
+import {
+  activateAdminPush,
+  getAdminPushErrorMessage,
+  isAdminPushSupported,
+  isIosDevice as isAdminPushIosDevice,
+  isStandaloneDisplay as isAdminPushStandalone,
+  loadAdminPushStatus,
+  type AdminPushStatus,
+} from "./adminPushService";
 import "./alerts.css";
 
 const ACTOR_NAME = "Admin Tezzei";
@@ -86,6 +103,8 @@ function AlertDashboardPanel() {
   const [rules, setRules] = useState<HubAlertRule[]>([]);
   const [completions, setCompletions] = useState<HubAlertCompletion[]>([]);
   const [alertTasks, setAlertTasks] = useState<AlertTask[]>([]);
+  const [alertServiceRequests, setAlertServiceRequests] = useState<AlertServiceRequest[]>([]);
+  const [attentionEvents, setAttentionEvents] = useState<AttentionEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
   const [managerOpen, setManagerOpen] = useState(false);
@@ -94,6 +113,13 @@ function AlertDashboardPanel() {
   const [markingKey, setMarkingKey] = useState("");
   const [togglingId, setTogglingId] = useState("");
   const [deletingId, setDeletingId] = useState("");
+  const [emailInbox, setEmailInbox] = useState<EmailInboxStatus | null>(null);
+  const [emailAddress, setEmailAddress] = useState("");
+  const [emailPassword, setEmailPassword] = useState("");
+  const [emailSaving, setEmailSaving] = useState(false);
+  const [adminPushStatus, setAdminPushStatus] = useState<AdminPushStatus | null>(null);
+  const [adminPushBusy, setAdminPushBusy] = useState(false);
+  const [adminPushMessage, setAdminPushMessage] = useState("");
   const today = getTodayIso();
 
   useEffect(() => {
@@ -125,6 +151,65 @@ function AlertDashboardPanel() {
     return () => { active = false; };
   }, []);
 
+  useEffect(() => {
+    let active = true;
+    Promise.allSettled([loadAlertServiceRequests(), loadAttentionEvents()]).then(([requestsResult, eventsResult]) => {
+      if (!active) return;
+      if (requestsResult.status === "fulfilled") setAlertServiceRequests(requestsResult.value);
+      if (eventsResult.status === "fulfilled") setAttentionEvents(eventsResult.value);
+      if (requestsResult.status === "rejected" || eventsResult.status === "rejected") {
+        setMessage((current) => current || "Parte dos avisos operacionais está temporariamente indisponível.");
+      }
+    });
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+  let active = true;
+
+  const refreshEmailStatus = async () => {
+    try {
+      const status = await loadEmailInboxStatus();
+      if (!active) return;
+      setEmailInbox(status);
+      setEmailAddress((current) => current || status.emailAddress);
+    } catch {
+      // O monitor de e-mail é independente dos demais Alertas.
+    }
+  };
+
+  void refreshEmailStatus();
+  const intervalId = window.setInterval(() => { void refreshEmailStatus(); }, 60_000);
+  const onFocus = () => { void refreshEmailStatus(); };
+  window.addEventListener("focus", onFocus);
+
+  return () => {
+    active = false;
+    window.clearInterval(intervalId);
+    window.removeEventListener("focus", onFocus);
+  };
+}, []);
+
+  useEffect(() => {
+    let active = true;
+    const syncPush = async () => {
+      try {
+        if (isAdminPushSupported()
+          && typeof Notification !== "undefined"
+          && Notification.permission === "granted"
+          && (!isAdminPushIosDevice() || isAdminPushStandalone())) {
+          await activateAdminPush();
+        }
+        const status = await loadAdminPushStatus();
+        if (active) setAdminPushStatus(status);
+      } catch {
+        // A ativação manual continua disponível abaixo.
+      }
+    };
+    void syncPush();
+    return () => { active = false; };
+  }, []);
+
   const pendingAlerts = useMemo(
     () => buildPendingAlerts(rules, completions, today),
     [rules, completions, today],
@@ -132,7 +217,7 @@ function AlertDashboardPanel() {
 
   const overdueCount = pendingAlerts.filter((alert) => !alert.isToday).length
     + alertTasks.filter((task) => Boolean(task.dueDate && task.dueDate < today)).length;
-  const totalPending = pendingAlerts.length + alertTasks.length;
+  const totalPending = pendingAlerts.length + alertTasks.length + alertServiceRequests.length + attentionEvents.length + (emailInbox?.pendingNewCount ? 1 : 0);
 
   async function markDone(alert: PendingAlert) {
     const key = `${alert.rule.id}:${alert.occurrenceDate}`;
@@ -170,6 +255,38 @@ function AlertDashboardPanel() {
       setMessage(`${task.title} concluído nos Afazeres.`);
     } catch {
       setMessage("Não foi possível concluir o Afazer.");
+    } finally {
+      setMarkingKey("");
+    }
+  }
+
+  async function markServiceRequestDone(request: AlertServiceRequest) {
+    const key = `request:${request.id}`;
+    if (markingKey) return;
+    setMarkingKey(key);
+    setMessage("");
+    try {
+      await completeAlertServiceRequest(request.id);
+      setAlertServiceRequests((current) => current.filter((item) => item.id !== request.id));
+      setMessage(`Chamado #${request.protocolNumber} concluído e removido de Chamados.`);
+    } catch {
+      setMessage("Não foi possível concluir o Chamado.");
+    } finally {
+      setMarkingKey("");
+    }
+  }
+
+  async function acknowledgeOperationalEvent(event: AttentionEvent) {
+    const key = `event:${event.id}`;
+    if (markingKey) return;
+    setMarkingKey(key);
+    setMessage("");
+    try {
+      await acknowledgeAttentionEvent(event.id, ACTOR_NAME);
+      setAttentionEvents((current) => current.filter((item) => item.id !== event.id));
+      setMessage("Aviso retirado do painel.");
+    } catch {
+      setMessage("Não foi possível confirmar o aviso.");
     } finally {
       setMarkingKey("");
     }
@@ -252,11 +369,65 @@ function AlertDashboardPanel() {
     }
   }
 
+  async function saveEmailConfiguration(event: FormEvent<HTMLFormElement>) {
+  event.preventDefault();
+  const email = emailAddress.trim();
+  if (!email || !email.includes("@")) {
+    setMessage("Informe o e-mail completo da Locaweb.");
+    return;
+  }
+  if (!emailPassword) {
+    setMessage("Informe a senha da caixa de e-mail para salvar a configuração.");
+    return;
+  }
+
+  setEmailSaving(true);
+  setMessage("");
+  try {
+    await saveEmailInboxConfig(email, emailPassword);
+    setEmailPassword("");
+    setMessage("E-mail Locaweb configurado. A primeira verificação será feita em instantes.");
+    const status = await loadEmailInboxStatus();
+    setEmailInbox(status);
+    setEmailAddress(status.emailAddress || email);
+  } catch {
+    setMessage("Não foi possível salvar a configuração do e-mail.");
+  } finally {
+    setEmailSaving(false);
+  }
+}
+
+  async function activatePushForThisDevice() {
+    if (adminPushBusy) return;
+    setAdminPushBusy(true);
+    setAdminPushMessage("");
+    try {
+      await activateAdminPush();
+      const status = await loadAdminPushStatus();
+      setAdminPushStatus(status);
+      setAdminPushMessage("Notificações ativadas neste aparelho.");
+    } catch (error) {
+      setAdminPushMessage(getAdminPushErrorMessage(error));
+    } finally {
+      setAdminPushBusy(false);
+    }
+  }
+
+  async function openEmailInbox() {
+    window.open("https://webmail-seguro.com.br/", "_blank", "noopener,noreferrer");
+    try {
+      await acknowledgeEmailInbox();
+      setEmailInbox((current) => current ? { ...current, pendingNewCount: 0 } : current);
+    } catch {
+      // O Webmail já foi aberto; a confirmação pode ser refeita na próxima vez.
+    }
+  }
+
   return (
-    <section className="hub-alert-panel" aria-label="Alertas e rotinas recorrentes">
+    <section className="hub-alert-panel" aria-label="Central de alertas e pendências">
       <header className="hub-alert-panel-head">
         <div>
-          <p className="hub-alert-kicker">ROTINAS DO DIA</p>
+          <p className="hub-alert-kicker">PAINEL DO DIA</p>
           <h2>ALERTAS</h2>
           <small>{loading ? "Carregando..." : totalPending === 0 ? "Nenhuma pendência hoje" : `${totalPending} alerta(s) pendente(s)${overdueCount ? ` · ${overdueCount} atrasado(s)` : ""}`}</small>
         </div>
@@ -268,11 +439,70 @@ function AlertDashboardPanel() {
       {!loading && totalPending === 0 && (
         <article className="hub-alert-empty">
           <strong>✓ Nenhum alerta pendente hoje.</strong>
-          <span>As próximas rotinas e Afazeres marcados aparecerão aqui.</span>
+          <span>Rotinas, Afazeres, Chamados e novos avisos operacionais aparecerão aqui.</span>
         </article>
       )}
 
       <div className="hub-alert-cards">
+  {emailInbox && emailInbox.pendingNewCount > 0 && (
+    <article className="hub-alert-card is-email">
+      <div className="hub-alert-card-status">
+        <span>NOVO E-MAIL</span>
+        <time>CAIXA DE ENTRADA</time>
+      </div>
+      <h3>📧 Você tem e-mail novo</h3>
+      <p>{emailInbox.pendingNewCount === 1 ? "Chegou 1 novo e-mail na sua caixa de entrada." : `Chegaram ${emailInbox.pendingNewCount} novos e-mails na sua caixa de entrada.`}</p>
+      <small>O HUB detecta somente que chegou mensagem nova. Assunto, remetente, conteúdo e anexos não são lidos nem armazenados.</small>
+      <button className="hub-alert-email-button" type="button" onClick={() => { void openEmailInbox(); }}>ABRIR WEBMAIL</button>
+    </article>
+  )}
+        {alertServiceRequests.map((request) => {
+          const key = `request:${request.id}`;
+          return (
+            <article className="hub-alert-card is-service-request" key={key}>
+              <div className="hub-alert-card-status">
+                <span>NOVO CHAMADO</span>
+                <time>#{request.protocolNumber}</time>
+              </div>
+              <h3>{request.requesterName}</h3>
+              <p>{request.requestText}</p>
+              <small>Chamados · {request.department} · {formatDateTimeShort(request.openedAt)}</small>
+              <button
+                className="hub-alert-done-button"
+                type="button"
+                disabled={Boolean(markingKey)}
+                onClick={() => { void markServiceRequestDone(request); }}
+              >
+                {markingKey === key ? "Salvando..." : "FEITO"}
+              </button>
+            </article>
+          );
+        })}
+
+        {attentionEvents.map((event) => {
+          const key = `event:${event.id}`;
+          const isOrder = event.sourceType === "order";
+          return (
+            <article className="hub-alert-card is-operational" key={key}>
+              <div className="hub-alert-card-status">
+                <span>{isOrder ? "NOVO PEDIDO" : "CONFERÊNCIA"}</span>
+                <time>{formatDateTimeShort(event.createdAt)}</time>
+              </div>
+              <h3>{event.title}</h3>
+              {event.description && <p>{event.description}</p>}
+              <small>{isOrder ? "Pedidos / Estoque" : "Conferência de estoque"}</small>
+              <button
+                className="hub-alert-done-button"
+                type="button"
+                disabled={Boolean(markingKey)}
+                onClick={() => { void acknowledgeOperationalEvent(event); }}
+              >
+                {markingKey === key ? "Salvando..." : "CIENTE"}
+              </button>
+            </article>
+          );
+        })}
+
         {alertTasks.map((task) => {
           const key = `task:${task.id}`;
           const overdue = Boolean(task.dueDate && task.dueDate < today);
@@ -336,7 +566,45 @@ function AlertDashboardPanel() {
               <button type="button" className="hub-alert-close-button" onClick={() => setManagerOpen(false)} aria-label="Fechar">×</button>
             </header>
 
-            <form className="hub-alert-form" onSubmit={saveRule}>
+            <section className="hub-email-config">
+    <div className="hub-email-config-head">
+      <div>
+        <p className="hub-alert-kicker">CAIXA DE ENTRADA</p>
+        <h3>E-mail Locaweb</h3>
+      </div>
+      <span className={emailInbox?.configured ? "is-connected" : ""}>{emailInbox?.configured ? "MONITOR ATIVO" : "NÃO CONFIGURADO"}</span>
+    </div>
+    <p>O HUB verifica a cada 5 minutos somente se chegou mensagem nova. Não lê assunto, remetente, conteúdo nem anexos.</p>
+    <div className="hub-admin-push-box">
+      <div>
+        <strong>🔔 Notificações nos seus aparelhos</strong>
+        <small>{adminPushStatus ? `${adminPushStatus.activeCount} aparelho(s) ativo(s)` : "Verificando aparelhos..."}</small>
+      </div>
+      <button type="button" disabled={adminPushBusy || !isAdminPushSupported()} onClick={() => { void activatePushForThisDevice(); }}>
+        {adminPushBusy ? "ATIVANDO..." : "ATIVAR NESTE APARELHO"}
+      </button>
+      {isAdminPushIosDevice() && !isAdminPushStandalone() && (
+        <small className="hub-admin-push-help">No iPhone: abra no Safari, use “Adicionar à Tela de Início”, abra o HUB pelo ícone e ative por lá.</small>
+      )}
+      {adminPushMessage && <small className="hub-admin-push-message">{adminPushMessage}</small>}
+    </div>
+    <form className="hub-email-config-form" onSubmit={saveEmailConfiguration}>
+      <label>
+        E-mail
+        <input type="email" autoComplete="username" value={emailAddress} placeholder="seuemail@santamariatem.com.br" onChange={(event) => setEmailAddress(event.target.value)} />
+      </label>
+      <label>
+        Senha da caixa de e-mail
+        <input type="password" autoComplete="current-password" value={emailPassword} placeholder={emailInbox?.configured ? "Digite apenas para atualizar a senha" : "Senha do e-mail"} onChange={(event) => setEmailPassword(event.target.value)} />
+      </label>
+      <button type="submit" disabled={emailSaving}>{emailSaving ? "SALVANDO..." : emailInbox?.configured ? "ATUALIZAR E TESTAR" : "SALVAR E TESTAR"}</button>
+    </form>
+    {emailInbox?.configured && <small>Conta monitorada: <strong>{emailInbox.emailAddress}</strong></small>}
+    {emailInbox?.lastCheckedAt && <small>Última verificação: {new Date(emailInbox.lastCheckedAt).toLocaleString("pt-BR")}</small>}
+    {emailInbox?.lastError && <p className="hub-email-config-error">{emailInbox.lastError}</p>}
+  </section>
+
+  <form className="hub-alert-form" onSubmit={saveRule}>
               <label>
                 Nome da rotina
                 <input type="text" value={draft.title} placeholder="Ex.: Fechamento da fatura do cartão" onChange={(event) => setDraft({ ...draft, title: event.target.value })} />
@@ -530,6 +798,16 @@ function formatOccurrenceDate(dateIso: string, isToday: boolean) {
 function formatDateShort(dateIso: string) {
   const [year, month, day] = dateIso.split("-");
   return `${day}/${month}/${year}`;
+}
+
+function formatDateTimeShort(value: string) {
+  return new Intl.DateTimeFormat("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
 }
 
 function getTodayIso() {
