@@ -3,6 +3,8 @@ import { AlertDashboardEnhancer } from "./AlertDashboardEnhancer";
 import { loadAlertTasks } from "./alertTaskService";
 import { loadAlertServiceRequests } from "./alertServiceRequestService";
 import { loadAttentionEvents } from "./attentionEventService";
+import { loadAuditorioDashboard } from "../auditorio/services/auditorioService";
+import type { AuditorioReservation } from "../auditorio/types/auditorio.types";
 
 const ALERT_POLL_MS = 10000;
 
@@ -29,10 +31,11 @@ export function LiveAlertDashboardEnhancer() {
       }
 
       try {
-        const [tasks, requests, events] = await Promise.all([
+        const [tasks, requests, events, auditorioDashboard] = await Promise.all([
           loadAlertTasks(),
           loadAlertServiceRequests(),
           loadAttentionEvents(),
+          loadAuditorioDashboard().catch(() => null),
         ]);
         if (cancelled) return;
 
@@ -52,6 +55,7 @@ export function LiveAlertDashboardEnhancer() {
             title: event.title,
             body: event.description || "Novo aviso operacional no HUB.",
           })),
+          ...buildAuditorioAlertSnapshots(auditorioDashboard?.reservations ?? []),
         ]);
 
         const previousItems = knownItems.current;
@@ -107,6 +111,17 @@ function sameItems(first: AlertSnapshot[], second: AlertSnapshot[]) {
     && first.every((item, index) => item.key === second[index].key
       && item.title === second[index].title
       && item.body === second[index].body);
+}
+
+function buildAuditorioAlertSnapshots(reservations: AuditorioReservation[]): AlertSnapshot[] {
+  const now = new Date();
+  return reservations
+    .filter((reservation) => reservation.status === "aprovado" && new Date(reservation.reservationEnd) >= now)
+    .map((reservation) => ({
+      key: `auditorio:${reservation.id}`,
+      title: `Auditório: ${reservation.eventName}`,
+      body: `${formatDate(reservation.eventDate)} · ${reservation.startTime} às ${reservation.teardownTime}`,
+    }));
 }
 
 function getLocalDateKey() {

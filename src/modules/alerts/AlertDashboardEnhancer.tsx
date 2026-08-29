@@ -28,6 +28,8 @@ import {
   loadAdminPushStatus,
   type AdminPushStatus,
 } from "./adminPushService";
+import { loadAuditorioDashboard } from "../auditorio/services/auditorioService";
+import type { AuditorioReservation } from "../auditorio/types/auditorio.types";
 import "./alerts.css";
 
 const ACTOR_NAME = "Admin Tezzei";
@@ -105,6 +107,7 @@ function AlertDashboardPanel() {
   const [alertTasks, setAlertTasks] = useState<AlertTask[]>([]);
   const [alertServiceRequests, setAlertServiceRequests] = useState<AlertServiceRequest[]>([]);
   const [attentionEvents, setAttentionEvents] = useState<AttentionEvent[]>([]);
+  const [auditorioReservations, setAuditorioReservations] = useState<AuditorioReservation[]>([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
   const [managerOpen, setManagerOpen] = useState(false);
@@ -153,11 +156,13 @@ function AlertDashboardPanel() {
 
   useEffect(() => {
     let active = true;
-    Promise.allSettled([loadAlertServiceRequests(), loadAttentionEvents()]).then(([requestsResult, eventsResult]) => {
+    Promise.allSettled([loadAlertServiceRequests(), loadAttentionEvents(), loadAuditorioDashboard()])
+      .then(([requestsResult, eventsResult, auditorioResult]) => {
       if (!active) return;
       if (requestsResult.status === "fulfilled") setAlertServiceRequests(requestsResult.value);
       if (eventsResult.status === "fulfilled") setAttentionEvents(eventsResult.value);
-      if (requestsResult.status === "rejected" || eventsResult.status === "rejected") {
+      if (auditorioResult.status === "fulfilled") setAuditorioReservations(auditorioResult.value.reservations);
+      if (requestsResult.status === "rejected" || eventsResult.status === "rejected" || auditorioResult.status === "rejected") {
         setMessage((current) => current || "Parte dos avisos operacionais está temporariamente indisponível.");
       }
     });
@@ -214,10 +219,14 @@ function AlertDashboardPanel() {
     () => buildPendingAlerts(rules, completions, today),
     [rules, completions, today],
   );
+  const auditorioAlerts = useMemo(
+    () => buildAuditorioOperationalAlerts(auditorioReservations),
+    [auditorioReservations],
+  );
 
   const overdueCount = pendingAlerts.filter((alert) => !alert.isToday).length
     + alertTasks.filter((task) => Boolean(task.dueDate && task.dueDate < today)).length;
-  const totalPending = pendingAlerts.length + alertTasks.length + alertServiceRequests.length + attentionEvents.length + (emailInbox?.pendingNewCount ? 1 : 0);
+  const totalPending = pendingAlerts.length + alertTasks.length + alertServiceRequests.length + attentionEvents.length + auditorioAlerts.length + (emailInbox?.pendingNewCount ? 1 : 0);
 
   async function markDone(alert: PendingAlert) {
     const key = `${alert.rule.id}:${alert.occurrenceDate}`;
@@ -429,7 +438,7 @@ function AlertDashboardPanel() {
         <div>
           <p className="hub-alert-kicker">PAINEL DO DIA</p>
           <h2>ALERTAS</h2>
-          <small>{loading ? "Carregando..." : totalPending === 0 ? "Nenhuma pendência hoje" : `${totalPending} alerta(s) pendente(s)${overdueCount ? ` · ${overdueCount} atrasado(s)` : ""}`}</small>
+          <small>{loading ? "Carregando..." : totalPending === 0 ? "Nenhuma pendência hoje" : `${totalPending} aviso(s) no painel${overdueCount ? ` · ${overdueCount} atrasado(s)` : ""}`}</small>
         </div>
         <button className="hub-alert-create-button" type="button" onClick={() => setManagerOpen(true)}>+ Criar alerta</button>
       </header>
@@ -439,7 +448,7 @@ function AlertDashboardPanel() {
       {!loading && totalPending === 0 && (
         <article className="hub-alert-empty">
           <strong>✓ Nenhum alerta pendente hoje.</strong>
-          <span>Rotinas, Afazeres, Chamados e novos avisos operacionais aparecerão aqui.</span>
+          <span>Rotinas, Afazeres, Chamados, Auditório e novos avisos operacionais aparecerão aqui.</span>
         </article>
       )}
 
@@ -456,6 +465,17 @@ function AlertDashboardPanel() {
       <button className="hub-alert-email-button" type="button" onClick={() => { void openEmailInbox(); }}>ABRIR WEBMAIL</button>
     </article>
   )}
+        {auditorioAlerts.map(({ reservation, label }) => (
+          <article className="hub-alert-card is-auditorio" key={`auditorio:${reservation.id}`}>
+            <div className="hub-alert-card-status">
+              <span>{label} — AUDITÓRIO</span>
+              <time dateTime={reservation.reservationStart}>{reservation.startTime}</time>
+            </div>
+            <h3>{reservation.eventName}</h3>
+            <p>{reservation.peopleCount} pessoas</p>
+            <small>{formatAuditorioFood(reservation)} · uso {reservation.setupTime} às {reservation.teardownTime}</small>
+          </article>
+        ))}
         {alertServiceRequests.map((request) => {
           const key = `request:${request.id}`;
           return (
@@ -762,6 +782,34 @@ function buildPendingAlerts(rules: HubAlertRule[], completions: HubAlertCompleti
       }];
     })
     .sort((first, second) => first.occurrenceDate.localeCompare(second.occurrenceDate) || first.rule.title.localeCompare(second.rule.title));
+}
+
+function buildAuditorioOperationalAlerts(reservations: AuditorioReservation[]) {
+  const now = new Date();
+  return reservations
+    .filter((reservation) => reservation.status === "aprovado" && new Date(reservation.reservationEnd) >= now)
+    .sort((first, second) => first.eventDate.localeCompare(second.eventDate) || first.startTime.localeCompare(second.startTime))
+    .map((reservation) => ({
+      reservation,
+      label: formatAuditorioDateLabel(reservation.eventDate),
+    }));
+}
+
+function formatAuditorioDateLabel(eventDate: string) {
+  const today = getTodayIso();
+  const tomorrowDate = new Date();
+  tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+  const tomorrow = toIsoDate(tomorrowDate);
+
+  if (eventDate === today) return "HOJE";
+  if (eventDate === tomorrow) return "AMANHÃ";
+  return formatDateShort(eventDate);
+}
+
+function formatAuditorioFood(reservation: AuditorioReservation) {
+  if (reservation.foodType === "nao") return "Sem alimentação";
+  if (reservation.foodResponsibleLabel) return `${reservation.foodTypeLabel} por ${reservation.foodResponsibleLabel}`;
+  return reservation.foodTypeLabel;
 }
 
 function isRuleDueOn(rule: HubAlertRule, dateIso: string) {

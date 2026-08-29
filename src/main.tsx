@@ -7,7 +7,6 @@ import { CleaningActivityAlertEnhancer } from "./modules/alerts/CleaningActivity
 import { GoogleCalendarAlertEnhancer } from "./modules/alerts/GoogleCalendarAlertEnhancer";
 import { WindowsNotificationControl } from "./modules/alerts/WindowsNotificationControl";
 import "./modules/alerts/browserAlertAttention";
-import { AuditorioOperationalAlerts } from "./modules/auditorio/AuditorioOperationalAlerts";
 import { PublicAuditorioPage } from "./modules/auditorio/PublicAuditorioPage";
 import { CleaningDeliveryFeature } from "./modules/cleaning/components/CleaningDeliveryFeature";
 import { NeiaDeliveryShortcutFeature } from "./modules/cleaning/components/NeiaDeliveryShortcutFeature";
@@ -85,7 +84,6 @@ createRoot(document.getElementById("root")!).render(
         <AlertToastHost />
         <CleaningActivityAlertEnhancer />
         <GoogleCalendarAlertEnhancer />
-        <AuditorioOperationalAlerts />
         <CleaningDeliveryFeature />
         <NeiaDeliveryShortcutFeature />
         <NeiaHistoryEnhancer />

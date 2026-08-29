@@ -553,24 +553,6 @@
   opacity: .65;
 }
 
-.auditorio-operational-card {
-  border-left: 4px solid #236b57;
-}
-
-.auditorio-operational-card strong {
-  display: block;
-  color: #172033;
-  font-size: 1rem;
-  margin-bottom: 6px;
-}
-
-.auditorio-operational-card p {
-  margin: 3px 0;
-  color: #667085;
-  font-size: .86rem;
-  font-weight: 750;
-}
-
 @media (max-width: 1100px) {
   .auditorio-request-list,
   .auditorio-history-list {

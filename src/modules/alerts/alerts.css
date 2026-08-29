@@ -459,6 +459,16 @@
   color: #fff;
 }
 
+.hub-alert-card.is-auditorio {
+  border-color: #0f766e;
+  background: #f0fdfa;
+}
+
+.is-auditorio .hub-alert-card-status span {
+  background: #0f766e;
+  color: #fff;
+}
+
 .hub-alert-email-button {
   width: 100%;
   margin-top: auto;
