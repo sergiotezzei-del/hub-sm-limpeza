@@ -1,4 +1,4 @@
-const CACHE_NAME = "hub-santa-maria-v18";
+const CACHE_NAME = "hub-santa-maria-v19";
 const MARKETING_PUSH_CACHE = "hub-marketing-push-state";
 const LAST_MARKETING_PUSH_KEY = "/__hub_last_marketing_push";
 const MARKETING_PUSH_ENDPOINT = "https://dtdepfpkyiqtnsjztjit.supabase.co/functions/v1/marketing-public-push";
@@ -33,28 +33,42 @@ self.addEventListener("push", (event) => {
     payload = {
       title: "🔔 Atualização do HUB",
       body: event.data ? event.data.text() : "Abra o HUB para conferir.",
-      data: { url: "/" },
+      data: { url: "/", kind: "hub" },
     };
   }
 
   const data = payload.data || {};
-  const isEmail = data.kind === "email";
-  const title = payload.title || (isEmail ? "📧 Novo e-mail" : "🔔 Atualização do Marketing");
+  const kind = String(data.kind || "");
+  const isEmail = kind === "email";
+  const isMarketing = Boolean(data.ackToken) || kind === "marketing" || kind.startsWith("marketing_");
+  const title = payload.title || (isEmail
+    ? "📧 Novo e-mail"
+    : isMarketing
+      ? "🔔 Atualização do Marketing"
+      : "🔔 Atualização do HUB");
+  const defaultBody = isEmail
+    ? "Você recebeu um novo e-mail na caixa de entrada."
+    : isMarketing
+      ? "Abra o HUB para conferir seu agendamento."
+      : "Abra o HUB para conferir a atualização.";
+  const defaultUrl = isMarketing ? "/marketing/notificacoes" : "/";
+  const defaultAction = isMarketing ? "VER AGENDAMENTO" : "ABRIR HUB";
+
   const options = {
-    body: payload.body || (isEmail ? "Você recebeu um novo e-mail na caixa de entrada." : "Abra o HUB para conferir seu agendamento."),
+    body: payload.body || defaultBody,
     icon: payload.icon || "/icons/icon-192.png",
     badge: payload.badge || "/icons/icon-192.png",
     tag: payload.tag || `hub-push-${Date.now()}`,
     data: {
       ...data,
-      url: data.url || (isEmail ? "/" : "/marketing/notificacoes"),
+      url: data.url || defaultUrl,
     },
     requireInteraction: payload.requireInteraction === true,
     renotify: payload.renotify !== false,
     silent: false,
     vibrate: [300, 120, 300, 120, 650],
     actions: [
-      { action: "view", title: data.actionTitle || (isEmail ? "ABRIR HUB" : "VER AGENDAMENTO") },
+      { action: "view", title: data.actionTitle || defaultAction },
     ],
   };
 
@@ -63,9 +77,9 @@ self.addEventListener("push", (event) => {
     self.registration.showNotification(title, options),
   ];
 
-  if (!isEmail) {
+  if (isMarketing) {
     jobs.push(rememberMarketingPush(payload));
-    jobs.push(notifyOpenClients(payload));
+    jobs.push(notifyOpenMarketingClients(payload));
   }
 
   event.waitUntil(Promise.all(jobs));
@@ -141,7 +155,7 @@ async function rememberMarketingPush(payload) {
   }
 }
 
-async function notifyOpenClients(payload) {
+async function notifyOpenMarketingClients(payload) {
   try {
     const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
     windows.forEach((client) => client.postMessage({ type: "hub:marketing-push", payload }));
