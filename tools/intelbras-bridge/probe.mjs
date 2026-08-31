@@ -1,8 +1,10 @@
 import net from "node:net";
 import {
   ISEC_COMMANDS,
+  ISEC_ENDPOINTS,
   IsecStreamParser,
   authenticationResultLabel,
+  buildAckFrame,
   buildAuthenticationFrame,
   buildKeepAliveFrame,
 } from "./protocol.mjs";
@@ -13,6 +15,8 @@ const port = Number(process.env.INTELBRAS_PANEL_PORT || 9009);
 const password = process.env.INTELBRAS_REMOTE_PASSWORD || "";
 const timeoutMs = Number(process.env.INTELBRAS_PROBE_TIMEOUT_MS || 90000);
 const keepAliveMs = 45000;
+const panelId = [...ISEC_ENDPOINTS.PANEL];
+const clientId = [...ISEC_ENDPOINTS.PROGRAMMING_SOFTWARE];
 
 const partitionNames = {
   1: "Sub Solo",
@@ -31,6 +35,7 @@ if (!Number.isInteger(port) || port < 1 || port > 65535) {
 }
 
 console.log(`[AMT8000] Teste SOMENTE LEITURA: ${host}:${port}`);
+console.log("[AMT8000] Identificação ISECNet do software: 8F FF (conforme SDK oficial). ");
 console.log("[AMT8000] O agente não possui caminho de código para arme, desarme ou bypass neste teste.");
 
 const parser = new IsecStreamParser();
@@ -64,8 +69,8 @@ const deadline = setTimeout(() => {
 deadline.unref();
 
 socket.on("connect", () => {
-  console.log("[AMT8000] TCP conectado. Enviando somente autenticação F0F0...");
-  socket.write(buildAuthenticationFrame({ password }));
+  console.log("[AMT8000] TCP conectado. Enviando somente autenticação F0F0 como software 8F FF...");
+  socket.write(buildAuthenticationFrame({ password, destination: panelId, source: clientId }));
 });
 
 socket.on("data", (chunk) => {
@@ -81,10 +86,10 @@ socket.on("data", (chunk) => {
       if (!authenticated) {
         authenticated = true;
         keepAliveTimer = setInterval(() => {
-          if (!socket.destroyed) socket.write(buildKeepAliveFrame());
+          if (!socket.destroyed) socket.write(buildKeepAliveFrame({ destination: panelId, source: clientId }));
         }, keepAliveMs);
         keepAliveTimer.unref();
-        console.log("[AMT8000] Autenticado. Aguardando status 0B4A enviado pela central...");
+        console.log("[AMT8000] Autenticado. Aguardando a central enviar o status 0B4A para 8F FF...");
       }
       continue;
     }
@@ -94,7 +99,8 @@ socket.on("data", (chunk) => {
         const decoded = parseAmt8000FullStatus(frame.data, partitionNames);
         const snapshot = toHubSnapshot(decoded);
         statusReceived = true;
-        console.log("[AMT8000] STATUS 0B4A recebido e decodificado com sucesso.");
+        socket.write(buildAckFrame({ destination: panelId, source: clientId }));
+        console.log("[AMT8000] STATUS 0B4A recebido, decodificado e confirmado com ACK F0FE.");
         console.log(JSON.stringify({
           panelName: snapshot.panelName,
           online: snapshot.online,

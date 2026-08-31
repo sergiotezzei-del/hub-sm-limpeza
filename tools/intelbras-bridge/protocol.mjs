@@ -1,9 +1,16 @@
 export const ISEC_COMMANDS = Object.freeze({
   AUTHENTICATE: 0xf0f0,
   KEEP_ALIVE: 0xf0f7,
+  ACK: 0xf0fe,
+  NACK: 0xf0fd,
   FULL_STATUS: 0x0b4a,
   ARM_DISARM: 0x401e,
   BYPASS_ZONE: 0x401f,
+});
+
+export const ISEC_ENDPOINTS = Object.freeze({
+  PANEL: Object.freeze([0x00, 0x00]),
+  PROGRAMMING_SOFTWARE: Object.freeze([0x8f, 0xff]),
 });
 
 export function checksumIsec(bytes) {
@@ -56,6 +63,10 @@ export function buildAuthenticationFrame({ password, deviceType = 0x01, software
 
 export function buildKeepAliveFrame({ destination, source } = {}) {
   return buildIsecFrame({ destination, source, command: ISEC_COMMANDS.KEEP_ALIVE });
+}
+
+export function buildAckFrame({ destination, source } = {}) {
+  return buildIsecFrame({ destination, source, command: ISEC_COMMANDS.ACK });
 }
 
 export function parseIsecFrame(buffer) {
