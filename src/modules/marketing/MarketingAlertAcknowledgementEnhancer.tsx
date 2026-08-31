@@ -151,8 +151,11 @@ export function MarketingAlertAcknowledgementEnhancer() {
     void refreshAcknowledgements();
 
     const root = document.getElementById("root");
-    const observer = root ? new MutationObserver(enhanceCards) : null;
-    observer?.observe(root, { childList: true, subtree: true });
+    let observer: MutationObserver | null = null;
+    if (root) {
+      observer = new MutationObserver(enhanceCards);
+      observer.observe(root, { childList: true, subtree: true });
+    }
 
     const intervalId = window.setInterval(() => { void refreshAcknowledgements(); }, REFRESH_MS);
     document.addEventListener("click", onClick);
