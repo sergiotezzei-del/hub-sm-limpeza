@@ -360,6 +360,13 @@ export async function adminRestoreMarketingRequest(sessionToken: string, request
   });
 }
 
+export async function rescheduleMarketingRequest(sessionToken: string, requestId: string) {
+  await rpc<unknown>("marketing_v2_reschedule_request", {
+    p_session_token: sessionToken,
+    p_request_id: requestId,
+  });
+}
+
 export async function requestMarketingQueueOverride(sessionToken: string, requestId: string, reason: string) {
   return rpc<string>("marketing_v2_request_queue_override", {
     p_session_token: sessionToken,
@@ -445,6 +452,9 @@ export function getMarketingErrorMessage(error: unknown) {
   if (normalized.includes("MARKETING_CONTENT_REQUIRED")) return "Selecione pelo menos um tipo de conteúdo.";
   if (normalized.includes("MARKETING_URGENCY_REASON_REQUIRED")) return "Explique o motivo do pedido de urgência.";
   if (normalized.includes("MARKETING_ADMIN_REQUIRED")) return "Somente o administrador do Marketing pode realizar esta ação.";
+  if (normalized.includes("MARKETING_RESCHEDULE_DENIED")) return "Somente Maria e Arthur podem reagendar pedidos do Marketing.";
+  if (normalized.includes("MARKETING_RESCHEDULE_CAPTURE_ONLY")) return "Somente pedidos com captação podem ser reagendados.";
+  if (normalized.includes("MARKETING_RESCHEDULE_NOT_SCHEDULED")) return "Este pedido não está mais agendado. Atualize o Marketing e confira a fila.";
   if (normalized.includes("MARKETING_TEAM_REQUIRED")) return "Escolha a equipe deste gerente.";
   if (normalized.includes("MARKETING_USER_NOT_FOUND")) return "O usuário do HUB não foi encontrado ou está inativo.";
   if (normalized.includes("MARKETING_REQUEST_NOT_FOUND")) return "Este pedido não foi encontrado.";
