@@ -7,7 +7,9 @@
     "dev": "tsc && vite build --configLoader native && vite preview --host 127.0.0.1 --configLoader native",
     "dev:vite": "vite --host 127.0.0.1 --configLoader native",
     "build": "tsc && vite build --configLoader native",
-    "preview": "vite preview --host 127.0.0.1 --configLoader native"
+    "preview": "vite preview --host 127.0.0.1 --configLoader native",
+    "test:intelbras": "node --test tools/intelbras-bridge/*.test.mjs",
+    "probe:intelbras": "node tools/intelbras-bridge/probe.mjs"
   },
   "dependencies": {
     "@dnd-kit/accessibility": "3.1.1",
