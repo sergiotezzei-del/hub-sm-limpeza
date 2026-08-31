@@ -1,13 +1,30 @@
+.marketing-alert-dismissed {
+  display: none !important;
+}
+
 .marketing-day-alert[data-marketing-request-id] .marketing-alert-actions {
   display: flex;
-  gap: 8px;
+  align-items: center;
+  gap: 7px;
   width: 100%;
   margin-top: auto;
 }
 
+.hub-alert-card .hub-alert-done-button,
+.hub-alert-card .hub-alert-email-button {
+  width: 112px !important;
+  min-width: 112px;
+  min-height: 34px;
+  margin-top: auto;
+  padding: 6px 9px !important;
+  border-radius: 9px;
+  font-size: .68rem;
+  line-height: 1.05;
+  letter-spacing: .035em;
+}
+
 .marketing-day-alert[data-marketing-request-id] .marketing-alert-actions .hub-alert-done-button {
-  flex: 1 1 0;
-  width: auto;
+  flex: 0 0 112px;
   margin-top: 0;
 }
 
@@ -24,4 +41,15 @@
 .marketing-day-alert[data-marketing-request-id] .marketing-alert-ack-button:disabled {
   cursor: wait;
   opacity: .65;
+}
+
+@media (max-width: 420px) {
+  .hub-alert-card .hub-alert-done-button,
+  .hub-alert-card .hub-alert-email-button,
+  .marketing-day-alert[data-marketing-request-id] .marketing-alert-actions .hub-alert-done-button {
+    width: 104px !important;
+    min-width: 104px;
+    flex-basis: 104px;
+    font-size: .64rem;
+  }
 }
