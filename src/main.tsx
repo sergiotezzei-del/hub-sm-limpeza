@@ -24,6 +24,7 @@ import { isMarketingNotificationReceiver, readPendingMarketingPushSetup } from "
 import { HubPublicPushReceiverPage } from "./modules/public-push/HubPublicPushReceiverPage";
 import { PublicPushBroadcastEnhancer } from "./modules/public-push/PublicPushBroadcastEnhancer";
 import { readPendingHubPublicPushSetup } from "./modules/public-push/hubPublicPushClient";
+import { RadioTestPage } from "./modules/radio/RadioTestPage";
 import { HubAuthSessionGuard } from "./modules/security/HubAuthSessionGuard";
 import { PublicServiceRequestPage } from "./modules/service-requests/PublicServiceRequestPage";
 import { isPwaStandalone } from "./pwaInstall";
@@ -38,6 +39,7 @@ const isPublicServiceRequestPage = normalizedPath === "/chamados";
 const isPublicMarketingRequestPage = normalizedPath === "/marketing/pedido";
 const isPublicAuditorioPage = normalizedPath === "/auditorio" || normalizedPath === "/auditorio/consulta";
 const isMarketingNotificationPage = normalizedPath === "/marketing/notificacoes";
+const isRadioTestPage = normalizedPath === "/radio";
 const queryRequestsInternalHub = new URLSearchParams(window.location.search).get("hub") === "interno";
 
 if (queryRequestsInternalHub) {
@@ -72,7 +74,12 @@ const shouldOpenMarketingNotificationReceiver = isMarketingNotificationPage
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    {isPublicAuditorioPage ? (
+    {isRadioTestPage ? (
+      <>
+        <RadioTestPage />
+        <HubAuthSessionGuard />
+      </>
+    ) : isPublicAuditorioPage ? (
       <>
         <PublicAuditorioPage />
         <AuditorioPublicPushEnhancer />
