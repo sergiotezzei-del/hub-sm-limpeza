@@ -35,7 +35,8 @@ export function MarketingAlertAcknowledgementEnhancer() {
         if (!requestId) return;
 
         const kind = getAlertKind(card);
-        if (isAcknowledged(requestId, kind)) {
+        const key = alertKey(requestId, kind);
+        if (isAcknowledged(requestId, kind) || pending.has(key)) {
           card.hidden = true;
           return;
         }
@@ -44,15 +45,20 @@ export function MarketingAlertAcknowledgementEnhancer() {
         if (card.dataset.marketingAlertEnhanced === "true") return;
 
         const openButton = card.querySelector<HTMLButtonElement>(".marketing-alert-open");
-        if (!openButton) return;
+        if (!openButton || !openButton.parentElement) return;
+
+        const actions = document.createElement("div");
+        actions.className = "marketing-alert-actions";
 
         const doneButton = document.createElement("button");
         doneButton.type = "button";
         doneButton.className = "hub-alert-done-button marketing-alert-ack-button";
         doneButton.textContent = "FEITO";
         doneButton.setAttribute("aria-label", "Marcar alerta do Marketing como visto");
-        openButton.insertAdjacentElement("afterend", doneButton);
+
         card.dataset.marketingAlertEnhanced = "true";
+        openButton.parentElement.insertBefore(actions, openButton);
+        actions.append(openButton, doneButton);
       });
     };
 
@@ -80,7 +86,7 @@ export function MarketingAlertAcknowledgementEnhancer() {
         rows.forEach((row) => acknowledged.add(alertKey(row.request_id, row.alert_kind)));
         enhanceCards();
       } catch {
-        // Se a leitura falhar, os cards permanecem visíveis para não esconder alertas por engano.
+        // Se a leitura falhar, nenhum alerta é escondido por engano.
       } finally {
         refreshing = false;
       }
@@ -94,9 +100,15 @@ export function MarketingAlertAcknowledgementEnhancer() {
     ) => {
       const sessionToken = readMarketingSessionToken();
       const key = alertKey(requestId, kind);
-      if (!sessionToken || pending.has(key) || isAcknowledged(requestId, kind)) return;
+
+      if (!sessionToken) {
+        if (button) button.title = "Sessão do Marketing indisponível. Entre novamente no HUB.";
+        return;
+      }
+      if (pending.has(key) || isAcknowledged(requestId, kind)) return;
 
       pending.add(key);
+      card.hidden = true;
       if (button) {
         button.disabled = true;
         button.textContent = "...";
@@ -107,8 +119,8 @@ export function MarketingAlertAcknowledgementEnhancer() {
         await acknowledgeMarketingRequestAlert(sessionToken, requestId, kind);
         if (cancelled) return;
         acknowledged.add(key);
-        card.hidden = true;
       } catch {
+        if (!cancelled) card.hidden = false;
         if (button && document.contains(button)) {
           button.disabled = false;
           button.textContent = "FEITO";
@@ -138,7 +150,7 @@ export function MarketingAlertAcknowledgementEnhancer() {
         return;
       }
 
-      // VER PEDIDO continua navegando normalmente; o reconhecimento é gravado em paralelo.
+      // VER PEDIDO continua abrindo normalmente e baixa o alerta em paralelo.
       void acknowledgeCard(card, requestId, kind);
     };
 
@@ -169,10 +181,18 @@ export function MarketingAlertAcknowledgementEnhancer() {
       document.removeEventListener("click", onClick);
       window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onVisibilityChange);
+
       document.querySelectorAll<HTMLElement>(CARD_SELECTOR).forEach((card) => {
         card.hidden = false;
         delete card.dataset.marketingAlertEnhanced;
-        card.querySelector(".marketing-alert-ack-button")?.remove();
+        const actions = card.querySelector<HTMLElement>(".marketing-alert-actions");
+        const openButton = actions?.querySelector<HTMLButtonElement>(".marketing-alert-open");
+        if (actions && openButton) {
+          actions.insertAdjacentElement("beforebegin", openButton);
+          actions.remove();
+        } else {
+          card.querySelector(".marketing-alert-ack-button")?.remove();
+        }
       });
     };
   }, []);
@@ -182,7 +202,7 @@ export function MarketingAlertAcknowledgementEnhancer() {
 
 function readMarketingSessionToken() {
   try {
-    const raw = window.localStorage.getItem(SESSION_KEY);
+    const raw = window.sessionStorage.getItem(SESSION_KEY);
     if (!raw) return "";
     const session = JSON.parse(raw) as { marketingSessionToken?: string | null } | null;
     return session?.marketingSessionToken || "";
