@@ -9,6 +9,8 @@
     { "source": "/auditorio", "destination": "/" },
     { "source": "/auditorio/", "destination": "/" },
     { "source": "/auditorio/consulta", "destination": "/" },
-    { "source": "/auditorio/consulta/", "destination": "/" }
+    { "source": "/auditorio/consulta/", "destination": "/" },
+    { "source": "/radio", "destination": "/" },
+    { "source": "/radio/", "destination": "/" }
   ]
 }
