@@ -1,4 +1,4 @@
-export type IntelbrasIntegrationState = "waiting_sdk" | "disabled" | "ready" | "error";
+export type IntelbrasIntegrationState = "waiting_sdk" | "bridge_setup" | "read_only" | "disabled" | "ready" | "error";
 export type IntelbrasPartitionState = "armed" | "disarmed" | "triggered" | "unknown";
 export type IntelbrasZoneState = "closed" | "open" | "bypassed" | "triggered" | "unknown";
 export type IntelbrasCommandStatus = "blocked" | "queued" | "success" | "failed";
@@ -65,6 +65,9 @@ export type IntelbrasIntegrationConfig = {
   panelModel: "AMT 8000 LITE";
   firmware?: string;
   localIp?: string;
+  localPort?: number;
+  sdkReceived?: boolean;
+  readOnlyBridgeReady?: boolean;
 };
 
 export type IntelbrasAlarmProvider = {
