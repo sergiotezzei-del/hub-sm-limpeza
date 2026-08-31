@@ -71,6 +71,7 @@ const PatrimonyScreen = lazy(() => import("./modules/patrimony/PatrimonyScreen")
 const TaskBoardScreen = lazy(() => import("./modules/tasks/TaskBoardScreen").then((module) => ({ default: module.TaskBoardScreen })));
 const ServiceRequestsScreen = lazy(() => import("./modules/service-requests/ServiceRequestsScreen").then((module) => ({ default: module.ServiceRequestsScreen })));
 const AuditorioScreen = lazy(() => import("./modules/auditorio/AuditorioFeature").then((module) => ({ default: module.AuditorioFeature })));
+const IntelbrasAlarmScreen = lazy(() => import("./modules/security/intelbras/AlarmScreen").then((module) => ({ default: module.AlarmScreen })));
 
 type View =
   | "login"
@@ -105,6 +106,7 @@ type View =
   | "patrimony-menu"
   | "reports-menu"
   | "security-menu"
+  | "security-alarm"
   | "security-guards"
   | "security-guards-payment"
   | "security-monitoring"
@@ -1418,6 +1420,17 @@ function App() {
     setView("security-menu");
   }
 
+  function openSecurityAlarm() {
+    if (currentUser !== "tezzei" || !hasCurrentPermission("painel-admin")) {
+      setNotice("Sem permissão para acessar o Alarme Intelbras.");
+      return;
+    }
+
+    setNotice("");
+    setSelectedGuardName(null);
+    setView("security-alarm");
+  }
+
   function openCopaCafeMenu() {
     if (!hasAnyCurrentPermission(["cafe", "agua"])) {
       setNotice("Sem permissão para acessar Copa & Café.");
@@ -2203,7 +2216,17 @@ function App() {
         )
       )}
 
-      {view === "security-menu" && <SecurityMenuScreen permissions={getManagedUserPermissions(currentUser, managedUsers)} isAdmin={currentUser === "tezzei"} onBack={() => setView(getCurrentHomeView())} onLogout={goToLogin} onOpenGuards={openSecurityGuards} onOpenMonitoring={openSecurityMonitoring} onOpenParking={openSecurityParking} />}
+      {view === "security-menu" && <SecurityMenuScreen permissions={getManagedUserPermissions(currentUser, managedUsers)} isAdmin={currentUser === "tezzei"} onBack={() => setView(getCurrentHomeView())} onLogout={goToLogin} onOpenAlarm={openSecurityAlarm} onOpenGuards={openSecurityGuards} onOpenMonitoring={openSecurityMonitoring} onOpenParking={openSecurityParking} />}
+
+      {view === "security-alarm" && (
+        currentUser === "tezzei" && hasCurrentPermission("painel-admin") ? (
+          <Suspense fallback={<section className="loading-state">Carregando Alarme Intelbras...</section>}>
+            <IntelbrasAlarmScreen actorUserId="tezzei" actorName={currentManagedUser?.name ?? "Admin Tezzei"} onBack={openSecurityMenu} onLogout={goToLogin} />
+          </Suspense>
+        ) : (
+          <AccessDeniedScreen onBack={() => setView(getCurrentHomeView())} onLogout={goToLogin} />
+        )
+      )}
 
       {view === "security-guards" && (
         hasCurrentPermission("guardas") ? (
@@ -3352,12 +3375,13 @@ function AdminScreen({ newOrdersCount, onlineEnabled, permissions, onLogout, onO
   );
 }
 
-function SecurityMenuScreen({ permissions, isAdmin, onBack, onLogout, onOpenGuards, onOpenMonitoring, onOpenParking }: { permissions: UserPermission[]; isAdmin: boolean; onBack: () => void; onLogout: () => void; onOpenGuards: () => void; onOpenMonitoring: () => void; onOpenParking: () => void }) {
+function SecurityMenuScreen({ permissions, isAdmin, onBack, onLogout, onOpenAlarm, onOpenGuards, onOpenMonitoring, onOpenParking }: { permissions: UserPermission[]; isAdmin: boolean; onBack: () => void; onLogout: () => void; onOpenAlarm: () => void; onOpenGuards: () => void; onOpenMonitoring: () => void; onOpenParking: () => void }) {
   const canGuards = permissions.includes("guardas");
   const canMonitoring = isAdmin && permissions.includes("painel-admin");
   const canParking = permissions.includes("estacionamento-consulta") || permissions.includes("estacionamento-cadastro") || permissions.includes("painel-admin");
   const canRegisterParking = isAdmin || permissions.includes("painel-admin") || permissions.includes("estacionamento-cadastro");
   const cards: SectorModuleCard[] = [
+    { key: "alarm", title: "Alarme Intelbras", detail: "Central AMT 8000 LITE, partições, zonas e comandos", enabled: isAdmin && permissions.includes("painel-admin"), onClick: onOpenAlarm, className: "security-card", icon: "security" },
     { key: "guards", title: "Guardas", detail: isAdmin ? "Controle dos guardas" : "Serviço, rondas e QR Code", enabled: canGuards, onClick: onOpenGuards, className: "security-card", icon: "guards" },
     { key: "monitoring", title: "Monitoramento", detail: "Entradas, saídas e rondas", enabled: canMonitoring, onClick: onOpenMonitoring, className: "security-card", icon: "reports" },
     { key: "parking", title: "Estacionamento", detail: canRegisterParking ? "Consulta e cadastro de veículos" : "Consulta rápida de veículos", enabled: canParking, onClick: onOpenParking, className: "security-card", icon: "parking" },
