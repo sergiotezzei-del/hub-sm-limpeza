@@ -1,0 +1,102 @@
+name: One-time Intelbras alarm UI integration
+
+on:
+  push:
+    branches:
+      - feat/intelbras-amt8000-integration
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  integrate-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/intelbras-amt8000-integration
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Patch App navigation safely
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/App.tsx')
+          text = path.read_text(encoding='utf-8')
+
+          if '"security-alarm"' in text:
+              print('Alarm navigation already integrated; nothing to patch.')
+              raise SystemExit(0)
+
+          replacements = []
+
+          replacements.append((
+              'const AuditorioScreen = lazy(() => import("./modules/auditorio/AuditorioFeature").then((module) => ({ default: module.AuditorioFeature })));',
+              'const AuditorioScreen = lazy(() => import("./modules/auditorio/AuditorioFeature").then((module) => ({ default: module.AuditorioFeature })));\nconst IntelbrasAlarmScreen = lazy(() => import("./modules/security/intelbras/AlarmScreen").then((module) => ({ default: module.AlarmScreen })));'
+          ))
+
+          replacements.append((
+              '  | "security-menu"\n  | "security-guards"',
+              '  | "security-menu"\n  | "security-alarm"\n  | "security-guards"'
+          ))
+
+          security_menu_fn = '''  function openSecurityMenu() {\n    if (!hasAnyCurrentPermission(["seguranca", "guardas", "estacionamento-consulta", "estacionamento-cadastro"])) {\n      setNotice("Sem permissão para acessar Segurança.");\n      return;\n    }\n\n    setNotice("");\n    setSelectedGuardName(null);\n    setView("security-menu");\n  }'''
+          security_menu_with_alarm = security_menu_fn + '''\n\n  function openSecurityAlarm() {\n    if (currentUser !== "tezzei" || !hasCurrentPermission("painel-admin")) {\n      setNotice("Sem permissão para acessar o Alarme Intelbras.");\n      return;\n    }\n\n    setNotice("");\n    setSelectedGuardName(null);\n    setView("security-alarm");\n  }'''
+          replacements.append((security_menu_fn, security_menu_with_alarm))
+
+          old_menu_render = '{view === "security-menu" && <SecurityMenuScreen permissions={getManagedUserPermissions(currentUser, managedUsers)} isAdmin={currentUser === "tezzei"} onBack={() => setView(getCurrentHomeView())} onLogout={goToLogin} onOpenGuards={openSecurityGuards} onOpenMonitoring={openSecurityMonitoring} onOpenParking={openSecurityParking} />}'
+          new_menu_render = '{view === "security-menu" && <SecurityMenuScreen permissions={getManagedUserPermissions(currentUser, managedUsers)} isAdmin={currentUser === "tezzei"} onBack={() => setView(getCurrentHomeView())} onLogout={goToLogin} onOpenAlarm={openSecurityAlarm} onOpenGuards={openSecurityGuards} onOpenMonitoring={openSecurityMonitoring} onOpenParking={openSecurityParking} />}\n\n      {view === "security-alarm" && (\n        currentUser === "tezzei" && hasCurrentPermission("painel-admin") ? (\n          <Suspense fallback={<section className="loading-state">Carregando Alarme Intelbras...</section>}>\n            <IntelbrasAlarmScreen actorUserId="tezzei" actorName={currentManagedUser?.name ?? "Admin Tezzei"} onBack={openSecurityMenu} onLogout={goToLogin} />\n          </Suspense>\n        ) : (\n          <AccessDeniedScreen onBack={() => setView(getCurrentHomeView())} onLogout={goToLogin} />\n        )\n      )}'
+          replacements.append((old_menu_render, new_menu_render))
+
+          old_security_component = 'function SecurityMenuScreen({ permissions, isAdmin, onBack, onLogout, onOpenGuards, onOpenMonitoring, onOpenParking }: { permissions: UserPermission[]; isAdmin: boolean; onBack: () => void; onLogout: () => void; onOpenGuards: () => void; onOpenMonitoring: () => void; onOpenParking: () => void }) {'
+          new_security_component = 'function SecurityMenuScreen({ permissions, isAdmin, onBack, onLogout, onOpenAlarm, onOpenGuards, onOpenMonitoring, onOpenParking }: { permissions: UserPermission[]; isAdmin: boolean; onBack: () => void; onLogout: () => void; onOpenAlarm: () => void; onOpenGuards: () => void; onOpenMonitoring: () => void; onOpenParking: () => void }) {'
+          replacements.append((old_security_component, new_security_component))
+
+          old_cards = '''  const cards: SectorModuleCard[] = [\n    { key: "guards", title: "Guardas", detail: isAdmin ? "Controle dos guardas" : "Serviço, rondas e QR Code", enabled: canGuards, onClick: onOpenGuards, className: "security-card", icon: "guards" },\n    { key: "monitoring", title: "Monitoramento", detail: "Entradas, saídas e rondas", enabled: canMonitoring, onClick: onOpenMonitoring, className: "security-card", icon: "reports" },\n    { key: "parking", title: "Estacionamento", detail: canRegisterParking ? "Consulta e cadastro de veículos" : "Consulta rápida de veículos", enabled: canParking, onClick: onOpenParking, className: "security-card", icon: "parking" },\n  ];'''
+          new_cards = '''  const cards: SectorModuleCard[] = [\n    { key: "alarm", title: "Alarme Intelbras", detail: "Central AMT 8000 LITE, partições, zonas e comandos", enabled: isAdmin && permissions.includes("painel-admin"), onClick: onOpenAlarm, className: "security-card", icon: "security" },\n    { key: "guards", title: "Guardas", detail: isAdmin ? "Controle dos guardas" : "Serviço, rondas e QR Code", enabled: canGuards, onClick: onOpenGuards, className: "security-card", icon: "guards" },\n    { key: "monitoring", title: "Monitoramento", detail: "Entradas, saídas e rondas", enabled: canMonitoring, onClick: onOpenMonitoring, className: "security-card", icon: "reports" },\n    { key: "parking", title: "Estacionamento", detail: canRegisterParking ? "Consulta e cadastro de veículos" : "Consulta rápida de veículos", enabled: canParking, onClick: onOpenParking, className: "security-card", icon: "parking" },\n  ];'''
+          replacements.append((old_cards, new_cards))
+
+          for old, new in replacements:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'Expected exactly one match, got {count}: {old[:100]!r}')
+              text = text.replace(old, new, 1)
+
+          path.write_text(text, encoding='utf-8')
+          print('App navigation integrated successfully.')
+          PY
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: TypeScript
+        run: pnpm exec tsc --noEmit
+
+      - name: Build
+        run: pnpm run build
+
+      - name: Diff check
+        run: git diff --check
+
+      - name: Commit generated App integration
+        run: |
+          if git diff --quiet; then
+            echo "No generated changes to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/App.tsx
+          git commit -m "feat(alarm): connect Intelbras screen to Security menu [skip ci]"
+          git push origin HEAD:feat/intelbras-amt8000-integration
