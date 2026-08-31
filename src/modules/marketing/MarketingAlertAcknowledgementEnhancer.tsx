@@ -7,27 +7,65 @@ import {
 import "./marketingAlertAcknowledgement.css";
 
 const SESSION_KEY = "hub-sm-active-session";
+const ACK_CACHE_PREFIX = "hub-sm-marketing-alert-ack";
 const REFRESH_MS = 20000;
 const CARD_SELECTOR = ".marketing-day-alert[data-marketing-request-id]";
+const DISMISSED_CLASS = "marketing-alert-dismissed";
 
 export function MarketingAlertAcknowledgementEnhancer() {
   useEffect(() => {
     let cancelled = false;
     let currentSessionToken = "";
+    let currentUserId = "";
     let refreshing = false;
     const acknowledged = new Set<string>();
     const pending = new Set<string>();
 
     const alertKey = (requestId: string, kind: MarketingAlertKind) => `${kind}:${requestId}`;
-
-    const isAcknowledged = (requestId: string, kind: MarketingAlertKind) => {
-      if (acknowledged.has(alertKey(requestId, kind))) return true;
-      return kind === "request" && acknowledged.has(alertKey(requestId, "urgency"));
-    };
+    const isAcknowledged = (requestId: string, kind: MarketingAlertKind) => acknowledged.has(alertKey(requestId, kind));
 
     const getAlertKind = (card: HTMLElement): MarketingAlertKind => (
       card.classList.contains("is-urgent") ? "urgency" : "request"
     );
+
+    const hideCard = (card: HTMLElement) => {
+      card.classList.add(DISMISSED_CLASS);
+      card.setAttribute("aria-hidden", "true");
+      card.style.setProperty("display", "none", "important");
+    };
+
+    const showCard = (card: HTMLElement) => {
+      card.classList.remove(DISMISSED_CLASS);
+      card.removeAttribute("aria-hidden");
+      card.style.removeProperty("display");
+    };
+
+    const loadCachedAcknowledgements = (userId: string) => {
+      if (!userId) return;
+      try {
+        const raw = window.localStorage.getItem(`${ACK_CACHE_PREFIX}:${userId}`);
+        if (!raw) return;
+        const keys = JSON.parse(raw) as unknown;
+        if (!Array.isArray(keys)) return;
+        keys.forEach((key) => {
+          if (typeof key === "string" && /^(request|urgency):/.test(key)) acknowledged.add(key);
+        });
+      } catch {
+        // O cache local é apenas uma segurança visual; a fonte oficial continua sendo o Supabase.
+      }
+    };
+
+    const saveCachedAcknowledgements = () => {
+      if (!currentUserId) return;
+      try {
+        window.localStorage.setItem(
+          `${ACK_CACHE_PREFIX}:${currentUserId}`,
+          JSON.stringify(Array.from(acknowledged)),
+        );
+      } catch {
+        // Falha de cache local não impede a persistência no Supabase.
+      }
+    };
 
     const enhanceCards = () => {
       document.querySelectorAll<HTMLElement>(CARD_SELECTOR).forEach((card) => {
@@ -37,11 +75,11 @@ export function MarketingAlertAcknowledgementEnhancer() {
         const kind = getAlertKind(card);
         const key = alertKey(requestId, kind);
         if (isAcknowledged(requestId, kind) || pending.has(key)) {
-          card.hidden = true;
+          hideCard(card);
           return;
         }
 
-        card.hidden = false;
+        showCard(card);
         if (card.dataset.marketingAlertEnhanced === "true") return;
 
         const openButton = card.querySelector<HTMLButtonElement>(".marketing-alert-open");
@@ -64,29 +102,37 @@ export function MarketingAlertAcknowledgementEnhancer() {
 
     const refreshAcknowledgements = async () => {
       if (refreshing) return;
-      const sessionToken = readMarketingSessionToken();
+      const hubSession = readHubSession();
+      const sessionToken = hubSession.marketingSessionToken;
+      const userId = hubSession.currentUser;
 
       if (!sessionToken) {
         currentSessionToken = "";
+        currentUserId = userId;
         acknowledged.clear();
+        loadCachedAcknowledgements(userId);
         enhanceCards();
         return;
       }
 
-      if (sessionToken !== currentSessionToken) {
+      if (sessionToken !== currentSessionToken || userId !== currentUserId) {
         currentSessionToken = sessionToken;
+        currentUserId = userId;
         acknowledged.clear();
+        loadCachedAcknowledgements(userId);
+        enhanceCards();
       }
 
       refreshing = true;
       try {
         const rows = await loadAcknowledgedMarketingAlerts(sessionToken);
-        if (cancelled || sessionToken !== readMarketingSessionToken()) return;
-        acknowledged.clear();
+        if (cancelled || sessionToken !== readHubSession().marketingSessionToken) return;
         rows.forEach((row) => acknowledged.add(alertKey(row.request_id, row.alert_kind)));
+        saveCachedAcknowledgements();
         enhanceCards();
       } catch {
-        // Se a leitura falhar, nenhum alerta é escondido por engano.
+        // Mantém o cache local e não faz o alerta reaparecer por uma falha temporária de leitura.
+        enhanceCards();
       } finally {
         refreshing = false;
       }
@@ -98,37 +144,44 @@ export function MarketingAlertAcknowledgementEnhancer() {
       kind: MarketingAlertKind,
       button?: HTMLButtonElement,
     ) => {
-      const sessionToken = readMarketingSessionToken();
+      const hubSession = readHubSession();
+      const sessionToken = hubSession.marketingSessionToken;
       const key = alertKey(requestId, kind);
 
       if (!sessionToken) {
         if (button) button.title = "Sessão do Marketing indisponível. Entre novamente no HUB.";
         return;
       }
-      if (pending.has(key) || isAcknowledged(requestId, kind)) return;
-
-      pending.add(key);
-      card.hidden = true;
-      if (button) {
-        button.disabled = true;
-        button.textContent = "...";
-        button.removeAttribute("title");
+      if (pending.has(key) || isAcknowledged(requestId, kind)) {
+        hideCard(card);
+        return;
       }
+
+      currentUserId = hubSession.currentUser || currentUserId;
+      pending.add(key);
+      hideCard(card);
+      if (button) button.disabled = true;
 
       try {
         await acknowledgeMarketingRequestAlert(sessionToken, requestId, kind);
         if (cancelled) return;
         acknowledged.add(key);
+        saveCachedAcknowledgements();
+        enhanceCards();
       } catch {
-        if (!cancelled) card.hidden = false;
+        pending.delete(key);
+        if (!cancelled) {
+          showCard(card);
+          enhanceCards();
+        }
         if (button && document.contains(button)) {
           button.disabled = false;
-          button.textContent = "FEITO";
           button.title = "Não foi possível retirar o alerta. Tente novamente.";
         }
-      } finally {
-        pending.delete(key);
+        return;
       }
+
+      pending.delete(key);
     };
 
     const onClick = (event: MouseEvent) => {
@@ -150,7 +203,7 @@ export function MarketingAlertAcknowledgementEnhancer() {
         return;
       }
 
-      // VER PEDIDO continua abrindo normalmente e baixa o alerta em paralelo.
+      // VER PEDIDO navega normalmente; o alerta já some da Home enquanto a gravação ocorre.
       void acknowledgeCard(card, requestId, kind);
     };
 
@@ -159,6 +212,10 @@ export function MarketingAlertAcknowledgementEnhancer() {
       if (document.visibilityState === "visible") void refreshAcknowledgements();
     };
 
+    const initialSession = readHubSession();
+    currentSessionToken = initialSession.marketingSessionToken;
+    currentUserId = initialSession.currentUser;
+    loadCachedAcknowledgements(currentUserId);
     enhanceCards();
     void refreshAcknowledgements();
 
@@ -183,7 +240,7 @@ export function MarketingAlertAcknowledgementEnhancer() {
       document.removeEventListener("visibilitychange", onVisibilityChange);
 
       document.querySelectorAll<HTMLElement>(CARD_SELECTOR).forEach((card) => {
-        card.hidden = false;
+        showCard(card);
         delete card.dataset.marketingAlertEnhanced;
         const actions = card.querySelector<HTMLElement>(".marketing-alert-actions");
         const openButton = actions?.querySelector<HTMLButtonElement>(".marketing-alert-open");
@@ -200,13 +257,19 @@ export function MarketingAlertAcknowledgementEnhancer() {
   return null;
 }
 
-function readMarketingSessionToken() {
+function readHubSession() {
   try {
     const raw = window.sessionStorage.getItem(SESSION_KEY);
-    if (!raw) return "";
-    const session = JSON.parse(raw) as { marketingSessionToken?: string | null } | null;
-    return session?.marketingSessionToken || "";
+    if (!raw) return { marketingSessionToken: "", currentUser: "" };
+    const session = JSON.parse(raw) as {
+      marketingSessionToken?: string | null;
+      currentUser?: string | null;
+    } | null;
+    return {
+      marketingSessionToken: session?.marketingSessionToken || "",
+      currentUser: session?.currentUser || "",
+    };
   } catch {
-    return "";
+    return { marketingSessionToken: "", currentUser: "" };
   }
 }
