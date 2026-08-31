@@ -2,9 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   ISEC_COMMANDS,
+  ISEC_ENDPOINTS,
   IsecStreamParser,
+  buildAckFrame,
   buildAuthenticationFrame,
   buildIsecFrame,
+  buildKeepAliveFrame,
   checksumIsec,
   encodeRemotePassword,
   parseIsecFrame,
@@ -16,11 +19,26 @@ test("checksum matches known ISEC vectors", () => {
   assert.equal(checksumIsec([0x08, 0xe9, 0x21, 0x31, 0x32, 0x33, 0x34, 0x5b, 0x21]), 0x41);
 });
 
+test("official programming software endpoint is 8F FF", () => {
+  assert.deepEqual([...ISEC_ENDPOINTS.PROGRAMMING_SOFTWARE], [0x8f, 0xff]);
+  assert.deepEqual([...ISEC_ENDPOINTS.PANEL], [0x00, 0x00]);
+});
+
 test("build and parse a keep-alive style frame", () => {
-  const frame = buildIsecFrame({ command: ISEC_COMMANDS.KEEP_ALIVE });
+  const frame = buildKeepAliveFrame({ destination: [...ISEC_ENDPOINTS.PANEL], source: [...ISEC_ENDPOINTS.PROGRAMMING_SOFTWARE] });
   const parsed = parseIsecFrame(frame);
   assert.equal(parsed.command, ISEC_COMMANDS.KEEP_ALIVE);
+  assert.deepEqual(parsed.destination, [0x00, 0x00]);
+  assert.deepEqual(parsed.source, [0x8f, 0xff]);
   assert.equal(parsed.numBytes, 2);
+  assert.equal(parsed.data.length, 0);
+});
+
+test("ACK frame matches official client-to-panel direction", () => {
+  const parsed = parseIsecFrame(buildAckFrame({ destination: [...ISEC_ENDPOINTS.PANEL], source: [...ISEC_ENDPOINTS.PROGRAMMING_SOFTWARE] }));
+  assert.equal(parsed.command, ISEC_COMMANDS.ACK);
+  assert.deepEqual(parsed.destination, [0x00, 0x00]);
+  assert.deepEqual(parsed.source, [0x8f, 0xff]);
   assert.equal(parsed.data.length, 0);
 });
 
@@ -30,8 +48,14 @@ test("remote password stays out of logs and uses SDK zero encoding", () => {
 });
 
 test("authentication frame contains F0F0 and 9 data bytes", () => {
-  const parsed = parseIsecFrame(buildAuthenticationFrame({ password: "123456" }));
+  const parsed = parseIsecFrame(buildAuthenticationFrame({
+    password: "123456",
+    destination: [...ISEC_ENDPOINTS.PANEL],
+    source: [...ISEC_ENDPOINTS.PROGRAMMING_SOFTWARE],
+  }));
   assert.equal(parsed.command, ISEC_COMMANDS.AUTHENTICATE);
+  assert.deepEqual(parsed.destination, [0x00, 0x00]);
+  assert.deepEqual(parsed.source, [0x8f, 0xff]);
   assert.equal(parsed.numBytes, 11);
   assert.deepEqual([...parsed.data], [0x01, 1, 2, 3, 4, 5, 6, 0x01, 0x00]);
 });
