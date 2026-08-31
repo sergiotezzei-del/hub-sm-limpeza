@@ -35,7 +35,8 @@ if (!Number.isInteger(port) || port < 1 || port > 65535) {
 }
 
 console.log(`[AMT8000] Teste SOMENTE LEITURA: ${host}:${port}`);
-console.log("[AMT8000] Identificação ISECNet do software: 8F FF (conforme SDK oficial). ");
+console.log("[AMT8000] Identificação ISECNet do software: 8F FF (conforme SDK oficial).");
+console.log("[AMT8000] Diagnóstico passivo: serão exibidos apenas código, origem/destino e tamanho dos quadros recebidos; o conteúdo não será mostrado.");
 console.log("[AMT8000] O agente não possui caminho de código para arme, desarme ou bypass neste teste.");
 
 const parser = new IsecStreamParser();
@@ -43,6 +44,14 @@ let authenticated = false;
 let statusReceived = false;
 let keepAliveTimer = null;
 let finished = false;
+
+function formatId(id) {
+  return id.map((value) => value.toString(16).padStart(2, "0").toUpperCase()).join(" ");
+}
+
+function formatCommand(command) {
+  return command.toString(16).padStart(4, "0").toUpperCase();
+}
 
 function finish(code, message) {
   if (finished) return;
@@ -60,7 +69,7 @@ socket.setKeepAlive(true, 30000);
 
 const deadline = setTimeout(() => {
   if (authenticated && !statusReceived) {
-    finish(4, "[AMT8000] Autenticação aceita, mas nenhum STATUS_COMPLETO_CENTRAL_ALARME (0B4A) chegou dentro do tempo do teste. Nenhum comando de alteração foi enviado.");
+    finish(4, "[AMT8000] Diagnóstico concluído: autenticação aceita, mas nenhum STATUS_COMPLETO_CENTRAL_ALARME (0B4A) chegou. Nenhum comando de alteração foi enviado.");
   } else {
     finish(3, "[AMT8000] Tempo esgotado sem autenticação válida.");
   }
@@ -75,6 +84,8 @@ socket.on("connect", () => {
 
 socket.on("data", (chunk) => {
   for (const frame of parser.push(chunk)) {
+    console.log(`[AMT8000] RX comando=${formatCommand(frame.command)} origem=${formatId(frame.source)} destino=${formatId(frame.destination)} dados=${frame.data.length} byte(s)`);
+
     if (frame.command === ISEC_COMMANDS.AUTHENTICATE) {
       const code = frame.data[0];
       const label = authenticationResultLabel(code);
@@ -85,11 +96,20 @@ socket.on("data", (chunk) => {
       }
       if (!authenticated) {
         authenticated = true;
+
+        // O SDK oficial prevê F0F7 como manutenção da sessão. Enviamos um imediatamente
+        // após autenticar e depois periodicamente. Isso não altera nenhuma configuração.
+        socket.write(buildKeepAliveFrame({ destination: panelId, source: clientId }));
+        console.log("[AMT8000] TX keep-alive F0F7 (sem alteração de estado).");
+
         keepAliveTimer = setInterval(() => {
-          if (!socket.destroyed) socket.write(buildKeepAliveFrame({ destination: panelId, source: clientId }));
+          if (!socket.destroyed) {
+            socket.write(buildKeepAliveFrame({ destination: panelId, source: clientId }));
+            console.log("[AMT8000] TX keep-alive F0F7 (sem alteração de estado).");
+          }
         }, keepAliveMs);
         keepAliveTimer.unref();
-        console.log("[AMT8000] Autenticado. Aguardando a central enviar o status 0B4A para 8F FF...");
+        console.log("[AMT8000] Autenticado. Escutando os quadros enviados pela central...");
       }
       continue;
     }
