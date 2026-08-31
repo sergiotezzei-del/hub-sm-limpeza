@@ -8,7 +8,7 @@ import type {
   IntelbrasPanelSnapshot,
 } from "./types";
 
-const waitingMessage = "Integração com a Intelbras aguardando SDK/API oficial. Nenhum comando foi enviado à central.";
+const waitingMessage = "SDK oficial Intelbras recebido. Agente local em modo somente leitura preparado; comandos de arme, desarme e bypass continuam bloqueados até a leitura real da central ser validada.";
 
 function buildWaitingSnapshot(): IntelbrasPanelSnapshot {
   return {
@@ -17,7 +17,7 @@ function buildWaitingSnapshot(): IntelbrasPanelSnapshot {
     online: null,
     batteryActive: null,
     sirenActive: null,
-    integrationState: "waiting_sdk",
+    integrationState: "bridge_setup",
     updatedAt: new Date().toISOString(),
     partitions: INTELBRAS_KNOWN_PARTITIONS.map((partition) => ({ ...partition, state: "unknown" })),
     zones: [],
