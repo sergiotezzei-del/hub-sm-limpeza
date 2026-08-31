@@ -12,6 +12,7 @@ import { PublicAuditorioPage } from "./modules/auditorio/PublicAuditorioPage";
 import { CleaningDeliveryFeature } from "./modules/cleaning/components/CleaningDeliveryFeature";
 import { NeiaDeliveryShortcutFeature } from "./modules/cleaning/components/NeiaDeliveryShortcutFeature";
 import { NeiaHistoryEnhancer } from "./modules/cleaning/components/NeiaHistoryEnhancer";
+import { MarketingAlertAcknowledgementEnhancer } from "./modules/marketing/MarketingAlertAcknowledgementEnhancer";
 import { MarketingSessionKeepalive } from "./modules/marketing/MarketingSessionKeepalive";
 import { AirConditioningMapFeature } from "./modules/patrimony/AirConditioningMapFeature";
 import { PatrimonyPeopleEquipmentFeature } from "./modules/patrimony/PatrimonyPeopleEquipmentFeature";
@@ -95,6 +96,7 @@ createRoot(document.getElementById("root")!).render(
         <App />
         <HubAuthSessionGuard />
         <MarketingSessionKeepalive />
+        <MarketingAlertAcknowledgementEnhancer />
         <LiveAlertDashboardEnhancer />
         <WindowsNotificationControl />
         <AlertToastHost />
