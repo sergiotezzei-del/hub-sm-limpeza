@@ -1,0 +1,610 @@
+name: One-time Marketing periods and special time
+
+on:
+  push:
+    branches:
+      - feat/marketing-periodos-horario-especial
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/marketing-periodos-horario-especial
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Replace fixed-period schedule picker
+        shell: bash
+        run: |
+          cat > src/modules/marketing/CaptureSchedulePicker.tsx <<'EOF'
+          import { useMemo, useState } from "react";
+          import {
+            addDaysToDateKey,
+            getDateKeyInTimeZone,
+            getTimeKeyInTimeZone,
+            isoWeekday,
+            MarketingCaptureSelection,
+            MarketingOccupiedCaptureSlot,
+            MarketingScheduleConfig,
+            minutesFromTime,
+            zonedLocalToIso,
+          } from "./marketingConfig";
+
+          type CaptureSchedulePickerProps = {
+            config: MarketingScheduleConfig;
+            occupiedSlots: MarketingOccupiedCaptureSlot[];
+            value?: MarketingCaptureSelection | null;
+            excludedRequestId?: string;
+            excludedCaptureGroupId?: string | null;
+            onConfirm: (value: MarketingCaptureSelection) => void;
+            onCancel?: () => void;
+          };
+
+          const DATE_WINDOW_DAYS = 28;
+          const TECHNICAL_SLOT_MINUTES = 60;
+          const DEFAULT_STANDARD_TIMES = ["08:00", "09:00", "10:00", "11:00", "14:00", "15:00", "16:00", "17:00"];
+
+          export function CaptureSchedulePicker(props: CaptureSchedulePickerProps) {
+            const initialDate = props.value?.startAt
+              ? getDateKeyInTimeZone(props.value.startAt, props.config.timezone)
+              : firstWorkingDate(props.config);
+            const initialTime = props.value?.startAt ? getTimeKeyInTimeZone(props.value.startAt, props.config.timezone) : "";
+            const [selectedDate, setSelectedDate] = useState(initialDate);
+            const [selectedTime, setSelectedTime] = useState(initialTime);
+
+            const dates = useMemo(() => buildWorkingDates(props.config), [props.config]);
+            const standardTimes = props.config.standardTimes?.length ? props.config.standardTimes : DEFAULT_STANDARD_TIMES;
+            const filteredOccupied = useMemo(
+              () => props.occupiedSlots.filter((slot) => {
+                if (props.excludedCaptureGroupId && slot.captureGroupId === props.excludedCaptureGroupId) return false;
+                return !props.excludedRequestId || slot.requestId !== props.excludedRequestId;
+              }),
+              [props.excludedCaptureGroupId, props.excludedRequestId, props.occupiedSlots],
+            );
+            const morningTimes = standardTimes.filter((time) => minutesFromTime(time) < 12 * 60);
+            const afternoonTimes = standardTimes.filter((time) => minutesFromTime(time) >= 14 * 60);
+            const selectedTimeIsAvailable = Boolean(
+              selectedTime && isTimeAvailable(selectedDate, selectedTime, props.config, filteredOccupied),
+            );
+
+            function chooseDate(dateKey: string) {
+              setSelectedDate(dateKey);
+              setSelectedTime("");
+            }
+
+            function confirm() {
+              if (!selectedTimeIsAvailable) return;
+              props.onConfirm({
+                startAt: zonedLocalToIso(selectedDate, selectedTime, props.config.timezone),
+                durationMinutes: TECHNICAL_SLOT_MINUTES,
+              });
+            }
+
+            return (
+              <section className="marketing-schedule-picker" aria-label="Escolher data e horário da captação">
+                <div className="marketing-picker-step">
+                  <strong>1. Escolha a data</strong>
+                  <div className="marketing-date-legend" aria-label="Legenda de disponibilidade">
+                    <span><i className="free" /> Livre</span>
+                    <span><i className="partial" /> Um período reservado</span>
+                    <span><i className="full" /> Dia reservado</span>
+                  </div>
+                  <div className="marketing-date-grid">
+                    {dates.map((dateKey) => {
+                      const availability = dayAvailability(dateKey, props.config, filteredOccupied, standardTimes);
+                      return (
+                        <button
+                          type="button"
+                          key={dateKey}
+                          className={`${availability} ${selectedDate === dateKey ? "selected" : ""}`}
+                          disabled={availability === "full"}
+                          onClick={() => chooseDate(dateKey)}
+                        >
+                          <small>{formatWeekday(dateKey)}</small>
+                          <strong>{formatDay(dateKey)}</strong>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <small>É permitido apenas 1 agendamento pela manhã e 1 à tarde em cada dia.</small>
+                </div>
+
+                <div className="marketing-picker-step">
+                  <strong>2. Escolha o horário</strong>
+                  <PeriodOptions
+                    label="MANHÃ"
+                    times={morningTimes}
+                    dateKey={selectedDate}
+                    selectedTime={selectedTime}
+                    config={props.config}
+                    occupied={filteredOccupied}
+                    onSelect={setSelectedTime}
+                  />
+                  <PeriodOptions
+                    label="TARDE"
+                    times={afternoonTimes}
+                    dateKey={selectedDate}
+                    selectedTime={selectedTime}
+                    config={props.config}
+                    occupied={filteredOccupied}
+                    onSelect={setSelectedTime}
+                  />
+                  <small>Horários padrão: 08:00, 09:00, 10:00, 11:00 · 14:00, 15:00, 16:00, 17:00. Almoço protegido entre 12:00 e 13:59.</small>
+                </div>
+
+                <footer>
+                  {props.onCancel && <button type="button" className="secondary" onClick={props.onCancel}>CANCELAR</button>}
+                  <button type="button" onClick={confirm} disabled={!selectedTimeIsAvailable}>OK</button>
+                </footer>
+              </section>
+            );
+          }
+
+          function PeriodOptions(props: {
+            label: string;
+            times: string[];
+            dateKey: string;
+            selectedTime: string;
+            config: MarketingScheduleConfig;
+            occupied: MarketingOccupiedCaptureSlot[];
+            onSelect: (time: string) => void;
+          }) {
+            const available = props.times.filter((time) => isTimeAvailable(props.dateKey, time, props.config, props.occupied));
+            return (
+              <div className="marketing-period-block">
+                <div className="marketing-period-title"><strong>{props.label}</strong>{available.length === 0 && <span>PERÍODO RESERVADO</span>}</div>
+                <div className="marketing-period-grid">
+                  {props.times.map((time) => {
+                    const enabled = available.includes(time);
+                    return (
+                      <button
+                        type="button"
+                        key={time}
+                        disabled={!enabled}
+                        className={`${enabled ? "available" : "unavailable"} ${props.selectedTime === time ? "selected" : ""}`}
+                        onClick={() => props.onSelect(time)}
+                      >
+                        <strong>{time}</strong>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          }
+
+          function buildWorkingDates(config: MarketingScheduleConfig) {
+            const today = getDateKeyInTimeZone(new Date(), config.timezone);
+            const dates: string[] = [];
+            for (let offset = 0; offset < DATE_WINDOW_DAYS; offset += 1) {
+              const dateKey = addDaysToDateKey(today, offset);
+              if (config.workingDays.includes(isoWeekday(dateKey))) dates.push(dateKey);
+            }
+            return dates;
+          }
+
+          function firstWorkingDate(config: MarketingScheduleConfig) {
+            return buildWorkingDates(config)[0] || getDateKeyInTimeZone(new Date(), config.timezone);
+          }
+
+          function dayAvailability(
+            dateKey: string,
+            config: MarketingScheduleConfig,
+            occupied: MarketingOccupiedCaptureSlot[],
+            standardTimes: string[],
+          ) {
+            const morningAvailable = standardTimes.some((time) => minutesFromTime(time) < 12 * 60 && isTimeAvailable(dateKey, time, config, occupied));
+            const afternoonAvailable = standardTimes.some((time) => minutesFromTime(time) >= 14 * 60 && isTimeAvailable(dateKey, time, config, occupied));
+            if (!morningAvailable && !afternoonAvailable) return "full";
+            if (morningAvailable && afternoonAvailable) return "free";
+            return "partial";
+          }
+
+          function isTimeAvailable(
+            dateKey: string,
+            time: string,
+            config: MarketingScheduleConfig,
+            occupied: MarketingOccupiedCaptureSlot[],
+          ) {
+            const period = periodForTime(time);
+            if (!period) return false;
+            const daySlots = occupiedForDate(dateKey, config, occupied);
+            if (daySlots.some((slot) => occupiedPeriod(slot.startAt, config) === period)) return false;
+
+            const startAt = new Date(zonedLocalToIso(dateKey, time, config.timezone)).getTime();
+            const endAt = startAt + TECHNICAL_SLOT_MINUTES * 60000;
+            return !daySlots.some((slot) => {
+              const occupiedStart = new Date(slot.startAt).getTime();
+              const occupiedEnd = occupiedStart + (slot.durationMinutes || TECHNICAL_SLOT_MINUTES) * 60000;
+              return startAt < occupiedEnd && endAt > occupiedStart;
+            });
+          }
+
+          function periodForTime(time: string) {
+            const minutes = minutesFromTime(time);
+            if (minutes >= 8 * 60 && minutes < 12 * 60) return "morning";
+            if (minutes >= 14 * 60 && minutes < 18 * 60) return "afternoon";
+            return null;
+          }
+
+          function occupiedPeriod(startAt: string, config: MarketingScheduleConfig) {
+            return periodForTime(getTimeKeyInTimeZone(startAt, config.timezone));
+          }
+
+          function occupiedForDate(
+            dateKey: string,
+            config: MarketingScheduleConfig,
+            occupied: MarketingOccupiedCaptureSlot[],
+          ) {
+            return occupied.filter((slot) => getDateKeyInTimeZone(slot.startAt, config.timezone) === dateKey);
+          }
+
+          function formatWeekday(dateKey: string) {
+            const [year, month, day] = dateKey.split("-").map(Number);
+            return new Intl.DateTimeFormat("pt-BR", { weekday: "short", timeZone: "UTC" })
+              .format(new Date(Date.UTC(year, month - 1, day)))
+              .replace(".", "");
+          }
+
+          function formatDay(dateKey: string) {
+            const [year, month, day] = dateKey.split("-").map(Number);
+            return new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short", timeZone: "UTC" })
+              .format(new Date(Date.UTC(year, month - 1, day)))
+              .replace(".", "");
+          }
+          EOF
+
+      - name: Patch Marketing frontend
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          def replace(path, old, new, count=-1):
+              p = Path(path)
+              text = p.read_text()
+              if old not in text:
+                  raise SystemExit(f"Expected text not found in {path}: {old[:120]!r}")
+              text = text.replace(old, new, count)
+              p.write_text(text)
+
+          # Config: fixed standard times and no duration shown to users.
+          path = "src/modules/marketing/marketingConfig.ts"
+          replace(path,
+              'export const DEFAULT_MARKETING_CAPTURE_WINDOWS = [\n  { id: "morning", label: "Manhã", start: "08:30", end: "11:00" },\n  { id: "afternoon", label: "Tarde", start: "14:00", end: "16:00" },\n] as const;',
+              'export const DEFAULT_MARKETING_CAPTURE_WINDOWS = [\n  { id: "morning", label: "Manhã", start: "08:00", end: "12:00" },\n  { id: "afternoon", label: "Tarde", start: "14:00", end: "18:00" },\n] as const;\n\nexport const DEFAULT_MARKETING_STANDARD_TIMES = ["08:00", "09:00", "10:00", "11:00", "14:00", "15:00", "16:00", "17:00"] as const;')
+          replace(path,
+              '  durationOptionsMinutes: number[];\n  captureWindows?: MarketingCaptureWindow[];',
+              '  durationOptionsMinutes: number[];\n  standardTimes?: string[];\n  captureWindows?: MarketingCaptureWindow[];')
+          replace(path,
+              'export function formatCaptureRange(startAt: string, durationMinutes: number, timezone: string) {\n  const start = new Date(startAt);',
+              'export function formatCaptureRange(startAt: string, _durationMinutes: number, timezone: string) {\n  const start = new Date(startAt);')
+          replace(path,
+              '  const end = new Date(start.getTime() + durationMinutes * 60000);\n',
+              '')
+          replace(path,
+              '  return `${date} · ${timeFormatter.format(start)} às ${timeFormatter.format(end)}`;',
+              '  return `${date} · ${timeFormatter.format(start)}`;')
+
+          # Public service: use v3 RPC and special-time request fields.
+          path = "src/modules/marketing/publicMarketingService.ts"
+          replace(path,
+              '  preferredCaptureDurationMinutes?: number | null;\n  assetLink?: string;',
+              '  preferredCaptureDurationMinutes?: number | null;\n  specialCaptureAt?: string;\n  specialCaptureReason?: string;\n  assetLink?: string;')
+          old = '''  const body = {
+    p_submission_id: draft.submissionId,
+    p_requester_name: draft.requesterName,
+    p_team_id: draft.teamId,
+    p_broker_name: draft.brokerName,
+    p_has_property_code: draft.hasPropertyCode,
+    p_property_reference: draft.hasPropertyCode ? draft.propertyReference : null,
+    p_is_exclusive: draft.isExclusive,
+    p_request_kind: draft.requestKind,
+    p_content_types: draft.contentTypes,
+    p_capture_location: draft.requestKind === "capture_edit" ? draft.captureLocation || null : null,
+    p_preferred_capture_at: draft.requestKind === "capture_edit" ? draft.preferredCaptureAt || null : null,
+    p_preferred_capture_duration_minutes: draft.requestKind === "capture_edit" ? draft.preferredCaptureDurationMinutes || null : null,
+    p_asset_link: draft.assetLink || null,
+    p_paid_traffic: draft.paidTraffic,
+    p_requester_notes: draft.requesterNotes || null,
+    p_urgency_requested: draft.urgencyRequested,
+    p_urgency_reason: draft.urgencyRequested ? draft.urgencyReason || null : null,
+    p_website: draft.website || null,
+    p_capture_group_id: draft.captureGroupId || null,
+  };
+  let rows: PublicReceiptRow[];
+  try {
+    rows = await publicRpc<PublicReceiptRow[]>("marketing_public_create_grouped_request", body);
+  } catch (error) {
+    if (draft.captureGroupId || !(error instanceof PublicMarketingRemoteError) || error.status !== 404) throw error;
+    const { p_capture_group_id: _captureGroupId, ...legacyBody } = body;
+    rows = await publicRpc<PublicReceiptRow[]>("marketing_public_create_request", legacyBody);
+  }'''
+          new = '''  const commonBody = {
+    p_submission_id: draft.submissionId,
+    p_requester_name: draft.requesterName,
+    p_team_id: draft.teamId,
+    p_broker_name: draft.brokerName,
+    p_has_property_code: draft.hasPropertyCode,
+    p_property_reference: draft.hasPropertyCode ? draft.propertyReference : null,
+    p_is_exclusive: draft.isExclusive,
+    p_request_kind: draft.requestKind,
+    p_content_types: draft.contentTypes,
+    p_capture_location: draft.requestKind === "capture_edit" ? draft.captureLocation || null : null,
+    p_preferred_capture_at: draft.requestKind === "capture_edit" ? draft.preferredCaptureAt || null : null,
+    p_asset_link: draft.assetLink || null,
+    p_paid_traffic: draft.paidTraffic,
+    p_requester_notes: draft.requesterNotes || null,
+    p_urgency_requested: draft.urgencyRequested,
+    p_urgency_reason: draft.urgencyRequested ? draft.urgencyReason || null : null,
+    p_website: draft.website || null,
+    p_capture_group_id: draft.captureGroupId || null,
+  };
+  let rows: PublicReceiptRow[];
+  try {
+    rows = await publicRpc<PublicReceiptRow[]>("marketing_public_create_grouped_request_v3", {
+      ...commonBody,
+      p_special_capture_at: draft.requestKind === "capture_edit" ? draft.specialCaptureAt || null : null,
+      p_special_capture_reason: draft.requestKind === "capture_edit" ? draft.specialCaptureReason || null : null,
+    });
+  } catch (error) {
+    if (draft.specialCaptureAt || !(error instanceof PublicMarketingRemoteError) || error.status !== 404) throw error;
+    const groupedBody = {
+      ...commonBody,
+      p_preferred_capture_duration_minutes: draft.requestKind === "capture_edit" && draft.preferredCaptureAt ? 60 : null,
+    };
+    try {
+      rows = await publicRpc<PublicReceiptRow[]>("marketing_public_create_grouped_request", groupedBody);
+    } catch (legacyError) {
+      if (draft.captureGroupId || !(legacyError instanceof PublicMarketingRemoteError) || legacyError.status !== 404) throw legacyError;
+      const { p_capture_group_id: _captureGroupId, ...legacyBody } = groupedBody;
+      rows = await publicRpc<PublicReceiptRow[]>("marketing_public_create_request", legacyBody);
+    }
+  }'''
+          replace(path, old, new)
+          replace(path,
+              '  if (normalized.includes("MARKETING_CAPTURE_PERIOD_LIMIT_REACHED")) return "Esse período já atingiu o limite de 2 agendamentos. Escolha outro horário ou período.";',
+              '  if (normalized.includes("MARKETING_CAPTURE_PERIOD_RESERVED") || normalized.includes("MARKETING_CAPTURE_PERIOD_LIMIT_REACHED")) return "Esse período já está reservado. Escolha outro período ou outra data.";')
+          replace(path,
+              '  if (normalized.includes("MARKETING_CAPTURE_WINDOW_INVALID")) return "Escolha um horário entre 08:00 e 18:00 que comporte a duração selecionada.";',
+              '  if (normalized.includes("MARKETING_CAPTURE_WINDOW_INVALID")) return "Escolha um dos horários padrão: 08:00, 09:00, 10:00, 11:00, 14:00, 15:00, 16:00 ou 17:00.";\n  if (normalized.includes("MARKETING_SPECIAL_REASON_REQUIRED")) return "Explique por que precisa de um horário fora do padrão.";\n  if (normalized.includes("MARKETING_SPECIAL_TIME_INVALID")) return "Escolha uma data e horário futuro para a solicitação especial.";\n  if (normalized.includes("MARKETING_SPECIAL_TIME_STANDARD_SLOT")) return "Esse horário faz parte da agenda normal. Use a opção Escolher data e horário.";')
+
+          # Public form: add special request mode and remove duration UI.
+          path = "src/modules/marketing/PublicMarketingRequestPage.tsx"
+          replace(path, '  formatDuration,\n', '')
+          replace(path, '  type MarketingCaptureSelection,\n} from "./marketingConfig";', '  type MarketingCaptureSelection,\n  zonedLocalToIso,\n} from "./marketingConfig";')
+          replace(path, '  capturePreference: "choose" | "marketing";\n  preferredCapture: MarketingCaptureSelection | null;', '  capturePreference: "choose" | "marketing" | "special";\n  preferredCapture: MarketingCaptureSelection | null;\n  specialCaptureLocal: string;\n  specialCaptureReason: string;')
+          replace(path, '  preferredCapture: null,\n  assetLink: "",', '  preferredCapture: null,\n  specialCaptureLocal: "",\n  specialCaptureReason: "",\n  assetLink: "",')
+          replace(path,
+              '    if (form.requestKind === "capture_edit" && form.capturePreference === "choose" && !form.preferredCapture) {\n      setMessage("Escolha a data e o período da captação.");\n      return;\n    }',
+              '    if (form.requestKind === "capture_edit" && form.capturePreference === "choose" && !form.preferredCapture) {\n      setMessage("Escolha a data e o horário da captação.");\n      return;\n    }\n    if (form.requestKind === "capture_edit" && form.capturePreference === "special" && !form.specialCaptureLocal) {\n      setMessage("Informe a data e o horário fora do padrão.");\n      return;\n    }\n    if (form.requestKind === "capture_edit" && form.capturePreference === "special" && form.specialCaptureReason.trim().length < 5) {\n      setMessage("Explique por que precisa de um horário fora do padrão.");\n      return;\n    }')
+          replace(path,
+              '        preferredCaptureAt: form.requestKind === "capture_edit" ? form.preferredCapture?.startAt : undefined,\n        preferredCaptureDurationMinutes: form.requestKind === "capture_edit" ? form.preferredCapture?.durationMinutes : undefined,',
+              '        preferredCaptureAt: form.requestKind === "capture_edit" && form.capturePreference === "choose" ? form.preferredCapture?.startAt : undefined,\n        preferredCaptureDurationMinutes: form.requestKind === "capture_edit" && form.capturePreference === "choose" ? 60 : undefined,\n        specialCaptureAt: form.requestKind === "capture_edit" && form.capturePreference === "special" ? specialCaptureIso(form.specialCaptureLocal, availability.scheduleConfig.timezone) : undefined,\n        specialCaptureReason: form.requestKind === "capture_edit" && form.capturePreference === "special" ? form.specialCaptureReason.trim() : undefined,')
+          replace(path,
+              '      preferredCapture: common.preferredCapture,\n      hasMultipleProperties: true,',
+              '      preferredCapture: common.preferredCapture,\n      specialCaptureLocal: common.specialCaptureLocal,\n      specialCaptureReason: common.specialCaptureReason,\n      hasMultipleProperties: true,')
+          replace(path,
+              '            <p>O gerente da sua equipe e o Marketing poderão acompanhar o andamento pelo HUB.</p>',
+              '            <p>O gerente da sua equipe e o Marketing poderão acompanhar o andamento pelo HUB.</p>\n            {form.capturePreference === "special" && <p className="marketing-public-special-notice">O horário fora do padrão foi enviado para aprovação. Ele só ficará reservado depois que o Marketing aprovar.</p>}')
+          replace(path,
+              'checked={form.requestKind === "edit_only"} onChange={() => { setForm({ ...form, requestKind: "edit_only", captureLocation: "", capturePreference: "marketing", preferredCapture: null }); setPickerOpen(false); }}',
+              'checked={form.requestKind === "edit_only"} onChange={() => { setForm({ ...form, requestKind: "edit_only", captureLocation: "", capturePreference: "marketing", preferredCapture: null, specialCaptureLocal: "", specialCaptureReason: "" }); setPickerOpen(false); }}')
+          old = '''                    {continuingCaptureGroup ? (
+                      form.capturePreference === "choose" && form.preferredCapture
+                        ? <div>
+                            <strong>{formatMarketingDateTime(form.preferredCapture.startAt, availability.scheduleConfig.timezone)}</strong>
+                            <small> Data/período mantidos do primeiro imóvel.</small>
+                            <p>Duração estimada deste imóvel:</p>
+                            <div className="marketing-duration-options">
+                              {availability.scheduleConfig.durationOptionsMinutes.filter((duration) => duration <= 120).map((duration) => (
+                                <button
+                                  type="button"
+                                  key={duration}
+                                  className={form.preferredCapture?.durationMinutes === duration ? "selected" : ""}
+                                  onClick={() => setForm({ ...form, preferredCapture: { startAt: form.preferredCapture!.startAt, durationMinutes: duration } })}
+                                >
+                                  {formatDuration(duration)}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        : <p>O Marketing definirá a data e o período para toda esta saída agrupada.</p>
+                    ) : <>
+                      <button type="button" className={form.capturePreference === "choose" ? "selected" : ""} onClick={() => { setForm({ ...form, capturePreference: "choose" }); setPickerOpen(true); }}>ESCOLHER DATA E HORÁRIO</button>
+                      <button type="button" className={form.capturePreference === "marketing" ? "selected" : ""} onClick={() => { setForm({ ...form, capturePreference: "marketing", preferredCapture: null }); setPickerOpen(false); }}>DEIXAR O MARKETING DEFINIR</button>
+                      {form.capturePreference === "marketing" && <p>O Marketing definirá a melhor data e horário conforme disponibilidade.</p>}
+                      {form.capturePreference === "choose" && form.preferredCapture && !pickerOpen && <div><strong>{formatCaptureRange(form.preferredCapture.startAt, form.preferredCapture.durationMinutes, availability.scheduleConfig.timezone)}</strong><button type="button" onClick={() => setPickerOpen(true)}>ALTERAR</button></div>}
+                    </>}'''
+          new = '''                    {continuingCaptureGroup ? (
+                      form.capturePreference === "choose" && form.preferredCapture ? <div>
+                        <strong>{formatMarketingDateTime(form.preferredCapture.startAt, availability.scheduleConfig.timezone)}</strong>
+                        <small> Data e horário mantidos do primeiro imóvel.</small>
+                      </div> : form.capturePreference === "special" && form.specialCaptureLocal ? <div className="marketing-public-special-time pending">
+                        <strong>HORÁRIO FORA DO PADRÃO · AGUARDANDO APROVAÇÃO</strong>
+                        <p>{formatMarketingDateTime(specialCaptureIso(form.specialCaptureLocal, availability.scheduleConfig.timezone), availability.scheduleConfig.timezone)}</p>
+                        <small>{form.specialCaptureReason}</small>
+                      </div> : <p>O Marketing definirá a data e o horário para toda esta saída agrupada.</p>
+                    ) : <>
+                      <button type="button" className={form.capturePreference === "choose" ? "selected" : ""} onClick={() => { setForm({ ...form, capturePreference: "choose", specialCaptureLocal: "", specialCaptureReason: "" }); setPickerOpen(true); }}>ESCOLHER DATA E HORÁRIO</button>
+                      <button type="button" className={form.capturePreference === "marketing" ? "selected" : ""} onClick={() => { setForm({ ...form, capturePreference: "marketing", preferredCapture: null, specialCaptureLocal: "", specialCaptureReason: "" }); setPickerOpen(false); }}>DEIXAR O MARKETING DEFINIR</button>
+                      <button type="button" className={form.capturePreference === "special" ? "selected" : ""} onClick={() => { setForm({ ...form, capturePreference: "special", preferredCapture: null }); setPickerOpen(false); }}>SOLICITAR HORÁRIO FORA DO PADRÃO</button>
+                      {form.capturePreference === "marketing" && <p>O Marketing definirá a melhor data e horário conforme disponibilidade.</p>}
+                      {form.capturePreference === "choose" && form.preferredCapture && !pickerOpen && <div><strong>{formatCaptureRange(form.preferredCapture.startAt, form.preferredCapture.durationMinutes, availability.scheduleConfig.timezone)}</strong><button type="button" onClick={() => setPickerOpen(true)}>ALTERAR</button></div>}
+                      {form.capturePreference === "special" && <div className="marketing-public-special-time pending">
+                        <strong>HORÁRIO FORA DO PADRÃO</strong>
+                        <p>Use somente quando houver uma necessidade real. O horário só será reservado se o Marketing aprovar.</p>
+                        <label>Data e horário desejados *<input type="datetime-local" value={form.specialCaptureLocal} onChange={(event) => setForm({ ...form, specialCaptureLocal: event.target.value })} required /></label>
+                        <label>Justificativa *<textarea value={form.specialCaptureReason} onChange={(event) => setForm({ ...form, specialCaptureReason: event.target.value })} minLength={5} maxLength={1000} required /></label>
+                        <small>Maria ou Arthur analisarão a solicitação antes da reserva.</small>
+                      </div>}
+                    </>}'''
+          replace(path, old, new)
+          replace(path,
+              'function createSubmissionId() {',
+              'function specialCaptureIso(localValue: string, timezone: string) {\n  if (!localValue) return "";\n  const [dateKey, timeKey] = localValue.split("T");\n  if (!dateKey || !timeKey) return "";\n  return zonedLocalToIso(dateKey, timeKey.slice(0, 5), timezone);\n}\n\nfunction createSubmissionId() {')
+
+          # Internal Marketing service: special fields, fixed-period RPC and decision function.
+          path = "src/modules/marketing/marketingService.ts"
+          replace(path,
+              '  confirmedCaptureDurationMinutes?: number | null;\n  assetLink?: string | null;',
+              '  confirmedCaptureDurationMinutes?: number | null;\n  specialCaptureAt?: string | null;\n  specialCaptureReason?: string | null;\n  specialCaptureStatus?: "pending" | "approved" | "rejected" | null;\n  specialCaptureDecidedByName?: string | null;\n  specialCaptureDecidedAt?: string | null;\n  assetLink?: string | null;')
+          old = '''export async function createMarketingRequest(sessionToken: string, draft: MarketingRequestDraft) {
+  return rpc<Array<{ request_id: string; request_number: number }>>("marketing_v2_create_request", {
+    p_session_token: sessionToken,
+    p_team_id: draft.teamId,
+    p_broker_name: draft.brokerName,
+    p_has_property_code: draft.hasPropertyCode,
+    p_property_reference: draft.propertyReference,
+    p_is_exclusive: draft.isExclusive,
+    p_request_kind: draft.requestKind,
+    p_content_types: draft.contentTypes,
+    p_capture_location: draft.captureLocation || null,
+    p_preferred_capture_at: toIsoOrNull(draft.preferredCaptureAt),
+    p_preferred_capture_duration_minutes: draft.preferredCaptureDurationMinutes || null,
+    p_asset_link: draft.assetLink || null,
+    p_paid_traffic: draft.paidTraffic,
+    p_requester_notes: draft.requesterNotes || null,
+    p_urgency_requested: draft.urgencyRequested,
+    p_urgency_reason: draft.urgencyReason || null,
+  });
+}'''
+          new = '''export async function createMarketingRequest(sessionToken: string, draft: MarketingRequestDraft) {
+  const common = {
+    p_session_token: sessionToken,
+    p_team_id: draft.teamId,
+    p_broker_name: draft.brokerName,
+    p_has_property_code: draft.hasPropertyCode,
+    p_property_reference: draft.propertyReference,
+    p_is_exclusive: draft.isExclusive,
+    p_request_kind: draft.requestKind,
+    p_content_types: draft.contentTypes,
+    p_capture_location: draft.captureLocation || null,
+    p_preferred_capture_at: toIsoOrNull(draft.preferredCaptureAt),
+    p_asset_link: draft.assetLink || null,
+    p_paid_traffic: draft.paidTraffic,
+    p_requester_notes: draft.requesterNotes || null,
+    p_urgency_requested: draft.urgencyRequested,
+    p_urgency_reason: draft.urgencyReason || null,
+  };
+  try {
+    return await rpc<Array<{ request_id: string; request_number: number }>>("marketing_v2_create_request_v3", common);
+  } catch (error) {
+    if (!(error instanceof MarketingRemoteError) || error.status !== 404) throw error;
+    return rpc<Array<{ request_id: string; request_number: number }>>("marketing_v2_create_request", {
+      ...common,
+      p_preferred_capture_duration_minutes: draft.preferredCaptureAt ? 60 : null,
+    });
+  }
+}'''
+          replace(path, old, new)
+          replace(path,
+              'export async function requestMarketingQueueOverride(sessionToken: string, requestId: string, reason: string) {',
+              'export async function decideMarketingSpecialCapture(sessionToken: string, requestId: string, decision: "approved" | "rejected") {\n  await rpc<unknown>("marketing_v2_decide_special_capture", {\n    p_session_token: sessionToken,\n    p_request_id: requestId,\n    p_decision: decision,\n  });\n}\n\nexport async function requestMarketingQueueOverride(sessionToken: string, requestId: string, reason: string) {')
+          replace(path,
+              '  if (normalized.includes("MARKETING_CAPTURE_PERIOD_LIMIT_REACHED")) return "Esse período já atingiu o limite de 2 agendamentos. Escolha outro horário ou período.";',
+              '  if (normalized.includes("MARKETING_CAPTURE_PERIOD_RESERVED") || normalized.includes("MARKETING_CAPTURE_PERIOD_LIMIT_REACHED")) return "Esse período já está reservado. Escolha outro período ou outra data.";')
+          replace(path,
+              '  if (normalized.includes("MARKETING_CAPTURE_WINDOW_INVALID")) return "Escolha um horário entre 08:00 e 18:00 que comporte a duração selecionada.";',
+              '  if (normalized.includes("MARKETING_CAPTURE_WINDOW_INVALID")) return "Escolha um dos horários padrão: 08:00, 09:00, 10:00, 11:00, 14:00, 15:00, 16:00 ou 17:00.";\n  if (normalized.includes("MARKETING_SPECIAL_REASON_REQUIRED")) return "Informe a justificativa para o horário fora do padrão.";\n  if (normalized.includes("MARKETING_SPECIAL_TIME_INVALID")) return "O horário especial precisa ser uma data futura.";\n  if (normalized.includes("MARKETING_SPECIAL_TIME_STANDARD_SLOT")) return "Esse horário pertence à agenda normal e não precisa de exceção.";\n  if (normalized.includes("MARKETING_SPECIAL_DECISION_DENIED")) return "Somente Maria, Arthur ou o administrador podem decidir um horário fora do padrão.";\n  if (normalized.includes("MARKETING_SPECIAL_NOT_PENDING")) return "Esta solicitação de horário especial já foi decidida.";')
+
+          # Marketing panel: remove duration wording and add approval card.
+          path = "src/modules/marketing/MarketingFeature.tsx"
+          replace(path, '  formatDuration,\n', '')
+          replace(path,
+              '  createMarketingRequest,\n  decideMarketingQueueOverride,',
+              '  createMarketingRequest,\n  decideMarketingQueueOverride,\n  decideMarketingSpecialCapture,')
+          replace(path,
+              '<small>{request.assignedMarketingName || "Responsável não definido"} · {formatDuration(duration)}</small>',
+              '<small>{request.assignedMarketingName || "Responsável não definido"}</small>')
+          replace(path,
+              'props.onError("Escolha a data, o horário e a duração da captação.");',
+              'props.onError("Escolha a data e o horário da captação.");')
+          # Replace all occurrences of the same validation sentence.
+          text = Path(path).read_text().replace('props.onError("Escolha a data, o horário e a duração da captação.");', 'props.onError("Escolha a data e o horário da captação.");')
+          Path(path).write_text(text)
+          replace(path,
+              '                {props.request.preferredCaptureAt && <small>Duração solicitada: {formatDuration(props.request.preferredCaptureDurationMinutes)}</small>}\n',
+              '')
+          replace(path,
+              '  async function requestOverride(event: FormEvent) {',
+              '  async function decideSpecialCapture(decision: "approved" | "rejected") {\n    if (busy) return;\n    setBusy(true);\n    props.onError("");\n    try {\n      await decideMarketingSpecialCapture(props.sessionToken, props.request.id, decision);\n      props.onNotice(decision === "approved" ? "Horário fora do padrão aprovado e agendado." : "Horário fora do padrão não aprovado. O pedido continua aguardando agendamento.");\n      await props.onChanged();\n    } catch (error) {\n      props.onError(getMarketingErrorMessage(error));\n    } finally {\n      setBusy(false);\n    }\n  }\n\n  async function requestOverride(event: FormEvent) {')
+          special_block = '''        {props.request.specialCaptureStatus && props.request.specialCaptureAt && (
+          <section className={`marketing-special-schedule ${props.request.specialCaptureStatus}`}>
+            <strong>HORÁRIO FORA DO PADRÃO</strong>
+            <h3>{formatMarketingDateTime(props.request.specialCaptureAt, props.dashboard.scheduleConfig.timezone)}</h3>
+            {props.request.specialCaptureReason && <p>{props.request.specialCaptureReason}</p>}
+            <small>{props.request.specialCaptureStatus === "pending" ? "Aguardando aprovação do Marketing." : props.request.specialCaptureStatus === "approved" ? `Aprovado${props.request.specialCaptureDecidedByName ? ` por ${props.request.specialCaptureDecidedByName}` : ""}.` : `Não aprovado${props.request.specialCaptureDecidedByName ? ` por ${props.request.specialCaptureDecidedByName}` : ""}.`}</small>
+            {props.request.specialCaptureStatus === "pending" && (props.role === "admin" || props.dashboard.context.userId === "maria" || props.dashboard.context.userId === "arthur") && <div className="marketing-special-schedule-actions"><button type="button" disabled={busy} onClick={() => void decideSpecialCapture("approved")}>APROVAR HORÁRIO</button><button type="button" className="secondary" disabled={busy} onClick={() => void decideSpecialCapture("rejected")}>NÃO APROVAR</button></div>}
+          </section>
+        )}
+'''
+          replace(path,
+              '        {props.request.urgencyRequested && <div className={`marketing-urgency-box ${props.request.urgencyApproved ? "approved" : ""}`}><strong>Urgência solicitada</strong>',
+              special_block + '        {props.request.urgencyRequested && <div className={`marketing-urgency-box ${props.request.urgencyApproved ? "approved" : ""}`}><strong>Urgência solicitada</strong>')
+          replace(path,
+              '{request.managerReviewStatus && request.managerReviewStatus !== "pending" && <em className="review-answered">AUDITORIA RESPONDIDA</em>}',
+              '{request.managerReviewStatus && request.managerReviewStatus !== "pending" && <em className="review-answered">AUDITORIA RESPONDIDA</em>}{request.specialCaptureStatus === "pending" && <em className="special-time">HORÁRIO ESPECIAL</em>}')
+
+          # CSS additions.
+          with open("src/modules/marketing/marketing.css", "a") as f:
+              f.write('''
+
+.marketing-period-block { display: grid; gap: 9px; margin-top: 14px; }
+.marketing-period-title { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.marketing-period-title > span { border-radius: 999px; padding: 4px 8px; background: #fee2e2; color: #991b1b; font-size: .72rem; font-weight: 850; }
+.marketing-period-grid button.unavailable { opacity: .45; cursor: not-allowed; text-decoration: line-through; }
+.marketing-card-tags em.special-time { background: #fff2cc; color: #7a5200; }
+.marketing-special-schedule { margin: 16px 22px; padding: 16px; border: 1px solid #e1d7aa; border-radius: 14px; background: #fffbea; }
+.marketing-special-schedule > strong { display: block; color: #7a5200; font-size: .76rem; letter-spacing: .04em; }
+.marketing-special-schedule h3 { margin: 7px 0; }
+.marketing-special-schedule p { margin: 7px 0; white-space: pre-wrap; }
+.marketing-special-schedule.approved { border-color: #b9ddc3; background: #f1fbf4; }
+.marketing-special-schedule.rejected { border-color: #e4c1c1; background: #fff6f6; }
+.marketing-special-schedule-actions { display: flex; gap: 8px; margin-top: 12px; }
+.marketing-special-schedule-actions button { border: 0; border-radius: 9px; padding: 9px 12px; background: #5b3cc2; color: #fff; font: inherit; font-weight: 800; cursor: pointer; }
+.marketing-special-schedule-actions button.secondary { background: #eee9f6; color: #4b3b66; }
+''')
+          with open("src/modules/marketing/publicMarketing.css", "a") as f:
+              f.write('''
+
+.marketing-public-special-time { grid-column: 1 / -1; display: grid; gap: 10px; width: 100%; box-sizing: border-box; padding: 14px; border: 1px solid #ead79a; border-radius: 14px; background: #fffaf0; }
+.marketing-public-special-time > strong { color: #795400; }
+.marketing-public-special-time p, .marketing-public-special-time small { margin: 0; }
+.marketing-public-special-time label { display: grid; gap: 6px; }
+.marketing-public-special-time input, .marketing-public-special-time textarea { width: 100%; box-sizing: border-box; border: 1px solid #cfc5b3; border-radius: 10px; padding: 10px 11px; font: inherit; background: #fff; }
+.marketing-public-special-notice { padding: 12px 14px; border-radius: 12px; background: #fff6d9; color: #684b00; font-weight: 700; }
+''')
+          PY
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build
+        run: pnpm run build
+      - name: TypeScript
+        run: npx tsc --noEmit
+      - name: Diff check
+        run: git diff --check
+      - name: Commit verified implementation
+        shell: bash
+        run: |
+          rm .github/workflows/one-time-marketing-periods-special-time.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git commit -m "feat(marketing): limitar agenda por período e aprovar exceções"
+          git push origin HEAD:feat/marketing-periodos-horario-especial
