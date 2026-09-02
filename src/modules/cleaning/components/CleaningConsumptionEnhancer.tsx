@@ -71,9 +71,12 @@ export function CleaningConsumptionEnhancer() {
     };
 
     updateTarget();
-    const observer = new MutationObserver(updateTarget);
-    observer.observe(root, { childList: true, subtree: true });
-    return () => observer.disconnect();
+    const timer = window.setInterval(updateTarget, 1200);
+    window.addEventListener("focus", updateTarget);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", updateTarget);
+    };
   }, []);
 
   useEffect(() => {
