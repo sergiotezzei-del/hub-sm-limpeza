@@ -420,16 +420,19 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-const timer = setInterval(() => void poll(), POLL_MS);
-const playlistTimer = setInterval(() => void pollPlaylist(), POLL_MS);
-void poll();
-void pollPlaylist();
+async function pollCoordinator() {
+  if (stopped || busy || playlistBusy) return;
+  await pollPlaylist();
+  if (!stopped) await poll();
+}
+
+const timer = setInterval(() => void pollCoordinator(), POLL_MS);
+void pollCoordinator();
 
 function shutdown() {
   if (stopped) return;
   stopped = true;
   clearInterval(timer);
-  clearInterval(playlistTimer);
   for (const state of activePlaylists.values()) {
     state.stopRequested = true;
     if (state.response && !state.response.destroyed) state.response.destroy();
