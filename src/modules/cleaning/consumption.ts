@@ -40,7 +40,7 @@ function orderTime(order: CleaningOrder) {
 }
 
 export function productOrders(product: InventoryProduct, orders: CleaningOrder[]) {
-  return orders.filter((order) => !order.deletedAt && order.itens.some((item) => same(item.productName, product.name)))
+  return orders.filter((order) => !order.deletedAt && order.status === "Pedido feito" && order.itens.some((item) => same(item.productName, product.name)))
     .filter((order) => Number.isFinite(orderTime(order))).sort((a, b) => orderTime(b) - orderTime(a));
 }
 
