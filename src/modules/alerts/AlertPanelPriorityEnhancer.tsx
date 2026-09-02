@@ -78,13 +78,13 @@ export function AlertPanelPriorityEnhancer() {
     };
 
     enhance();
+    const timer = window.setInterval(enhance, 1200);
+    window.addEventListener("focus", enhance);
 
-    const root = document.getElementById("root");
-    if (!root) return;
-    const observer = new MutationObserver(enhance);
-    observer.observe(root, { childList: true, subtree: true, characterData: true });
-
-    return () => observer.disconnect();
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", enhance);
+    };
   }, []);
 
   return null;
