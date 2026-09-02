@@ -6,6 +6,10 @@
   order: -9999 !important;
 }
 
+.hub-cleaning-activity-heading {
+  display: none !important;
+}
+
 .hub-cleaning-stock-check-enhanced {
   position: relative;
 }
@@ -36,14 +40,32 @@
   background: #f1f5f9 !important;
 }
 
-.hub-cleaning-stock-check-dismissed {
+.hub-cleaning-stock-check-dismissed,
+.hub-auditorio-today-dismissed,
+.hub-auditorio-outside-today-hidden {
   display: none !important;
+}
+
+.hub-auditorio-today-done {
+  width: 112px !important;
+  min-width: 112px;
+  min-height: 34px;
+  margin-top: auto !important;
+  padding: 6px 9px !important;
+  font-size: .68rem !important;
+  line-height: 1.05;
 }
 
 @media (max-width: 420px) {
   .hub-cleaning-stock-check-done {
     right: 15px;
     bottom: 15px;
+    width: 104px !important;
+    min-width: 104px;
+    font-size: .64rem !important;
+  }
+
+  .hub-auditorio-today-done {
     width: 104px !important;
     min-width: 104px;
     font-size: .64rem !important;
