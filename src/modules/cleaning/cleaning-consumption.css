@@ -1,0 +1,29 @@
+.cleaning-consumption { max-width: 1000px; margin-inline: auto; }
+.consumption-question-card, .consumption-result { padding: clamp(16px, 3vw, 28px); border: 1px solid #dce5e1; border-radius: 18px; background: #fff; margin-top: 18px; }
+.consumption-question-card form { display: grid; gap: 12px; }
+.consumption-question-card label { display: grid; gap: 6px; font-weight: 700; }
+.consumption-question-card input, .consumption-question-card select { width: 100%; min-width: 0; min-height: 46px; border: 1px solid #bccbc4; border-radius: 10px; padding: 10px 12px; font: inherit; background: #fff; color: #172b21; }
+.consumption-question-card small, .consumption-hint { color: #53665d; font-weight: 400; }
+.consumption-examples { display: flex; flex-wrap: wrap; gap: 8px; }
+.consumption-examples button { text-align: left; }
+.consumption-filters { margin-top: 22px; border-top: 1px solid #dce5e1; padding-top: 14px; }
+.consumption-filters summary, .consumption-evidence summary { cursor: pointer; padding: 8px 0; font-weight: 700; }
+.consumption-filters form { margin-top: 12px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.consumption-filters form > button { grid-column: 1 / -1; }
+.consumption-totals { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.consumption-totals article { display: grid; gap: 8px; padding: 18px; border-radius: 12px; background: #f0f6f3; }
+.consumption-totals strong { font-size: 1.8rem; color: #155539; }
+.consumption-totals small { font-size: 1rem; }
+.consumption-comparison { margin-top: 20px; padding-top: 12px; border-top: 1px solid #dce5e1; }
+.consumption-estimate { font-size: 1.15rem; }
+.consumption-difference { padding: 12px; border-radius: 10px; color: #794c05; background: #fff8e8; }
+.consumption-evidence { margin-top: 18px; }
+.consumption-evidence ul { list-style: none; padding: 0; }
+.consumption-evidence li { display: flex; justify-content: space-between; gap: 16px; border-bottom: 1px solid #e5ebe8; padding: 12px 0; }
+.consumption-evidence li small { display: block; margin-top: 4px; color: #53665d; }
+.consumption-evidence li strong { text-align: right; }
+.consumption-refresh { margin-top: 18px; }
+@media (max-width: 600px) {
+  .consumption-filters form, .consumption-totals { grid-template-columns: 1fr; }
+  .consumption-examples { flex-direction: column; }
+}

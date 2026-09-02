@@ -169,3 +169,13 @@ body.hub-cleaning-activity-alerts-enabled > .cleaning-delivery-supervisor-alert 
     text-align: left;
   }
 }
+.hub-cleaning-activity-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: auto;
+}
+
+.hub-cleaning-activity-actions > button { flex: 1; min-height: 42px; }
+.hub-cleaning-activity-actions .hub-cleaning-activity-done { background: #166534; color: white; }
+.hub-cleaning-activity-error { grid-column: 1 / -1; color: #b91c1c; }

@@ -303,3 +303,6 @@
     grid-template-columns: 1fr;
   }
 }
+.hub-google-calendar-slot {
+  display: contents;
+}

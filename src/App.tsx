@@ -6,6 +6,7 @@ import { ProfileAvatarMenu } from "./components/ProfileAvatarMenu";
 import { SantaMariaBrand } from "./components/SantaMariaBrand";
 import { activities, employees } from "./data";
 import { HistoryDisclosure, NeiaHistory, ProductStockDates, useProductStockActivity } from "./modules/cleaning/CleaningHistory";
+import { CleaningConsumption } from "./modules/cleaning/CleaningConsumption";
 import type { MasterMapTargetScreen } from "./features/master-map/masterMapTypes";
 import { MarketingFeature, type MarketingSummary } from "./modules/marketing/MarketingFeature";
 import { endMarketingSession, startMarketingSession } from "./modules/marketing/marketingService";
@@ -86,6 +87,7 @@ type View =
   | "auditorio"
   | "service-requests"
   | "cleaning-dashboard"
+  | "cleaning-consumption"
   | "orders"
   | "profiles"
   | "stock-check"
@@ -2049,6 +2051,9 @@ function App() {
       )}
 
       {view === "stock-exit-history" && <StockExitHistoryScreen movements={stockMovements} onBack={() => setView("cleaning-dashboard")} onLogout={goToLogin} />}
+      {view === "cleaning-consumption" && (hasCurrentPermission("estoque") || hasCurrentPermission("relatorios")
+        ? <CleaningConsumption onBack={() => setView("cleaning-dashboard")} onLogout={goToLogin} />
+        : <AccessDeniedScreen onBack={() => setView(getCurrentHomeView())} onLogout={goToLogin} />)}
       {view === "current-stock" && <CurrentStockScreen inventoryProducts={inventoryProducts} onBack={() => setView("cleaning-dashboard")} onLogout={goToLogin} onEditProduct={openProductRegisterFromStock} />}
 
       {view === "admin" && (
@@ -2292,6 +2297,7 @@ function App() {
           onOpenProfiles={openProfiles}
           onOpenOrderHistory={openOrderHistory}
           onOpenNeiaHistory={openNeiaHistory}
+          onOpenConsumption={() => setView("cleaning-consumption")}
           onPrepareCleaning={openCleaningPreparation}
           offlinePendingCount={offlinePendingCount}
           offlineSyncing={offlineSyncing}
@@ -6086,7 +6092,7 @@ function ShiftCard({ shift, label, featured = false }: { shift: GuardShift; labe
   return <article className={featured ? "shift-card featured" : "shift-card"}><span>{label ?? shift.shiftType}</span><strong>{shift.startText}</strong><p>Entrada: {shift.startTime}<br />Saída: {shift.endTime} — {shift.endText}</p>{shift.observation && <p className="shift-observation">{shift.observation}</p>}</article>;
 }
 
-function CleaningDashboardScreen({ newOrdersCount, permissions, offlinePendingCount, offlineSyncing, onBack, onLogout, onSyncOffline, onOpenOrders, onOpenStockExit, onOpenBarcodeRegister, onOpenCurrentStock, onOpenStockHistory, onOpenProfiles, onOpenOrderHistory, onOpenNeiaHistory, onPrepareCleaning }: { newOrdersCount: number; permissions: UserPermission[]; offlinePendingCount: number; offlineSyncing: boolean; onBack: () => void; onLogout: () => void; onSyncOffline: () => void; onOpenOrders: () => void; onOpenStockExit: () => void; onOpenBarcodeRegister: () => void; onOpenCurrentStock: () => void; onOpenStockHistory: () => void; onOpenProfiles: () => void; onOpenOrderHistory: () => void; onOpenNeiaHistory: () => void; onPrepareCleaning: () => void }) {
+function CleaningDashboardScreen({ newOrdersCount, permissions, offlinePendingCount, offlineSyncing, onBack, onLogout, onSyncOffline, onOpenOrders, onOpenStockExit, onOpenBarcodeRegister, onOpenCurrentStock, onOpenStockHistory, onOpenProfiles, onOpenOrderHistory, onOpenNeiaHistory, onOpenConsumption, onPrepareCleaning }: { newOrdersCount: number; permissions: UserPermission[]; offlinePendingCount: number; offlineSyncing: boolean; onBack: () => void; onLogout: () => void; onSyncOffline: () => void; onOpenOrders: () => void; onOpenStockExit: () => void; onOpenBarcodeRegister: () => void; onOpenCurrentStock: () => void; onOpenStockHistory: () => void; onOpenProfiles: () => void; onOpenOrderHistory: () => void; onOpenNeiaHistory: () => void; onOpenConsumption: () => void; onPrepareCleaning: () => void }) {
   const canCleaning = permissions.includes("limpeza");
   const canStock = permissions.includes("estoque");
   const canStockExit = permissions.includes("saida-estoque");
@@ -6097,6 +6103,7 @@ function CleaningDashboardScreen({ newOrdersCount, permissions, offlinePendingCo
     { key: "stock-exit", title: "Saída de Produto", detail: "Bipar retirada do estoque", enabled: canStockExit, onClick: onOpenStockExit, icon: "stock" },
     { key: "product-register", title: "Cadastro de Produtos", detail: "Produtos, códigos e foto", enabled: canStock, onClick: onOpenBarcodeRegister, icon: "edit" },
     { key: "current-stock", title: "Estoque Atual", detail: "Produtos e códigos cadastrados", enabled: canStock, onClick: onOpenCurrentStock, icon: "stock" },
+    { key: "consumption", title: "Consultar consumo", detail: "Perguntar por produto, dias ou conferências", enabled: canStock || canReports, onClick: onOpenConsumption, icon: "reports" },
     { key: "stock-history", title: "Histórico de Saídas", detail: "Quem usou, quando e quanto", enabled: canStock, onClick: onOpenStockHistory, icon: "reports" },
     { key: "neia-history", title: "Histórico Neia", detail: "Pedidos e conferências de estoque", enabled: canCleaning, onClick: onOpenNeiaHistory, icon: "reports" },
     { key: "order-history", title: "Histórico / Auditoria", detail: "Concluídos e excluídos", enabled: canReports, onClick: onOpenOrderHistory, icon: "reports" },

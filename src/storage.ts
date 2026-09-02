@@ -568,7 +568,8 @@ export function getLocalInventoryProducts(): InventoryProduct[] {
   }
 }
 
-export async function getInventoryProducts(): Promise<InventoryProduct[]> {
+export async function getInventoryProducts({ requireRemote = false } = {}): Promise<InventoryProduct[]> {
+  if (requireRemote && !cloudEnabled) throw new Error("Consulta online indisponível");
   if (!cloudEnabled) return getLocalInventoryProducts();
 
   try {
@@ -579,6 +580,7 @@ export async function getInventoryProducts(): Promise<InventoryProduct[]> {
     return products;
   } catch (error) {
     console.error(error);
+    if (requireRemote) throw error;
     return getLocalInventoryProducts();
   }
 }

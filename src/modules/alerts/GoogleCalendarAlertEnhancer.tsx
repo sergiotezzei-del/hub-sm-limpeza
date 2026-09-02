@@ -33,7 +33,7 @@ export function GoogleCalendarAlertEnhancer() {
   useEffect(() => {
     const syncHosts = () => {
       const panel = document.querySelector<HTMLElement>(".hub-alert-panel");
-      const cards = panel?.querySelector<HTMLElement>(".hub-alert-cards") ?? null;
+      const cards = panel?.querySelector<HTMLElement>(".hub-google-calendar-slot") ?? null;
       const head = panel?.querySelector<HTMLElement>(".hub-alert-panel-head") ?? null;
       setPanelHost((current) => current === panel ? current : panel);
       setCardsHost((current) => current === cards ? current : cards);

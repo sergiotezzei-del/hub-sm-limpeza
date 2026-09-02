@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { getOrders, getStockChecks, getStockMovements } from "../../storage";
 import type { CleaningOrder, StockCheck, StockMovement } from "../../types";
@@ -9,6 +9,7 @@ import {
   type CleaningDeliveryRecord,
 } from "../cleaning/services/deliveryService";
 import "./cleaningActivityAlerts.css";
+import { acknowledgeAttentionEvent, loadAttentionEvents, type AttentionEvent } from "./attentionEventService";
 
 const SESSION_KEY = "hub-sm-active-session";
 const SUPERVISOR_ID = "tezzei";
@@ -16,7 +17,7 @@ const REFRESH_MS = 15000;
 
 type CleaningActivity =
   | { kind: "order"; id: string; timestamp: number; order: CleaningOrder }
-  | { kind: "stock-check"; id: string; timestamp: number; check: StockCheck }
+  | { kind: "stock-check"; id: string; timestamp: number; check: StockCheck; eventId: string }
   | { kind: "delivery"; id: string; timestamp: number; delivery: CleaningDeliveryRecord }
   | { kind: "stock-exit"; id: string; timestamp: number; movement: StockMovement }
   | { kind: "divergence"; id: string; timestamp: number; approval: CleaningDeliveryApproval };
@@ -107,12 +108,13 @@ function activityCopy(activity: CleaningActivity) {
   }
 }
 
-function buildActivities(
+export function buildActivities(
   orders: CleaningOrder[],
   checks: StockCheck[],
   deliveries: CleaningDeliveryRecord[],
   movements: StockMovement[],
   approvals: CleaningDeliveryApproval[],
+  events: AttentionEvent[],
 ): CleaningActivity[] {
   const today = todayBr();
   const activities: CleaningActivity[] = [];
@@ -126,13 +128,15 @@ function buildActivities(
       order,
     }));
 
+  const pendingChecks = new Map(events.filter((event) => event.sourceType === "stock_check").map((event) => [event.sourceId, event.id]));
   checks
-    .filter((check) => isNeia(check.conferente) && check.data === today)
+    .filter((check) => isNeia(check.conferente) && check.data === today && pendingChecks.has(check.id))
     .forEach((check) => activities.push({
       kind: "stock-check",
       id: `stock-check:${check.id}`,
       timestamp: check.createdAt ? new Date(check.createdAt).getTime() : parseBrDateTime(check.data, check.hora),
       check,
+      eventId: pendingChecks.get(check.id)!,
     }));
 
   deliveries
@@ -174,6 +178,21 @@ export function CleaningActivityAlertEnhancer() {
   const [activities, setActivities] = useState<CleaningActivity[]>([]);
   const [selected, setSelected] = useState<CleaningActivity | null>(null);
   const [loading, setLoading] = useState(false);
+  const [markingId, setMarkingId] = useState("");
+  const [message, setMessage] = useState("");
+  const acknowledgedIds = useRef(new Set<string>());
+  const marking = useRef(false);
+
+  useEffect(() => {
+    const onAcknowledged = (event: Event) => {
+      const detail = (event as CustomEvent<AttentionEvent>).detail;
+      if (detail?.sourceType !== "stock_check") return;
+      acknowledgedIds.current.add(detail.sourceId);
+      setActivities((current) => current.filter((item) => item.kind !== "stock-check" || item.check.id !== detail.sourceId));
+    };
+    document.addEventListener("hub:attention-event-acknowledged", onAcknowledged);
+    return () => document.removeEventListener("hub:attention-event-acknowledged", onAcknowledged);
+  }, []);
 
   useEffect(() => {
     const root = document.getElementById("root");
@@ -223,6 +242,7 @@ export function CleaningActivityAlertEnhancer() {
           loadCleaningDeliveries(),
           getStockMovements(),
           loadCleaningDeliveryApprovals({ pendingSupervisorId: SUPERVISOR_ID }),
+          loadAttentionEvents(),
         ]);
         if (!active) return;
         const orders = results[0].status === "fulfilled" ? results[0].value : [];
@@ -230,7 +250,12 @@ export function CleaningActivityAlertEnhancer() {
         const deliveries = results[2].status === "fulfilled" ? results[2].value : [];
         const movements = results[3].status === "fulfilled" ? results[3].value : [];
         const approvals = results[4].status === "fulfilled" ? results[4].value : [];
-        setActivities(buildActivities(orders, checks, deliveries, movements, approvals));
+        const eventsResult = results[5];
+        const next = buildActivities(orders, checks, deliveries, movements, approvals, eventsResult.status === "fulfilled" ? eventsResult.value : []);
+        setActivities((current) => [
+          ...next,
+          ...(eventsResult.status === "rejected" ? current.filter((item) => item.kind === "stock-check") : []),
+        ].filter((item) => item.kind !== "stock-check" || !acknowledgedIds.current.has(item.check.id)));
       } finally {
         if (active) setLoading(false);
         busy = false;
@@ -270,6 +295,26 @@ export function CleaningActivityAlertEnhancer() {
     setSelected(activity);
   }
 
+  async function markCheckDone(activity: Extract<CleaningActivity, { kind: "stock-check" }>) {
+    if (marking.current) return;
+    marking.current = true;
+    setMarkingId(activity.id);
+    setMessage("");
+    try {
+      await acknowledgeAttentionEvent(activity.eventId, "Tezzei");
+      acknowledgedIds.current.add(activity.check.id);
+      setActivities((current) => current.filter((item) => item.id !== activity.id));
+      document.dispatchEvent(new CustomEvent("hub:attention-event-acknowledged", {
+        detail: { id: activity.eventId, sourceType: "stock_check", sourceId: activity.check.id },
+      }));
+    } catch {
+      setMessage("Não foi possível marcar como feito. Tente novamente.");
+    } finally {
+      marking.current = false;
+      setMarkingId("");
+    }
+  }
+
   return createPortal(
     <>
       <div className="hub-cleaning-activity-heading">
@@ -278,6 +323,8 @@ export function CleaningActivityAlertEnhancer() {
           <span>{loading ? "Atualizando..." : `${activities.length} operação(ões) de hoje${pendingDivergences ? ` · ${pendingDivergences} divergência(s) pendente(s)` : ""}`}</span>
         </div>
       </div>
+
+      {message && <p className="hub-cleaning-activity-error" role="alert">{message}</p>}
 
       {activities.map((activity) => {
         const copy = activityCopy(activity);
@@ -290,9 +337,14 @@ export function CleaningActivityAlertEnhancer() {
             <h3>{copy.title}</h3>
             <p>{copy.description}</p>
             <small>Limpeza · Néia</small>
-            <button className="hub-alert-done-button hub-cleaning-activity-button" type="button" onClick={() => openActivity(activity)}>
-              {copy.action}
-            </button>
+            <div className="hub-cleaning-activity-actions">
+              <button className="hub-alert-done-button hub-cleaning-activity-button" type="button" onClick={() => openActivity(activity)}>
+                {copy.action}
+              </button>
+              {activity.kind === "stock-check" && <button className="hub-alert-done-button hub-cleaning-activity-done" type="button" disabled={Boolean(markingId)} onClick={() => { void markCheckDone(activity); }}>
+                {markingId === activity.id ? "Salvando..." : "FEITO"}
+              </button>}
+            </div>
           </article>
         );
       })}

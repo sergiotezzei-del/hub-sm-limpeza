@@ -156,17 +156,28 @@ function AlertDashboardPanel() {
 
   useEffect(() => {
     let active = true;
+    const acknowledgedIds = new Set<string>();
+    const onAcknowledged = (event: Event) => {
+      const id = (event as CustomEvent<AttentionEvent>).detail?.id;
+      if (!id) return;
+      acknowledgedIds.add(id);
+      setAttentionEvents((current) => current.filter((item) => item.id !== id));
+    };
+    document.addEventListener("hub:attention-event-acknowledged", onAcknowledged);
     Promise.allSettled([loadAlertServiceRequests(), loadAttentionEvents(), loadAuditorioDashboard()])
       .then(([requestsResult, eventsResult, auditorioResult]) => {
       if (!active) return;
       if (requestsResult.status === "fulfilled") setAlertServiceRequests(requestsResult.value);
-      if (eventsResult.status === "fulfilled") setAttentionEvents(eventsResult.value);
+      if (eventsResult.status === "fulfilled") setAttentionEvents(eventsResult.value.filter((item) => !acknowledgedIds.has(item.id)));
       if (auditorioResult.status === "fulfilled") setAuditorioReservations(auditorioResult.value.reservations);
       if (requestsResult.status === "rejected" || eventsResult.status === "rejected" || auditorioResult.status === "rejected") {
         setMessage((current) => current || "Parte dos avisos operacionais está temporariamente indisponível.");
       }
     });
-    return () => { active = false; };
+    return () => {
+      active = false;
+      document.removeEventListener("hub:attention-event-acknowledged", onAcknowledged);
+    };
   }, []);
 
   useEffect(() => {
@@ -292,6 +303,7 @@ function AlertDashboardPanel() {
     setMessage("");
     try {
       await acknowledgeAttentionEvent(event.id, ACTOR_NAME);
+      document.dispatchEvent(new CustomEvent("hub:attention-event-acknowledged", { detail: event }));
       setAttentionEvents((current) => current.filter((item) => item.id !== event.id));
       setMessage("Aviso retirado do painel.");
     } catch {
@@ -453,6 +465,7 @@ function AlertDashboardPanel() {
       )}
 
       <div className="hub-alert-cards">
+        <div className="hub-google-calendar-slot" />
   {emailInbox && emailInbox.pendingNewCount > 0 && (
     <article className="hub-alert-card is-email">
       <div className="hub-alert-card-status">
