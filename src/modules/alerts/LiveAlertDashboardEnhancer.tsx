@@ -115,8 +115,11 @@ function sameItems(first: AlertSnapshot[], second: AlertSnapshot[]) {
 
 function buildAuditorioAlertSnapshots(reservations: AuditorioReservation[]): AlertSnapshot[] {
   const now = new Date();
+  const today = getLocalDateKey();
   return reservations
-    .filter((reservation) => reservation.status === "aprovado" && new Date(reservation.reservationEnd) >= now)
+    .filter((reservation) => reservation.status === "aprovado"
+      && reservation.eventDate === today
+      && new Date(reservation.reservationEnd) >= now)
     .map((reservation) => ({
       key: `auditorio:${reservation.id}`,
       title: `Auditório: ${reservation.eventName}`,
