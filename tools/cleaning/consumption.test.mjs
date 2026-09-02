@@ -16,9 +16,9 @@ const check = (id, data, hora, quantity, extra = {}) => ({ id, data, hora, confe
 const initial = check("first", "11/08/2026", "10:43", 14);
 const final = check("last", "02/09/2026", "11:33", 1);
 const movement = (id, movementType, quantity, createdAt = "2026-08-18T13:24:44Z", extra = {}) => ({ id, productId: product.id, productName: product.name, movementType, quantity, createdAt, unit: "Unidade", userId: "neia", userName: "Neia", ...extra });
-const order = (id, data, quantity = 12) => ({ id, data, hora: "09:00", solicitante: "Neia", status: "Pedido feito", itens: [{ id, productName: "Detergente", quantity, unit: "Unidade" }] });
+const order = (id, data, quantity = 12, extra = {}) => ({ id, data, hora: "09:00", solicitante: "Neia", status: "Pedido feito", itens: [{ id, productName: "Detergente", quantity, unit: "Unidade" }], ...extra });
 const base = { products: [product], checks: [final, initial], movements: [movement("exit", "saida", 1)], orders: [] };
-const query = { productId: product.id, mode: "checks", days: 20, from: "", to: "", startId: "", endId: "" };
+const query = { productId: product.id, intent: "consumption", mode: "checks", days: 20, from: "", to: "", startId: "", endId: "", recentOrders: 1 };
 
 test("realistic discrepancy: physical reduction 13, recorded exit 1, difference 12", () => {
   const r = calculate(base, query, now);
@@ -120,6 +120,40 @@ test("questions resolve product and explicit days, dates, checks or orders", () 
   assert.equal(parse("Detergente entre os últimos dois pedidos", [product]).mode, "orders");
   assert.equal(parse("Detergente de 11/08/2026 a 02/09/2026", [product]).from, "2026-08-11");
   assert.equal(parse("Detergente hoje", [product]).days, 1);
+});
+
+test("purchase questions distinguish bought quantity from consumption", () => {
+  const lastOrder = parse("Quanto de detergente compramos no último pedido?", [product]);
+  assert.equal(lastOrder.intent, "purchases");
+  assert.equal(lastOrder.mode, "recent-orders");
+  assert.equal(lastOrder.recentOrders, 1);
+
+  const lastMonth = parse("Quanto de detergente compramos no último mês?", [product]);
+  assert.equal(lastMonth.intent, "purchases");
+  assert.equal(lastMonth.mode, "days");
+  assert.equal(lastMonth.days, 30);
+});
+
+test("last order purchase returns the quantity written in that order", () => {
+  const data = { ...base, orders: [order("older", "10/08/2026", 6), order("latest", "01/09/2026", 14)] };
+  const r = calculate(data, { ...query, intent: "purchases", mode: "recent-orders", recentOrders: 1 }, now);
+  assert.equal(r.ordered, 14);
+  assert.deepEqual(r.orders.map((item) => item.id), ["latest"]);
+  assert.equal(r.entries, 0);
+});
+
+test("purchase in the last month sums only orders inside the period", () => {
+  const data = { ...base, orders: [order("old", "01/07/2026", 100), order("a", "10/08/2026", 6), order("b", "01/09/2026", 14)] };
+  const r = calculate(data, { ...query, intent: "purchases", mode: "days", days: 30 }, now);
+  assert.equal(r.ordered, 20);
+  assert.deepEqual(r.orders.map((item) => item.id), ["b", "a"]);
+});
+
+test("last two purchases can be requested in natural language", () => {
+  const parsed = parse("Quanto de detergente compramos nas últimas 2 compras?", [product]);
+  assert.equal(parsed.intent, "purchases");
+  assert.equal(parsed.mode, "recent-orders");
+  assert.equal(parsed.recentOrders, 2);
 });
 
 test("ambiguous product or missing period is rejected, never guessed", () => {
