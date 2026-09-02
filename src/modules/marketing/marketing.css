@@ -1924,3 +1924,28 @@
   opacity: .55;
   cursor: wait;
 }
+
+
+/* marketing-period-exception */
+.marketing-period-exception-callout,
+.marketing-period-exception,
+.marketing-period-exception-form {
+  border: 1px solid #d7b65a;
+  border-radius: 14px;
+  background: #fffaf0;
+  padding: 14px;
+  margin-top: 12px;
+}
+.marketing-period-exception-callout strong,
+.marketing-period-exception strong { display: block; margin-bottom: 6px; }
+.marketing-period-exception-callout p,
+.marketing-period-exception p,
+.marketing-period-exception-form p { margin: 6px 0 10px; }
+.marketing-period-exception.pending { border-color: #c58a14; background: #fff8e8; }
+.marketing-period-exception.rejected { border-color: #b74747; background: #fff3f3; }
+.marketing-period-exception > div,
+.marketing-period-exception-form > div:last-child { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.marketing-period-exception-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.marketing-period-exception-form label { display: grid; gap: 6px; margin-top: 10px; }
+.marketing-period-exception-form textarea { min-height: 90px; }
+@media (max-width: 640px) { .marketing-period-exception-fields { grid-template-columns: 1fr; } }

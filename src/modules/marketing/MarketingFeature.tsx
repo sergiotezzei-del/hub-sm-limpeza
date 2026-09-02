@@ -11,12 +11,14 @@ import {
   MARKETING_CONTENT_OPTIONS,
   MARKETING_REVIEW_REASONS,
   MarketingCaptureSelection,
+  zonedLocalToIso,
 } from "./marketingConfig";
 import {
   adminDeleteMarketingRequest,
   adminRestoreMarketingRequest,
   adminUpdateMarketingRequest,
   createMarketingRequest,
+  decideMarketingPeriodException,
   decideMarketingQueueOverride,
   getMarketingDashboard,
   getMarketingErrorMessage,
@@ -32,6 +34,7 @@ import {
   MarketingRequestStatus,
   MarketingRole,
   openMarketingManagerReview,
+  requestMarketingPeriodException,
   requestMarketingQueueOverride,
   rescheduleMarketingRequest,
   resolveMarketingManagerReview,
@@ -241,7 +244,10 @@ export function MarketingFeature(props: MarketingFeatureProps) {
   }
 
   const adminAlerts = dashboard?.context.role === "admin" && alertHost
-    ? dashboard.requests.filter((request) => request.status === "solicitado" || (request.urgencyRequested && !request.urgencyDecidedAt)).slice(0, 8)
+    ? dashboard.requests.filter((request) => request.specialCaptureStatus !== "pending" && (request.status === "solicitado" || (request.urgencyRequested && !request.urgencyDecidedAt))).slice(0, 8)
+    : [];
+  const specialCaptureAlerts = dashboard?.context.userId === "tezzei" && alertHost
+    ? dashboard.requests.filter((request) => request.specialCaptureStatus === "pending").slice(0, 8)
     : [];
   const queueOverrideAlerts = dashboard?.context.role === "admin" && alertHost
     ? dashboard.queueOverrideRequests.filter((request) => request.status === "pending").slice(0, 8)
@@ -256,6 +262,16 @@ export function MarketingFeature(props: MarketingFeatureProps) {
           <p>{request.managerName} · {request.brokerName} · {request.propertyReference}</p>
           <small>{contentSummary(request)} · {statusLabels[request.status]}</small>
           <button className="hub-alert-done-button marketing-alert-open" type="button" onClick={() => { setSelected(request); setTab("central"); props.onOpen(); }}>VER PEDIDO</button>
+        </article>,
+        alertHost,
+      ))}
+      {alertHost && specialCaptureAlerts.map((request) => createPortal(
+        <article className="hub-alert-card marketing-day-alert is-urgent" key={`marketing-special-alert-${request.id}`} data-marketing-request-id={request.id}>
+          <div className="hub-alert-card-status"><span>EXCEÇÃO DE AGENDA</span><time>{formatTime(request.updatedAt)}</time></div>
+          <h3>Marketing pediu sua autorização</h3>
+          <p>Pedido #{request.requestNumber} · {request.brokerName}</p>
+          <small>{request.specialCaptureAt ? formatMarketingDateTime(request.specialCaptureAt, dashboard!.scheduleConfig.timezone) : "Horário não informado"} · {request.specialCaptureReason}</small>
+          <button className="hub-alert-done-button marketing-alert-open" type="button" onClick={() => { setSelected(request); setTab("central"); props.onOpen(); }}>ANALISAR</button>
         </article>,
         alertHost,
       ))}
@@ -1181,7 +1197,12 @@ function RequestDetail(props: { sessionToken: string; dashboard: MarketingDashbo
   const [reviewDetails, setReviewDetails] = useState("");
   const [adminEditOpen, setAdminEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [periodExceptionOpen, setPeriodExceptionOpen] = useState(false);
+  const [periodExceptionDate, setPeriodExceptionDate] = useState("");
+  const [periodExceptionTime, setPeriodExceptionTime] = useState("14:00");
+  const [periodExceptionReason, setPeriodExceptionReason] = useState("");
   const canManage = props.role === "admin" || props.role === "marketing";
+  const isMarketingScheduler = props.dashboard.context.userId === "maria" || props.dashboard.context.userId === "arthur";
   const pendingOverride = props.dashboard.queueOverrideRequests.find((request) => request.requestId === props.request.id && request.status === "pending");
   const pendingManagerReview = props.dashboard.managerReviews.find((review) => review.requestId === props.request.id && review.status === "pending");
 
@@ -1211,6 +1232,43 @@ function RequestDetail(props: { sessionToken: string; dashboard: MarketingDashbo
       props.onNotice(`Pedido #${props.request.requestNumber} voltou para o final da fila de agendamento.`);
       await props.onChanged();
       props.onClose();
+    } catch (error) {
+      props.onError(getMarketingErrorMessage(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function requestPeriodException(event: FormEvent) {
+    event.preventDefault();
+    if (!periodExceptionDate || !periodExceptionTime) { props.onError("Escolha a data e o horário da emergência."); return; }
+    if (periodExceptionReason.trim().length < 5) { props.onError("Explique o motivo da emergência com pelo menos 5 caracteres."); return; }
+    setBusy(true);
+    props.onError("");
+    try {
+      const specialAt = zonedLocalToIso(periodExceptionDate, periodExceptionTime, props.dashboard.scheduleConfig.timezone);
+      await requestMarketingPeriodException(props.sessionToken, props.request.id, specialAt, periodExceptionReason.trim());
+      props.onNotice(`Exceção do pedido #${props.request.requestNumber} enviada para autorização de Sérgio Tezzei.`);
+      setPeriodExceptionOpen(false);
+      setPeriodExceptionReason("");
+      setCapturePickerOpen(false);
+      await props.onChanged();
+    } catch (error) {
+      props.onError(getMarketingErrorMessage(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function decidePeriodException(decision: "approved" | "rejected") {
+    if (busy) return;
+    setBusy(true);
+    props.onError("");
+    try {
+      await decideMarketingPeriodException(props.sessionToken, props.request.id, decision);
+      props.onNotice(decision === "approved" ? `Exceção do pedido #${props.request.requestNumber} aprovada e agendada.` : `Exceção do pedido #${props.request.requestNumber} negada. O pedido continua aguardando outro horário.`);
+      await props.onChanged();
+      if (decision === "approved") props.onClose();
     } catch (error) {
       props.onError(getMarketingErrorMessage(error));
     } finally {
@@ -1306,6 +1364,17 @@ function RequestDetail(props: { sessionToken: string; dashboard: MarketingDashbo
         )}
         {props.request.requesterNotes && <div className="marketing-note-box"><strong>Observação do pedido</strong><p>{props.request.requesterNotes}</p></div>}
         {props.request.urgencyRequested && <div className={`marketing-urgency-box ${props.request.urgencyApproved ? "approved" : ""}`}><strong>Urgência solicitada</strong><p>{props.request.urgencyReason}</p><small>{props.request.urgencyDecidedAt ? `${props.request.urgencyApproved ? "Aprovada" : "Mantida na fila normal"} por ${props.request.urgencyDecidedByName || "Admin"}` : "Aguardando análise interna"}</small>{props.role === "admin" && !props.request.urgencyDecidedAt && <div><button type="button" disabled={busy} onClick={() => void run("approve_urgency")}>APROVAR PRIORIDADE</button><button type="button" disabled={busy} onClick={() => void run("reject_urgency")}>MANTER FILA</button></div>}</div>}
+        {props.request.specialCaptureStatus === "pending" && props.request.specialCaptureAt && (
+          <section className="marketing-period-exception pending">
+            <strong>EXCEÇÃO DE AGENDA · AGUARDANDO AUTORIZAÇÃO</strong>
+            <h3>{formatMarketingDateTime(props.request.specialCaptureAt, props.dashboard.scheduleConfig.timezone)}</h3>
+            <p>{props.request.specialCaptureReason}</p>
+            {props.dashboard.context.userId === "tezzei" && props.role === "admin" ? (
+              <div><button type="button" disabled={busy} onClick={() => void decidePeriodException("approved")}>APROVAR E AGENDAR</button><button type="button" className="secondary" disabled={busy} onClick={() => void decidePeriodException("rejected")}>NÃO APROVAR</button></div>
+            ) : <small>Somente Sérgio Tezzei pode aprovar. O pedido ainda NÃO está agendado.</small>}
+          </section>
+        )}
+        {props.request.specialCaptureStatus === "rejected" && props.request.specialCaptureAt && <section className="marketing-period-exception rejected"><strong>EXCEÇÃO NÃO APROVADA</strong><p>{formatMarketingDateTime(props.request.specialCaptureAt, props.dashboard.scheduleConfig.timezone)} · escolha outro período disponível.</p></section>}
         {props.role === "admin" && <div className="marketing-admin-actions"><button type="button" className="secondary" onClick={() => setAdminEditOpen((open) => !open)}>{adminEditOpen ? "FECHAR EDIÇÃO" : "EDITAR PEDIDO"}</button><button type="button" className="danger" onClick={() => setDeleteOpen(true)}>EXCLUIR PEDIDO</button></div>}
         {props.role === "admin" && adminEditOpen && <AdminRequestEditForm key={props.request.updatedAt} sessionToken={props.sessionToken} dashboard={props.dashboard} request={props.request} onCancel={() => setAdminEditOpen(false)} onSaved={props.onChanged} onError={props.onError} onNotice={props.onNotice} />}
         {props.request.managerReviewStatus && props.request.managerReviewStatus !== "pending" && <div className="marketing-review-answered"><strong>AUDITORIA RESPONDIDA</strong><span>{managerReviewStatusLabel(props.request.managerReviewStatus)}</span></div>}
@@ -1338,11 +1407,30 @@ function RequestDetail(props: { sessionToken: string; dashboard: MarketingDashbo
                   onConfirm={(selection) => { setConfirmed(selection); setCapturePickerOpen(false); }}
                 />
               )}
+              {isMarketingScheduler && props.request.specialCaptureStatus !== "pending" && (
+                <div className="marketing-period-exception-callout">
+                  <strong>PERÍODO JÁ RESERVADO?</strong>
+                  <p>O agendamento normal fica bloqueado. Se for uma emergência real, você pode pedir uma exceção para Sérgio Tezzei.</p>
+                  <button type="button" className="secondary" onClick={() => setPeriodExceptionOpen(true)}>SOLICITAR EXCEÇÃO / EMERGÊNCIA</button>
+                </div>
+              )}
             </section>
           )}
           <label className="span-2">Observação interna<textarea value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Bloqueio, retorno do corretor, ajuste solicitado..." /></label>
           <button className="span-2" type="submit" disabled={busy}>{busy ? "Salvando..." : "SALVAR CONTROLE"}</button>
         </form>}
+        {periodExceptionOpen && isMarketingScheduler && props.request.specialCaptureStatus !== "pending" && (
+          <form className="marketing-period-exception-form" onSubmit={requestPeriodException}>
+            <h3>Solicitar exceção de agenda</h3>
+            <p>Use somente em caso de emergência. O pedido só será agendado depois da autorização de Sérgio Tezzei.</p>
+            <div className="marketing-period-exception-fields">
+              <label>Data<input type="date" value={periodExceptionDate} onChange={(event) => setPeriodExceptionDate(event.target.value)} required /></label>
+              <label>Horário<select value={periodExceptionTime} onChange={(event) => setPeriodExceptionTime(event.target.value)}><option>08:00</option><option>09:00</option><option>10:00</option><option>11:00</option><option>14:00</option><option>15:00</option><option>16:00</option><option>17:00</option></select></label>
+            </div>
+            <label>Por que precisa agendar mesmo com o período reservado?<textarea value={periodExceptionReason} onChange={(event) => setPeriodExceptionReason(event.target.value)} minLength={5} maxLength={1000} required /></label>
+            <div><button type="button" className="secondary" onClick={() => setPeriodExceptionOpen(false)}>CANCELAR</button><button type="submit" disabled={busy}>{busy ? "Enviando..." : "PEDIR AUTORIZAÇÃO AO TEZZEI"}</button></div>
+          </form>
+        )}
         {canManage && pendingManagerReview && <div className="marketing-review-pending"><strong>AGUARDANDO CONFERÊNCIA DO GERENTE</strong><p>{pendingManagerReview.details}</p><small>Enviado por {pendingManagerReview.openedByName}.</small></div>}
         {canManage && !pendingManagerReview && !["pronto", "cancelado"].includes(props.request.status) && !reviewFormOpen && <button type="button" className="marketing-open-review" onClick={() => setReviewFormOpen(true)}>SOLICITAR AUDITORIA DO GERENTE</button>}
         {canManage && !pendingManagerReview && reviewFormOpen && <form className="marketing-open-review-form" onSubmit={openManagerReview}><h3>Motivo da auditoria</h3><label>Tipo de divergência<select value={reviewReason} onChange={(event) => setReviewReason(event.target.value as MarketingManagerReviewReason)}>{MARKETING_REVIEW_REASONS.map((reason) => <option key={reason.value} value={reason.value}>{reason.label}</option>)}</select></label><label>Descreva o problema<textarea value={reviewDetails} onChange={(event) => setReviewDetails(event.target.value)} minLength={5} maxLength={2000} required /></label><div><button type="button" className="secondary" onClick={() => setReviewFormOpen(false)}>CANCELAR</button><button type="submit" disabled={busy}>{busy ? "Enviando..." : "ENVIAR AO GERENTE"}</button></div></form>}
