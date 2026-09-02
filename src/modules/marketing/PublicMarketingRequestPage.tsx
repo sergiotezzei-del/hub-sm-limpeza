@@ -5,7 +5,6 @@ import { ExclusiveChoice } from "./ExclusiveChoice";
 import { MarketingPushSetupCard } from "./MarketingPushSetupCard";
 import {
   formatCaptureRange,
-  formatDuration,
   formatMarketingDateTime,
   MARKETING_CONTENT_OPTIONS,
   type MarketingCaptureSelection,
@@ -279,22 +278,9 @@ export function PublicMarketingRequestPage() {
                   <fieldset className="marketing-public-capture-choice"><legend>Data da captação</legend>
                     {continuingCaptureGroup ? (
                       form.capturePreference === "choose" && form.preferredCapture
-                        ? <div>
+                        ? <div className="marketing-grouped-capture-time">
                             <strong>{formatMarketingDateTime(form.preferredCapture.startAt, availability.scheduleConfig.timezone)}</strong>
-                            <small> Data/período mantidos do primeiro imóvel.</small>
-                            <p>Duração estimada deste imóvel:</p>
-                            <div className="marketing-duration-options">
-                              {availability.scheduleConfig.durationOptionsMinutes.filter((duration) => duration <= 120).map((duration) => (
-                                <button
-                                  type="button"
-                                  key={duration}
-                                  className={form.preferredCapture?.durationMinutes === duration ? "selected" : ""}
-                                  onClick={() => setForm({ ...form, preferredCapture: { startAt: form.preferredCapture!.startAt, durationMinutes: duration } })}
-                                >
-                                  {formatDuration(duration)}
-                                </button>
-                              ))}
-                            </div>
+                            <small>Mesmo dia e horário da saída do primeiro imóvel.</small>
                           </div>
                         : <p>O Marketing definirá a data e o período para toda esta saída agrupada.</p>
                     ) : <>

@@ -7,9 +7,10 @@ import {
   MarketingCaptureSelection,
   MarketingOccupiedCaptureSlot,
   MarketingScheduleConfig,
-  minutesFromTime,
   zonedLocalToIso,
 } from "./marketingConfig";
+
+type MarketingPeriod = "morning" | "afternoon";
 
 type CaptureSchedulePickerProps = {
   config: MarketingScheduleConfig;
@@ -19,11 +20,13 @@ type CaptureSchedulePickerProps = {
   excludedCaptureGroupId?: string | null;
   onConfirm: (value: MarketingCaptureSelection) => void;
   onCancel?: () => void;
+  onRequestException?: (context: { dateKey: string; period: MarketingPeriod }) => void;
 };
 
 const DATE_WINDOW_DAYS = 28;
 const STANDARD_TIMES = ["08:00", "09:00", "10:00", "11:00", "14:00", "15:00", "16:00", "17:00"] as const;
-const AFTERNOON_START_MINUTES = 14 * 60;
+const MORNING_TIMES = STANDARD_TIMES.slice(0, 4);
+const AFTERNOON_TIMES = STANDARD_TIMES.slice(4);
 const DEFAULT_DURATION_MINUTES = 60;
 
 export function CaptureSchedulePicker(props: CaptureSchedulePickerProps) {
@@ -66,23 +69,27 @@ export function CaptureSchedulePicker(props: CaptureSchedulePickerProps) {
 
   return (
     <section className="marketing-schedule-picker" aria-label="Escolher data e horário da captação">
-      <div className="marketing-picker-step">
-        <strong>1. Escolha a data</strong>
-        <div className="marketing-date-legend" aria-label="Legenda de disponibilidade">
-          <span><i className="free" /> Livre</span>
-          <span><i className="partial" /> Um período reservado</span>
-          <span><i className="full" /> Dia reservado</span>
+      <header className="marketing-schedule-picker-head">
+        <div>
+          <strong>Agendamento da captação</strong>
+          <small>Um agendamento por período: manhã ou tarde.</small>
         </div>
+      </header>
+
+      <div className="marketing-picker-step">
+        <strong>1. Escolha o dia</strong>
         <div className="marketing-date-grid">
           {dates.map((dateKey) => {
             const availability = dayAvailability(dateKey, props.config, filteredOccupied);
+            const fullWithoutException = availability === "full" && !props.onRequestException;
             return (
               <button
                 type="button"
                 key={dateKey}
                 className={`${availability} ${selectedDate === dateKey ? "selected" : ""}`}
-                disabled={availability === "full"}
+                disabled={fullWithoutException}
                 onClick={() => chooseDate(dateKey)}
+                title={availability === "full" ? "Manhã e tarde já reservadas" : undefined}
               >
                 <small>{formatWeekday(dateKey)}</small>
                 <strong>{formatDay(dateKey)}</strong>
@@ -90,41 +97,108 @@ export function CaptureSchedulePicker(props: CaptureSchedulePickerProps) {
             );
           })}
         </div>
-        <small>Regra: 1 agendamento pela manhã e 1 à tarde. Ao reservar um horário, todo o período fica bloqueado.</small>
+        <div className="marketing-date-legend" aria-label="Legenda de disponibilidade">
+          <span><i className="free" /> livre</span>
+          <span><i className="partial" /> um período ocupado</span>
+          <span><i className="full" /> manhã e tarde ocupadas</span>
+        </div>
       </div>
 
       <div className="marketing-picker-step">
-        <strong>2. Escolha o horário</strong>
-        <div className="marketing-period-status">
-          <span className={morningReserved ? "reserved" : "available"}>Manhã · {morningReserved ? "RESERVADA" : "LIVRE"}</span>
-          <span className={afternoonReserved ? "reserved" : "available"}>Tarde · {afternoonReserved ? "RESERVADA" : "LIVRE"}</span>
+        <strong>2. Escolha o período e o horário</strong>
+        <div className="marketing-period-cards">
+          <PeriodCard
+            title="MANHÃ"
+            subtitle="08:00 · 09:00 · 10:00 · 11:00"
+            period="morning"
+            dateKey={selectedDate}
+            times={MORNING_TIMES}
+            reserved={morningReserved}
+            selectedTime={selectedTime}
+            config={props.config}
+            occupied={filteredOccupied}
+            onTime={setSelectedTime}
+            onRequestException={props.onRequestException}
+          />
+          <PeriodCard
+            title="TARDE"
+            subtitle="14:00 · 15:00 · 16:00 · 17:00"
+            period="afternoon"
+            dateKey={selectedDate}
+            times={AFTERNOON_TIMES}
+            reserved={afternoonReserved}
+            selectedTime={selectedTime}
+            config={props.config}
+            occupied={filteredOccupied}
+            onTime={setSelectedTime}
+            onRequestException={props.onRequestException}
+          />
         </div>
-        <div className="marketing-period-grid">
-          {STANDARD_TIMES.map((time) => {
-            const available = isTimeAvailable(selectedDate, time, props.config, filteredOccupied);
-            const period = periodForTime(time);
+        <small className="marketing-lunch-note">Almoço protegido: não há agenda padrão entre 12:00 e 13:59.</small>
+      </div>
+
+      <footer>
+        <div className="marketing-selected-slot">
+          {selectedTimeIsAvailable ? <><span>Selecionado</span><strong>{formatSelected(selectedDate, selectedTime)}</strong></> : <span>Escolha um horário livre.</span>}
+        </div>
+        <div className="marketing-schedule-footer-actions">
+          {props.onCancel && <button type="button" className="secondary" onClick={props.onCancel}>VOLTAR</button>}
+          <button type="button" onClick={confirm} disabled={!selectedTimeIsAvailable}>CONFIRMAR HORÁRIO</button>
+        </div>
+      </footer>
+    </section>
+  );
+}
+
+function PeriodCard(props: {
+  title: string;
+  subtitle: string;
+  period: MarketingPeriod;
+  dateKey: string;
+  times: readonly string[];
+  reserved: boolean;
+  selectedTime: string;
+  config: MarketingScheduleConfig;
+  occupied: MarketingOccupiedCaptureSlot[];
+  onTime: (time: string) => void;
+  onRequestException?: (context: { dateKey: string; period: MarketingPeriod }) => void;
+}) {
+  const occupiedTimes = occupiedTimesForPeriod(props.dateKey, props.period, props.config, props.occupied);
+  return (
+    <section className={`marketing-period-card ${props.reserved ? "reserved" : "free"}`}>
+      <header>
+        <div><strong>{props.title}</strong><small>{props.subtitle}</small></div>
+        <span>{props.reserved ? "RESERVADA" : "LIVRE"}</span>
+      </header>
+
+      {props.reserved ? (
+        <div className="marketing-period-reserved-message">
+          <p>Já existe agendamento neste período{occupiedTimes.length ? `: ${occupiedTimes.join(", ")}` : "."}</p>
+          {props.onRequestException && (
+            <button type="button" onClick={() => props.onRequestException?.({ dateKey: props.dateKey, period: props.period })}>
+              PRECISO DE ENCAIXE
+            </button>
+          )}
+        </div>
+      ) : (
+        <div className="marketing-time-buttons">
+          {props.times.map((time) => {
+            const available = isTimeAvailable(props.dateKey, time, props.config, props.occupied);
             return (
               <button
                 type="button"
                 key={time}
-                className={`${available ? "available" : "unavailable"} ${selectedTime === time ? "selected" : ""}`}
+                className={`${available ? "available" : "unavailable"} ${props.selectedTime === time ? "selected" : ""}`}
                 disabled={!available}
-                title={!available ? `${period === "morning" ? "Manhã" : "Tarde"} já reservada` : undefined}
-                onClick={() => setSelectedTime(time)}
+                onClick={() => props.onTime(time)}
               >
                 <strong>{time}</strong>
-                {!available && <small>RESERVADO</small>}
+                {!available && <small>OCUPADO</small>}
               </button>
             );
           })}
         </div>
-        <small>Manhã: 08:00, 09:00, 10:00 e 11:00. Tarde: 14:00, 15:00, 16:00 e 17:00. O horário de almoço fica protegido.</small>
-      </div>
-
-      <footer>
-        {props.onCancel && <button type="button" className="secondary" onClick={props.onCancel}>CANCELAR</button>}
-        <button type="button" onClick={confirm} disabled={!selectedTimeIsAvailable}>OK</button>
-      </footer>
+      )}
     </section>
   );
 }
@@ -143,11 +217,7 @@ function firstWorkingDate(config: MarketingScheduleConfig) {
   return buildWorkingDates(config)[0] || getDateKeyInTimeZone(new Date(), config.timezone);
 }
 
-function dayAvailability(
-  dateKey: string,
-  config: MarketingScheduleConfig,
-  occupied: MarketingOccupiedCaptureSlot[],
-) {
+function dayAvailability(dateKey: string, config: MarketingScheduleConfig, occupied: MarketingOccupiedCaptureSlot[]) {
   const morning = periodIsOccupied(dateKey, "morning", config, occupied);
   const afternoon = periodIsOccupied(dateKey, "afternoon", config, occupied);
   if (morning && afternoon) return "full";
@@ -155,37 +225,38 @@ function dayAvailability(
   return "free";
 }
 
-function isTimeAvailable(
-  dateKey: string,
-  time: string,
-  config: MarketingScheduleConfig,
-  occupied: MarketingOccupiedCaptureSlot[],
-) {
+function isTimeAvailable(dateKey: string, time: string, config: MarketingScheduleConfig, occupied: MarketingOccupiedCaptureSlot[]) {
   if (!STANDARD_TIMES.includes(time as (typeof STANDARD_TIMES)[number])) return false;
-  return !periodIsOccupied(dateKey, periodForTime(time), config, occupied);
-}
+  const period = standardPeriodForTime(time);
+  if (!period || periodIsOccupied(dateKey, period, config, occupied)) return false;
 
-function periodIsOccupied(
-  dateKey: string,
-  period: "morning" | "afternoon",
-  config: MarketingScheduleConfig,
-  occupied: MarketingOccupiedCaptureSlot[],
-) {
-  return occupiedForDate(dateKey, config, occupied).some((slot) => {
-    const slotTime = getTimeKeyInTimeZone(slot.startAt, config.timezone);
-    return periodForTime(slotTime) === period;
+  const start = new Date(zonedLocalToIso(dateKey, time, config.timezone)).getTime();
+  const end = start + DEFAULT_DURATION_MINUTES * 60000;
+  return !occupied.some((slot) => {
+    const occupiedStart = new Date(slot.startAt).getTime();
+    const occupiedEnd = occupiedStart + (slot.durationMinutes || DEFAULT_DURATION_MINUTES) * 60000;
+    return start < occupiedEnd && end > occupiedStart;
   });
 }
 
-function periodForTime(time: string): "morning" | "afternoon" {
-  return minutesFromTime(time) < AFTERNOON_START_MINUTES ? "morning" : "afternoon";
+function periodIsOccupied(dateKey: string, period: MarketingPeriod, config: MarketingScheduleConfig, occupied: MarketingOccupiedCaptureSlot[]) {
+  return occupiedForDate(dateKey, config, occupied).some((slot) => standardPeriodForTime(getTimeKeyInTimeZone(slot.startAt, config.timezone)) === period);
 }
 
-function occupiedForDate(
-  dateKey: string,
-  config: MarketingScheduleConfig,
-  occupied: MarketingOccupiedCaptureSlot[],
-) {
+function occupiedTimesForPeriod(dateKey: string, period: MarketingPeriod, config: MarketingScheduleConfig, occupied: MarketingOccupiedCaptureSlot[]) {
+  return occupiedForDate(dateKey, config, occupied)
+    .map((slot) => getTimeKeyInTimeZone(slot.startAt, config.timezone))
+    .filter((time) => standardPeriodForTime(time) === period)
+    .sort();
+}
+
+function standardPeriodForTime(time: string): MarketingPeriod | null {
+  if (MORNING_TIMES.includes(time as (typeof MORNING_TIMES)[number])) return "morning";
+  if (AFTERNOON_TIMES.includes(time as (typeof AFTERNOON_TIMES)[number])) return "afternoon";
+  return null;
+}
+
+function occupiedForDate(dateKey: string, config: MarketingScheduleConfig, occupied: MarketingOccupiedCaptureSlot[]) {
   return occupied.filter((slot) => getDateKeyInTimeZone(slot.startAt, config.timezone) === dateKey);
 }
 
@@ -201,4 +272,11 @@ function formatDay(dateKey: string) {
   return new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short", timeZone: "UTC" })
     .format(new Date(Date.UTC(year, month - 1, day)))
     .replace(".", "");
+}
+
+function formatSelected(dateKey: string, time: string) {
+  const [year, month, day] = dateKey.split("-").map(Number);
+  const date = new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "UTC" })
+    .format(new Date(Date.UTC(year, month - 1, day)));
+  return `${date} · ${time}`;
 }

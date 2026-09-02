@@ -490,9 +490,8 @@ export function getMarketingErrorMessage(error: unknown) {
   if (normalized.includes("MARKETING_SPECIAL_DECISION_DENIED")) return "Somente Sérgio Tezzei pode aprovar ou negar esta exceção de agenda.";
   if (normalized.includes("MARKETING_SPECIAL_REASON_REQUIRED")) return "Explique o motivo da emergência com pelo menos 5 caracteres.";
   if (normalized.includes("MARKETING_SPECIAL_TIME_INVALID")) return "Escolha uma data e horário futuros.";
-  if (normalized.includes("MARKETING_SPECIAL_TIME_NOT_STANDARD_SLOT")) return "A exceção deve usar um dos horários da agenda: 08, 09, 10, 11, 14, 15, 16 ou 17h.";
-  if (normalized.includes("MARKETING_SPECIAL_PERIOD_NOT_RESERVED")) return "Esse período está livre. Use o agendamento normal, sem pedir exceção.";
-  if (normalized.includes("MARKETING_SPECIAL_EXACT_CONFLICT")) return "Já existe uma captação exatamente nesse horário. Escolha outro horário do período.";
+    if (normalized.includes("MARKETING_SPECIAL_PERIOD_NOT_RESERVED")) return "Esse período está livre. Use o agendamento normal; para outro horário, escolha Fora do padrão.";
+  if (normalized.includes("MARKETING_SPECIAL_EXACT_CONFLICT")) return "Já existe uma captação ocupando esse horário. Escolha outro horário.";
   if (normalized.includes("MARKETING_SPECIAL_ALREADY_PENDING")) return "Já existe uma exceção aguardando autorização para este pedido.";
   if (normalized.includes("MARKETING_SPECIAL_NOT_PENDING")) return "Esta exceção já foi analisada ou não está mais pendente.";
   if (normalized.includes("MARKETING_TEAM_REQUIRED")) return "Escolha a equipe deste gerente.";
@@ -510,7 +509,7 @@ export function getMarketingErrorMessage(error: unknown) {
   if (normalized.includes("MARKETING_RESTORE_KIND_INVALID") || normalized.includes("MARKETING_RESTORE_DATA_INVALID")) return "Os dados deste pedido não atendem mais às regras atuais e impedem a restauração.";
   if (normalized.includes("MARKETING_QUEUE_ORDER_BLOCKED")) return "Existe um pedido anterior aguardando atendimento. A fila deve ser seguida na ordem de entrada.";
   if (normalized.includes("MARKETING_CAPTURE_CONFLICT")) return "Este horário já possui outra captação agendada.";
-  if (normalized.includes("MARKETING_CAPTURE_DURATION_REQUIRED")) return "Escolha a data, o horário e a duração da captação.";
+  if (normalized.includes("MARKETING_CAPTURE_DURATION_REQUIRED")) return "Escolha a data e o horário da captação.";
   if (normalized.includes("MARKETING_CAPTURE_WINDOW_INVALID")) return "Escolha um horário disponível dentro da agenda do Marketing.";
   if (normalized.includes("MARKETING_EDIT_ONLY_CAPTURE_DENIED")) return "Pedidos de somente edição não podem ter captação confirmada.";
   if (normalized.includes("MARKETING_ASSIGNEE_INVALID")) return "Escolha Maria ou Arthur como responsável do Marketing.";
