@@ -1,0 +1,51 @@
+name: One-time simplify Marketing schedule UI
+
+on:
+  push:
+    branches:
+      - fix/marketing-agenda-ui-simplificada
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/marketing-agenda-ui-simplificada
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Apply schedule UI simplification
+        run: python scripts/one_time_simplify_marketing_schedule_ui.py
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build
+        run: pnpm run build
+      - name: TypeScript
+        run: npx tsc --noEmit
+      - name: Verify simplified flow
+        run: |
+          grep -q "PRECISO DE ENCAIXE" src/modules/marketing/CaptureSchedulePicker.tsx
+          grep -q "HORÁRIO FORA DO PADRÃO" src/modules/marketing/MarketingFeature.tsx
+          grep -q "ENVIAR PARA APROVAÇÃO" src/modules/marketing/MarketingFeature.tsx
+          grep -q "Não é necessário informar duração" src/modules/marketing/MarketingFeature.tsx
+          ! grep -q "Duração solicitada" src/modules/marketing/MarketingFeature.tsx
+      - name: Commit verified implementation
+        run: |
+          rm -f scripts/one_time_simplify_marketing_schedule_ui.py
+          rm -f .github/workflows/one-time-simplify-marketing-schedule-ui.yml
+          git config user.name "Sergio Tezzei"
+          git config user.email "sergiotezzei@gmail.com"
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -m "refactor(marketing): simplificar telas de agendamento"
+          git push origin HEAD:fix/marketing-agenda-ui-simplificada
