@@ -11,6 +11,7 @@ import { WindowsNotificationControl } from "./modules/alerts/WindowsNotification
 import "./modules/alerts/browserAlertAttention";
 import { AuditorioPublicPushEnhancer } from "./modules/auditorio/AuditorioPublicPushEnhancer";
 import { PublicAuditorioPage } from "./modules/auditorio/PublicAuditorioPage";
+import "./modules/auditorio/auditorioCalendarStatusRuntime";
 import { CleaningDeliveryFeature } from "./modules/cleaning/components/CleaningDeliveryFeature";
 import { NeiaDeliveryShortcutFeature } from "./modules/cleaning/components/NeiaDeliveryShortcutFeature";
 import { NeiaHistoryEnhancer } from "./modules/cleaning/components/NeiaHistoryEnhancer";
