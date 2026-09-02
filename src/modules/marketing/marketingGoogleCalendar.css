@@ -1,0 +1,188 @@
+.marketing-google-panel {
+  margin-bottom: 24px;
+  padding: 20px;
+  border: 1px solid #e4ddeb;
+  border-radius: 18px;
+  background: #fff;
+}
+
+.marketing-google-panel > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.marketing-google-panel > header small {
+  display: block;
+  margin-bottom: 4px;
+  color: #73508d;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .08em;
+}
+
+.marketing-google-panel > header h2 {
+  margin: 0 0 4px;
+  color: #18223a;
+}
+
+.marketing-google-panel > header p {
+  margin: 0;
+  color: #6d7080;
+}
+
+.marketing-google-badge {
+  flex: 0 0 auto;
+  padding: 7px 10px;
+  border-radius: 999px;
+  background: #f1f8ff;
+  color: #1a73e8;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: .06em;
+}
+
+.marketing-google-users {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.marketing-google-users article {
+  padding: 15px;
+  border: 1px solid #e5e1ea;
+  border-radius: 14px;
+  background: #faf9fc;
+}
+
+.marketing-google-users article > div:first-child,
+.marketing-google-connected-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.marketing-google-users article strong,
+.marketing-google-own strong {
+  display: block;
+  color: #1d273b;
+}
+
+.marketing-google-users article small,
+.marketing-google-own small {
+  display: block;
+  margin-top: 3px;
+  color: #6f7280;
+}
+
+.marketing-google-users article em {
+  display: inline-block;
+  margin-top: 12px;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.marketing-google-users article.connected em { color: #157347; }
+.marketing-google-users article.disconnected em { color: #9a6810; }
+
+.marketing-google-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #b6b6bf;
+}
+
+.marketing-google-users article.connected .marketing-google-dot { background: #27a56b; }
+
+.marketing-google-admin-note {
+  grid-column: 1 / -1;
+  margin: 2px 0 0;
+  color: #6d7080;
+  font-size: 13px;
+}
+
+.marketing-google-own {
+  padding: 18px;
+  border: 1px solid #e5e1ea;
+  border-radius: 14px;
+  background: #faf9fc;
+}
+
+.marketing-google-own.connected {
+  border-color: #b8e2cd;
+  background: #f5fcf8;
+}
+
+.marketing-google-own > p {
+  margin: 12px 0;
+  color: #555d6e;
+  line-height: 1.5;
+}
+
+.marketing-google-connected-line > span {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border-radius: 50%;
+  background: #dff5e9;
+  color: #157347;
+  font-weight: 900;
+}
+
+.marketing-google-own button,
+.marketing-google-actions button {
+  min-height: 42px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 10px;
+  background: #5d3ac9;
+  color: #fff;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.marketing-google-own button:disabled { opacity: .55; cursor: default; }
+
+.marketing-google-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.marketing-google-actions button.secondary {
+  background: #ece8f1;
+  color: #4c3f5b;
+}
+
+.marketing-google-error {
+  margin: 10px 0 0 !important;
+  color: #a22c2c !important;
+  font-size: 13px;
+}
+
+.marketing-google-sync {
+  margin-top: 8px !important;
+}
+
+.marketing-google-card.loading {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 20px;
+  padding: 14px 16px;
+  border: 1px solid #e5e1ea;
+  border-radius: 12px;
+  background: #fff;
+}
+
+@media (max-width: 760px) {
+  .marketing-google-users { grid-template-columns: 1fr; }
+  .marketing-google-panel { padding: 16px; }
+  .marketing-google-panel > header { align-items: center; }
+  .marketing-google-actions { flex-direction: column; }
+  .marketing-google-actions button { width: 100%; }
+}
