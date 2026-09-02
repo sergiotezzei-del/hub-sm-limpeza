@@ -5,6 +5,7 @@ import { HomeMenuMeta } from "./components/HomeMenuMeta";
 import { ProfileAvatarMenu } from "./components/ProfileAvatarMenu";
 import { SantaMariaBrand } from "./components/SantaMariaBrand";
 import { activities, employees } from "./data";
+import { HistoryDisclosure, NeiaHistory, ProductStockDates, useProductStockActivity } from "./modules/cleaning/CleaningHistory";
 import type { MasterMapTargetScreen } from "./features/master-map/masterMapTypes";
 import { MarketingFeature, type MarketingSummary } from "./modules/marketing/MarketingFeature";
 import { endMarketingSession, startMarketingSession } from "./modules/marketing/marketingService";
@@ -35,7 +36,6 @@ import {
   getLocalInventoryProducts as getStoredLocalInventoryProducts,
   getLocalOrders,
   getLocalStockMovements as getStoredLocalStockMovements,
-  getNeiaOrderHistory,
   getOrderHistory,
   getOrders,
   getStockExitErrorMessage,
@@ -1375,10 +1375,8 @@ function App() {
     setView("order-history");
   }
 
-  async function openNeiaHistory() {
+  function openNeiaHistory() {
     setNotice("");
-    const history = await getNeiaOrderHistory();
-    setHistoryOrders(history);
     setView("neia-history");
   }
 
@@ -2338,10 +2336,10 @@ function App() {
         />
       )}
 
-      {(view === "order-history" || view === "neia-history") && (
+      {view === "order-history" && (
         <HistoryScreen
-          title={view === "order-history" ? "Histórico de Concluídos e Excluídos" : "Histórico de Pedidos da Neia"}
-          subtitle={view === "order-history" ? "Pedidos concluídos ou apagados" : "Todos os pedidos feitos pela Neia"}
+          title="Histórico de Concluídos e Excluídos"
+          subtitle="Pedidos concluídos ou apagados"
           orders={historyOrders}
           onBack={() => setView("cleaning-dashboard")}
           onLogout={goToLogin}
@@ -2349,6 +2347,14 @@ function App() {
           onDownloadWord={downloadOrderWord}
           canDownloadWord={hasCurrentPermission("painel-admin")}
         />
+      )}
+
+      {view === "neia-history" && (
+        <section className="screen">
+          <TopBar title="Histórico Neia" subtitle="Pedidos e conferências de estoque" onLogout={goToLogin} showLogout={false} />
+          <BackLogoutActions onBack={() => setView(getAfterCleaningActionView())} onLogout={goToLogin} />
+          <NeiaHistory renderOrders={(neiaOrders) => <OrderHistoryList orders={neiaOrders} onCopyOrder={copyOrder} onDownloadWord={downloadOrderWord} canDownloadWord={hasCurrentPermission("painel-admin")} />} />
+        </section>
       )}
 
       {currentUser && hasCurrentPermission("marketing") && (
@@ -2765,11 +2771,37 @@ function ProductRegisterScreen({ inventoryProducts, selectedProduct, mode, produ
 }
 
 function StockExitHistoryScreen({ movements, onBack, onLogout }: { movements: StockMovement[]; onBack: () => void; onLogout: () => void }) {
-  return <section className="screen"><TopBar title="Histórico de Saídas" subtitle="Consumo de produtos por usuária" onLogout={onLogout} showLogout={false} /><BackLogoutActions onBack={onBack} onLogout={onLogout} backLabel="Voltar para Limpeza" />{movements.length === 0 ? <section className="empty-state"><h2>Nenhuma saída registrada</h2><p>Quando uma funcionária retirar produto, aparecerá aqui.</p></section> : <section className="orders-list">{movements.map((movement) => <article className="order-card" key={movement.id}><div className="order-head"><div><p className="card-kicker">{formatDateTime(movement.createdAt)}</p><h2>{movement.productName}</h2><small>Retirado por {movement.userName}</small>{movement.barcode && <small>Código: {movement.barcode}</small>}{movement.observation && <small>{movement.observation}</small>}</div><span className="status-done">{formatStockQuantity(movement.quantity, movement.unit)}</span></div></article>)}</section>}</section>;
+  const exits = movements.filter((movement) => movement.movementType === "saida");
+  return <section className="screen">
+    <TopBar title="Histórico de Saídas" subtitle="Consumo de produtos por usuária" onLogout={onLogout} showLogout={false} />
+    <BackLogoutActions onBack={onBack} onLogout={onLogout} backLabel="Voltar para Limpeza" />
+    {exits.length === 0 ? <section className="empty-state"><h2>Nenhuma saída registrada</h2><p>Quando uma funcionária retirar produto, aparecerá aqui.</p></section> :
+      <section className="orders-list">{exits.map((movement) => <HistoryDisclosure key={movement.id} summary={<>
+        <strong>{movement.productName}</strong>
+        <small>{formatDateTime(movement.createdAt)} · {formatStockQuantity(movement.quantity, movement.unit)}</small>
+      </>}>
+        <p>Retirado por {movement.userName}</p>
+        {movement.barcode && <p>Código: {movement.barcode}</p>}
+        {movement.observation && <p>{movement.observation}</p>}
+      </HistoryDisclosure>)}</section>}
+  </section>;
 }
 
 function CurrentStockScreen({ inventoryProducts, onBack, onLogout, onEditProduct }: { inventoryProducts: InventoryProduct[]; onBack: () => void; onLogout: () => void; onEditProduct: (productId: string) => void }) {
-  return <section className="screen"><TopBar title="Estoque Atual" subtitle="Produtos cadastrados para controle de limpeza" onLogout={onLogout} showLogout={false} /><BackLogoutActions onBack={onBack} onLogout={onLogout} backLabel="Voltar para Limpeza" /><section className="product-list current-stock-list">{inventoryProducts.map((product) => <article className="product-row inventory-stock-row" key={product.id}><ProductPhoto productName={product.name} photoData={product.photoData} /><span><strong>{product.name}</strong><small>{product.barcode ? `Código: ${product.barcode}` : "Sem código cadastrado"}</small></span><strong className="stock-quantity">{formatStockQuantity(product.currentStock, product.unit)}</strong><button className="secondary-button inventory-edit-button" type="button" onClick={() => onEditProduct(product.id)}><AppIcon name="edit" size="sm" className="action-icon" />Editar</button></article>)}</section></section>;
+  const { activity, status, retry } = useProductStockActivity(inventoryProducts);
+  return <section className="screen">
+    <TopBar title="Estoque Atual" subtitle="Produtos cadastrados para controle de limpeza" onLogout={onLogout} showLogout={false} />
+    <BackLogoutActions onBack={onBack} onLogout={onLogout} backLabel="Voltar para Limpeza" />
+    {status === "error" && <p role="alert">Não foi possível consultar as datas. <button type="button" className="ghost-button" onClick={retry}>Tentar novamente</button></p>}
+    <section className="product-list current-stock-list">{inventoryProducts.map((product) => <article className="product-row inventory-stock-row" key={product.id}>
+      <ProductPhoto productName={product.name} photoData={product.photoData} />
+      <span><strong>{product.name}</strong><small>{product.barcode ? `Código: ${product.barcode}` : "Sem código cadastrado"}</small>
+        <ProductStockDates {...activity.get(product.id)} status={status} />
+      </span>
+      <strong className="stock-quantity">{formatStockQuantity(product.currentStock, product.unit)}</strong>
+      <button className="secondary-button inventory-edit-button" type="button" onClick={() => onEditProduct(product.id)}><AppIcon name="edit" size="sm" className="action-icon" />Editar</button>
+    </article>)}</section>
+  </section>;
 }
 
 function ProductPhoto({ productName, photoData }: { productName: string; photoData?: string }) {
@@ -6066,7 +6098,7 @@ function CleaningDashboardScreen({ newOrdersCount, permissions, offlinePendingCo
     { key: "product-register", title: "Cadastro de Produtos", detail: "Produtos, códigos e foto", enabled: canStock, onClick: onOpenBarcodeRegister, icon: "edit" },
     { key: "current-stock", title: "Estoque Atual", detail: "Produtos e códigos cadastrados", enabled: canStock, onClick: onOpenCurrentStock, icon: "stock" },
     { key: "stock-history", title: "Histórico de Saídas", detail: "Quem usou, quando e quanto", enabled: canStock, onClick: onOpenStockHistory, icon: "reports" },
-    { key: "neia-history", title: "Histórico Neia", detail: "Todos os pedidos feitos pela Neia", enabled: canCleaning, onClick: onOpenNeiaHistory, icon: "reports" },
+    { key: "neia-history", title: "Histórico Neia", detail: "Pedidos e conferências de estoque", enabled: canCleaning, onClick: onOpenNeiaHistory, icon: "reports" },
     { key: "order-history", title: "Histórico / Auditoria", detail: "Concluídos e excluídos", enabled: canReports, onClick: onOpenOrderHistory, icon: "reports" },
     { key: "profiles", title: "Perfis da equipe", detail: "Acessar telas da Neia, Selma e Helena", enabled: canAdmin, onClick: onOpenProfiles, icon: "users" },
     { key: "prepare-real-use", title: "Preparar Limpeza para uso real", detail: "Zerar historicos de teste sem apagar produtos", enabled: canAdmin, onClick: onPrepareCleaning, icon: "settings" },
@@ -6084,8 +6116,23 @@ function OrdersScreen({ orders, notice, editingOrderId, editDraft, onBack, onLog
   return <section className="screen"><TopBar title="Limpeza — Pedidos Sinval" subtitle="Pedidos feitos pela Neia" onLogout={onLogout} showLogout={false} /><BackLogoutActions onBack={onBack} onLogout={onLogout} backLabel="Voltar para Limpeza" />{notice && <p className="notice-message">{notice}</p>}{orders.length === 0 ? <section className="empty-state"><h2>Nenhum pedido salvo</h2><p>Quando a Neia enviar um pedido, ele aparecerá aqui.</p></section> : <section className="orders-list">{orders.map((order) => { const editing = editingOrderId === order.id; return <article className="order-card" key={order.id}><OrderHeader order={order} />{editing ? <EditOrderItems items={editDraft} onUpdateDraftItem={onUpdateDraftItem} onRemoveDraftItem={onRemoveDraftItem} /> : <OrderItems order={order} />}<div className="button-grid">{editing ? <><button className="primary-button" type="button" onClick={() => onSaveEdit(order)}>Salvar</button><button className="ghost-button" type="button" onClick={onCancelEdit}>Cancelar</button></> : <><button className="secondary-button" type="button" onClick={() => onCopyOrder(order)}>Copiar Pedido</button>{canDownloadWord && <button className="primary-button" type="button" onClick={() => onDownloadWord(order)}>Baixar Word para Thelma</button>}<button className="ghost-button" type="button" onClick={() => onStartEdit(order)}>Editar Pedido</button><button className="success-button" type="button" onClick={() => onMarkDone(order)}>Marcar como Pedido Feito</button><button className="danger-button" type="button" onClick={() => onRequestDelete(order)}>Excluir Pedido</button></>}</div></article>; })}</section>}</section>;
 }
 
+function OrderHistoryList({ orders, onCopyOrder, onDownloadWord, canDownloadWord }: { orders: CleaningOrder[]; onCopyOrder: (order: CleaningOrder) => void; onDownloadWord: (order: CleaningOrder) => void; canDownloadWord: boolean }) {
+  return orders.length === 0 ? <section className="empty-state"><h2>Nenhum pedido neste histórico</h2></section> :
+    <section className="orders-list">{orders.map((order) => <HistoryDisclosure key={order.id} summary={<OrderHeader order={order} />}>
+      <OrderItems order={order} />
+      <div className="button-grid">
+        <button className="secondary-button" type="button" onClick={() => onCopyOrder(order)}>Copiar Pedido</button>
+        {canDownloadWord && <button className="primary-button" type="button" onClick={() => onDownloadWord(order)}>Baixar Word para Thelma</button>}
+      </div>
+    </HistoryDisclosure>)}</section>;
+}
+
 function HistoryScreen({ title, subtitle, orders, onBack, onLogout, onCopyOrder, onDownloadWord, canDownloadWord }: { title: string; subtitle: string; orders: CleaningOrder[]; onBack: () => void; onLogout: () => void; onCopyOrder: (order: CleaningOrder) => void; onDownloadWord: (order: CleaningOrder) => void; canDownloadWord: boolean }) {
-  return <section className="screen"><TopBar title={title} subtitle={subtitle} onLogout={onLogout} showLogout={false} /><BackLogoutActions onBack={onBack} onLogout={onLogout} backLabel="Voltar para Limpeza" />{orders.length === 0 ? <section className="empty-state"><h2>Nenhum histórico encontrado</h2><p>Os pedidos concluídos ou excluídos aparecerão aqui.</p></section> : <section className="orders-list">{orders.map((order) => <article className="order-card" key={order.id}><OrderHeader order={order} /><OrderItems order={order} /><div className="button-grid"><button className="secondary-button" type="button" onClick={() => onCopyOrder(order)}>Copiar Pedido</button>{canDownloadWord && <button className="primary-button" type="button" onClick={() => onDownloadWord(order)}>Baixar Word para Thelma</button>}</div></article>)}</section>}</section>;
+  return <section className="screen">
+    <TopBar title={title} subtitle={subtitle} onLogout={onLogout} showLogout={false} />
+    <BackLogoutActions onBack={onBack} onLogout={onLogout} backLabel="Voltar para Limpeza" />
+    <OrderHistoryList orders={orders} onCopyOrder={onCopyOrder} onDownloadWord={onDownloadWord} canDownloadWord={canDownloadWord} />
+  </section>;
 }
 
 function EditOrderItems({ items, onUpdateDraftItem, onRemoveDraftItem }: { items: OrderItem[]; onUpdateDraftItem: (itemId: string, field: keyof OrderItem, value: string) => void; onRemoveDraftItem: (itemId: string) => void }) {

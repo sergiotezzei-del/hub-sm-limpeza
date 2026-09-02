@@ -242,21 +242,16 @@ export async function getOrderHistory(): Promise<CleaningOrder[]> {
   }
 }
 
-export async function getNeiaOrderHistory(): Promise<CleaningOrder[]> {
+export async function getNeiaOrderHistory({ requireRemote = false } = {}): Promise<CleaningOrder[]> {
+  if (requireRemote && !cloudEnabled) throw new Error("Consulta online indisponível");
   if (!cloudEnabled) return getLocalOrders().filter((order) => order.solicitante === "Neia");
 
   try {
-    const response = await sessionAwareSupabaseFetch(
-      `${CLOUD_URL}/rest/v1/orders?select=id,data,hora,solicitante,status,deleted_at,completed_at,order_items(id,product_name,unit,quantity,manual,observation)&solicitante=eq.Neia&order=created_at.desc`,
-      { headers: apiHeaders() },
-    );
-
-    if (!response.ok) throw new Error("Erro ao buscar histórico da Neia");
-
-    const rows = (await response.json()) as OrderRow[];
+    const rows = await fetchCleaningHistoryRows<OrderRow>(`${CLOUD_URL}/rest/v1/orders?select=id,data,hora,solicitante,status,deleted_at,completed_at,order_items(id,product_name,unit,quantity,manual,observation)&solicitante=eq.Neia&order=created_at.desc,id.desc`, "Erro ao buscar histórico da Neia");
     return rows.map(mapOrderRow);
   } catch (error) {
     console.error(error);
+    if (requireRemote) throw error;
     return getLocalOrders().filter((order) => order.solicitante === "Neia");
   }
 }
@@ -444,23 +439,18 @@ export async function addStockCheck(check: StockCheck): Promise<CleaningWriteRes
   }
 }
 
-export async function getStockChecks(): Promise<StockCheck[]> {
+export async function getStockChecks({ requireRemote = false } = {}): Promise<StockCheck[]> {
+  if (requireRemote && !cloudEnabled) throw new Error("Consulta online indisponível");
   if (!cloudEnabled) return getLocalStockChecks();
 
   try {
-    const response = await sessionAwareSupabaseFetch(
-      `${CLOUD_URL}/rest/v1/stock_checks?select=id,created_at,data,hora,conferente,stock_check_items(id,product_name,unit,quantity,observation)&order=created_at.desc`,
-      { headers: apiHeaders() },
-    );
-
-    if (!response.ok) throw new Error("Erro ao buscar conferências");
-
-    const rows = (await response.json()) as StockCheckRow[];
+    const rows = await fetchCleaningHistoryRows<StockCheckRow>(`${CLOUD_URL}/rest/v1/stock_checks?select=id,created_at,data,hora,conferente,stock_check_items(id,product_name,unit,quantity,observation)&order=created_at.desc,id.desc`, "Erro ao buscar conferências");
     const checks = rows.map(mapStockCheckRow);
     saveLocalStockChecks(checks);
     return checks;
   } catch (error) {
     console.error(error);
+    if (requireRemote) throw error;
     return getLocalStockChecks();
   }
 }
@@ -634,7 +624,8 @@ export function getLocalStockMovements(): StockMovement[] {
   } catch { return []; }
 }
 
-export async function getStockMovements(): Promise<StockMovement[]> {
+export async function getStockMovements({ requireRemote = false } = {}): Promise<StockMovement[]> {
+  if (requireRemote && !cloudEnabled) throw new Error("Consulta online indisponível");
   if (!cloudEnabled) return getLocalStockMovements();
 
   try {
@@ -650,6 +641,7 @@ export async function getStockMovements(): Promise<StockMovement[]> {
     return movements;
   } catch (error) {
     console.error(error);
+    if (requireRemote) throw error;
     return getLocalStockMovements();
   }
 }
@@ -945,13 +937,23 @@ async function getRemoteCleaningProducts(): Promise<ProductRow[]> {
   }
 }
 
+async function fetchCleaningHistoryRows<T>(url: string, message: string): Promise<T[]> {
+  const rows: T[] = [];
+  // Read every page so older conferences and the last exit of rarely used products remain visible.
+  for (;;) {
+    const response = await sessionAwareSupabaseFetch(`${url}&limit=500&offset=${rows.length}`, { headers: apiHeaders() });
+    if (!response.ok) throw new Error(message);
+    const page = await response.json() as T[];
+    if (page.length === 0) return rows;
+    rows.push(...page);
+  }
+}
+
 async function fetchRemoteStockMovements(): Promise<StockMovementRow[]> {
-  const response = await sessionAwareSupabaseFetch(
-    `${CLOUD_URL}/rest/v1/stock_movements?select=id,created_at,product_slug,product_name,unit,barcode,movement_type,quantity,user_id,user_name,observation,source&order=created_at.desc`,
-    { headers: apiHeaders() },
+  return fetchCleaningHistoryRows<StockMovementRow>(
+    `${CLOUD_URL}/rest/v1/stock_movements?select=id,created_at,product_slug,product_name,unit,barcode,movement_type,quantity,user_id,user_name,observation,source&order=created_at.desc,id.desc`,
+    "Erro ao buscar movimentacoes",
   );
-  if (!response.ok) throw new Error("Erro ao buscar movimentacoes");
-  return await response.json() as StockMovementRow[];
 }
 
 async function deleteAllRows(table: string) {
