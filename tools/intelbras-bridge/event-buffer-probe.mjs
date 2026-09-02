@@ -9,8 +9,7 @@ import {
 } from "./protocol.mjs";
 import { decodeAmt8000EventBufferResponse } from "./event-buffer.mjs";
 
-const EVENT_BUFFER_COMMAND = 0x3900;
-const host = process.env.INTELBRAS_PANEL_HOST || "192.168.1.100";
+const host = process.env.INTELBRAS_PANEL_HOST || "10.11.22.11";
 const port = Number(process.env.INTELBRAS_PANEL_PORT || 9009);
 const password = process.env.INTELBRAS_REMOTE_PASSWORD || "";
 const timeoutMs = Number(process.env.INTELBRAS_PROBE_TIMEOUT_MS || 20000);
@@ -98,7 +97,7 @@ socket.on("data", (chunk) => {
         const readFrame = buildIsecFrame({
           destination: panelId,
           source: clientId,
-          command: EVENT_BUFFER_COMMAND,
+          command: ISEC_COMMANDS.EVENT_BUFFER,
           data: [(bufferIndex >> 8) & 0xff, bufferIndex & 0xff],
         });
         socket.write(readFrame);
@@ -108,7 +107,7 @@ socket.on("data", (chunk) => {
       continue;
     }
 
-    if (frame.command === EVENT_BUFFER_COMMAND) {
+    if (frame.command === ISEC_COMMANDS.EVENT_BUFFER) {
       try {
         const decoded = decodeAmt8000EventBufferResponse(frame.data);
         console.log(`[AMT8000-EVENTS] BUFFER_EVENTOS recebido: ${frame.data.length} byte(s), ${decoded.records.length} registro(s), sobra=${decoded.trailingBytes} byte(s).`);

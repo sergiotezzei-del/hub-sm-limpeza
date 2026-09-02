@@ -6,7 +6,7 @@ export const INTELBRAS_AMT8000_CONFIG: IntelbrasIntegrationConfig = {
   panelName: "Santa Maria",
   panelModel: "AMT 8000 LITE",
   firmware: "3.1.5",
-  localIp: "192.168.1.100",
+  localIp: "10.11.22.11",
   localPort: 9009,
   sdkReceived: true,
   readOnlyBridgeReady: false,

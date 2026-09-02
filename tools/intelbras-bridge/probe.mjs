@@ -10,7 +10,7 @@ import {
 } from "./protocol.mjs";
 import { parseAmt8000FullStatus, toHubSnapshot } from "./status.mjs";
 
-const host = process.env.INTELBRAS_PANEL_HOST || "192.168.1.100";
+const host = process.env.INTELBRAS_PANEL_HOST || "10.11.22.11";
 const port = Number(process.env.INTELBRAS_PANEL_PORT || 9009);
 const password = process.env.INTELBRAS_REMOTE_PASSWORD || "";
 const timeoutMs = Number(process.env.INTELBRAS_PROBE_TIMEOUT_MS || 90000);

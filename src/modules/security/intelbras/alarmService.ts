@@ -8,7 +8,7 @@ import type {
   IntelbrasPanelSnapshot,
 } from "./types";
 
-const waitingMessage = "SDK oficial Intelbras recebido. Agente local em modo somente leitura preparado; comandos de arme, desarme e bypass continuam bloqueados até a leitura real da central ser validada.";
+const waitingMessage = "Agente local somente leitura preparado para eventos 3900. Status atual de partições/zonas ainda aguarda comando oficial comprovado para AMT 8000; arme, desarme e bypass continuam bloqueados.";
 
 function buildWaitingSnapshot(): IntelbrasPanelSnapshot {
   return {
