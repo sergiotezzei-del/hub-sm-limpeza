@@ -361,3 +361,6 @@
     line-height: 1.35;
   }
 }
+
+.marketing-grouped-capture-time { display:grid; gap:4px; padding:10px 12px; border:1px solid #d8d1e1; border-radius:8px; background:#faf8fc; }
+.marketing-grouped-capture-time small { color:#6f6678; }

@@ -850,7 +850,7 @@ function RequestView(props: { sessionToken: string; dashboard: MarketingDashboar
       return;
     }
     if (form.requestKind === "capture_edit" && form.capturePreference === "choose" && (!form.preferredCaptureAt || !form.preferredCaptureDurationMinutes)) {
-      props.onError("Escolha a data, o horário e a duração da captação.");
+      props.onError("Escolha a data e o horário da captação.");
       return;
     }
     if (form.urgencyRequested && !form.urgencyReason.trim()) {
@@ -958,7 +958,7 @@ function AdminRequestEditForm(props: {
       return;
     }
     if (form.requestKind === "capture_edit" && form.capturePreference === "choose" && (!form.preferredCaptureAt || !form.preferredCaptureDurationMinutes)) {
-      props.onError("Escolha a data, o horário e a duração da captação.");
+      props.onError("Escolha a data e o horário da captação.");
       return;
     }
     if (form.urgencyRequested && !form.urgencyReason.trim()) {

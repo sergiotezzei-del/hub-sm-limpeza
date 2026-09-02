@@ -509,7 +509,7 @@ export function getMarketingErrorMessage(error: unknown) {
   if (normalized.includes("MARKETING_RESTORE_KIND_INVALID") || normalized.includes("MARKETING_RESTORE_DATA_INVALID")) return "Os dados deste pedido não atendem mais às regras atuais e impedem a restauração.";
   if (normalized.includes("MARKETING_QUEUE_ORDER_BLOCKED")) return "Existe um pedido anterior aguardando atendimento. A fila deve ser seguida na ordem de entrada.";
   if (normalized.includes("MARKETING_CAPTURE_CONFLICT")) return "Este horário já possui outra captação agendada.";
-  if (normalized.includes("MARKETING_CAPTURE_DURATION_REQUIRED")) return "Escolha a data, o horário e a duração da captação.";
+  if (normalized.includes("MARKETING_CAPTURE_DURATION_REQUIRED")) return "Escolha a data e o horário da captação.";
   if (normalized.includes("MARKETING_CAPTURE_WINDOW_INVALID")) return "Escolha um horário disponível dentro da agenda do Marketing.";
   if (normalized.includes("MARKETING_EDIT_ONLY_CAPTURE_DENIED")) return "Pedidos de somente edição não podem ter captação confirmada.";
   if (normalized.includes("MARKETING_ASSIGNEE_INVALID")) return "Escolha Maria ou Arthur como responsável do Marketing.";
