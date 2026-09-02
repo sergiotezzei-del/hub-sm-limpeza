@@ -4,6 +4,10 @@ import { CleaningConsumption } from "../CleaningConsumption";
 
 const SESSION_KEY = "hub-sm-active-session";
 
+function normalize(value: string) {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
+}
+
 function currentView() {
   try {
     const raw = window.sessionStorage.getItem(SESSION_KEY);
@@ -30,23 +34,38 @@ export function CleaningConsumptionEnhancer() {
     if (!(root instanceof HTMLElement)) return;
 
     const updateTarget = () => {
-      if (currentView() !== "cleaning-dashboard") {
+      if (currentView() !== "neia-history") {
         setTarget(null);
         setOpen(false);
         return;
       }
 
-      const grid = root.querySelector<HTMLElement>(".cleaning-dashboard-grid");
-      if (!grid) {
+      const screens = Array.from(root.querySelectorAll<HTMLElement>(".screen"));
+      const historyScreen = screens.find((screen) => {
+        const heading = Array.from(screen.querySelectorAll("h1, h2"))
+          .map((node) => normalize(node.textContent ?? ""))
+          .join(" ");
+        return heading.includes("HISTORICO DE PEDIDOS DA NEIA");
+      });
+
+      if (!historyScreen) {
         setTarget(null);
         return;
       }
 
-      let host = grid.querySelector<HTMLElement>(".cleaning-consumption-enhancer-host");
+      let host = historyScreen.querySelector<HTMLElement>(".cleaning-consumption-enhancer-host");
       if (!host) {
         host = document.createElement("div");
         host.className = "cleaning-consumption-enhancer-host";
-        grid.appendChild(host);
+        const neiaHistoryHost = historyScreen.querySelector(".neia-history-enhancer-host");
+        const footer = historyScreen.querySelector("footer");
+        if (neiaHistoryHost?.parentElement === historyScreen) {
+          historyScreen.insertBefore(host, neiaHistoryHost);
+        } else if (footer?.parentElement === historyScreen) {
+          historyScreen.insertBefore(host, footer);
+        } else {
+          historyScreen.appendChild(host);
+        }
       }
       setTarget((current) => current === host ? current : host);
     };
@@ -68,10 +87,14 @@ export function CleaningConsumptionEnhancer() {
 
   return <>
     {createPortal(
-      <button className="cleaning-consumption-launch-card" type="button" onClick={() => setOpen(true)}>
-        <span className="cleaning-consumption-card-kicker">Histórico</span>
-        <strong>Consultar consumo e compras</strong>
-        <span>Pergunte por produto, período, conferências ou pedidos da Néia.</span>
+      <button className="cleaning-consumption-history-launch" type="button" onClick={() => setOpen(true)}>
+        <span className="cleaning-consumption-history-icon" aria-hidden="true">▥</span>
+        <span className="cleaning-consumption-history-copy">
+          <span className="cleaning-consumption-card-kicker">Consulta do histórico</span>
+          <strong>Consultar consumo e compras</strong>
+          <span>Pesquise por produto, período, conferências ou pedidos da Néia.</span>
+        </span>
+        <span className="cleaning-consumption-history-action" aria-hidden="true">Consultar</span>
       </button>,
       target,
     )}
