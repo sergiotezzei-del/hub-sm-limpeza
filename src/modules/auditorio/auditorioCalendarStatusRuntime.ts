@@ -67,11 +67,15 @@ function syncAuditorioCalendarStatus() {
 
 if (typeof document !== "undefined") {
   const start = () => {
-    syncAuditorioCalendarStatus();
-    const root = document.getElementById("root");
-    if (!root) return;
-    const observer = new MutationObserver(syncAuditorioCalendarStatus);
-    observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ["class"] });
+    const syncIfVisible = () => {
+      if (!document.querySelector(".auditorio-admin-panel")) return;
+      syncAuditorioCalendarStatus();
+    };
+
+    syncIfVisible();
+    window.setInterval(syncIfVisible, 1500);
+    window.addEventListener("focus", syncIfVisible);
+    window.addEventListener("pageshow", syncIfVisible);
   };
 
   if (document.readyState === "loading") {
