@@ -6,6 +6,7 @@ import { LiveAlertDashboardEnhancer } from "./modules/alerts/LiveAlertDashboardE
 import { CleaningActivityAlertEnhancer } from "./modules/alerts/CleaningActivityAlertEnhancer";
 import { GoogleCalendarAlertEnhancer } from "./modules/alerts/GoogleCalendarAlertEnhancer";
 import { AlertPanelPriorityEnhancer } from "./modules/alerts/AlertPanelPriorityEnhancer";
+import { AuditorioPendingAlertEnhancer } from "./modules/alerts/AuditorioPendingAlertEnhancer";
 import { WindowsNotificationControl } from "./modules/alerts/WindowsNotificationControl";
 import "./modules/alerts/browserAlertAttention";
 import { AuditorioPublicPushEnhancer } from "./modules/auditorio/AuditorioPublicPushEnhancer";
@@ -112,6 +113,7 @@ createRoot(document.getElementById("root")!).render(
         <CleaningActivityAlertEnhancer />
         <GoogleCalendarAlertEnhancer />
         <AlertPanelPriorityEnhancer />
+        <AuditorioPendingAlertEnhancer />
         <CleaningDeliveryFeature />
         <NeiaDeliveryShortcutFeature />
         <NeiaHistoryEnhancer />
