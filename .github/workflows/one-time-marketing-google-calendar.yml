@@ -1,0 +1,52 @@
+name: One-time Marketing Google Calendar
+
+on:
+  push:
+    branches:
+      - feat/marketing-google-calendar
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/marketing-google-calendar
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Wire Marketing Google Calendar UI
+        run: python scripts/one_time_wire_marketing_google_calendar.py
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build
+        run: pnpm run build
+      - name: TypeScript
+        run: npx tsc --noEmit
+      - name: Verify integration boundaries
+        run: |
+          grep -q 'MarketingGoogleCalendarPanel' src/modules/marketing/MarketingFeature.tsx
+          grep -q 'MarketingGoogleCalendarBridge' src/modules/marketing/MarketingFeature.tsx
+          grep -q 'state.startsWith("mkt_")' src/modules/alerts/googleCalendarService.ts
+          grep -q 'calendar.events' api/marketing-google-calendar.ts
+          grep -q 'CONECTAR MINHA AGENDA GOOGLE' src/modules/marketing/MarketingGoogleCalendarPanel.tsx
+          ! grep -q 'client_secret' src/modules/marketing/marketingGoogleCalendarService.ts
+      - name: Commit verified implementation
+        run: |
+          rm -f scripts/one_time_wire_marketing_google_calendar.py
+          rm -f .github/workflows/one-time-marketing-google-calendar.yml
+          git config user.name "Sergio Tezzei"
+          git config user.email "sergiotezzei@gmail.com"
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -m "feat(marketing): integrar Google Agenda de Maria e Arthur"
+          git push origin HEAD:feat/marketing-google-calendar
