@@ -10,7 +10,8 @@
     "preview": "vite preview --host 127.0.0.1 --configLoader native",
     "test:intelbras": "node --test tools/intelbras-bridge/*.test.mjs",
     "probe:intelbras": "node tools/intelbras-bridge/probe.mjs",
-    "events:intelbras": "node tools/intelbras-bridge/event-buffer-scan.mjs"
+    "events:intelbras": "node tools/intelbras-bridge/event-buffer-scan.mjs",
+    "agent:intelbras": "node tools/intelbras-bridge/readonly-agent.mjs"
   },
   "dependencies": {
     "@dnd-kit/accessibility": "3.1.1",

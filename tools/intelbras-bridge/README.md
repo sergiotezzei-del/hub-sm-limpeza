@@ -73,6 +73,39 @@ pnpm events:intelbras
 
 Essa forma direta exige que `INTELBRAS_REMOTE_PASSWORD` já esteja no ambiente do processo. No Windows, prefira o launcher com `SecureString`.
 
+## Agente local persistente somente leitura
+
+Base preparada para a próxima etapa do HUB:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\tools\intelbras-bridge\run-readonly-agent-windows.ps1
+```
+
+O agente persistente:
+
+1. usa somente `F0F0`, `F0F7` e `3900`;
+2. varre o buffer em intervalo configurável;
+3. mantém online/offline da conexão local;
+4. grava histórico sanitizado em `.tmp/intelbras-readonly-agent-snapshot.json`;
+5. não sincroniza segredo, payload bruto ou comando de controle.
+
+Execução direta:
+
+```bash
+pnpm agent:intelbras
+```
+
+Variáveis úteis:
+
+```powershell
+$env:INTELBRAS_AGENT_SCAN_INTERVAL_MS="300000" # minimo 60000
+$env:INTELBRAS_AGENT_HISTORY_LIMIT="200"
+$env:INTELBRAS_AGENT_OUTPUT=".tmp/intelbras-readonly-agent-snapshot.json"
+$env:INTELBRAS_AGENT_ONCE="1" # uma varredura e encerra
+```
+
+O snapshot informa explicitamente `activeStatusQuery.available=false`, porque ainda não existe READ-COMMAND oficial comprovado para status atual da AMT 8000 LITE.
+
 ## Evidência real do buffer
 
 O comando `3900` foi confirmado na central real como leitura. Exemplo já observado:
@@ -95,9 +128,10 @@ Esse diagnóstico não transforma `0B4A` em consulta e não tenta comandos ISECM
 
 ## Lacuna sobre status atual
 
-Revisão feita em 02/09/2026 nas fontes e documentação derivada disponíveis no repositório, incluindo branches remotas de diagnóstico Intelbras:
+Revisão feita em 02/09/2026 nas fontes e documentação derivada disponíveis no repositório, branches remotas de diagnóstico Intelbras e SDK local AMT 8000 em `Downloads`:
 
 - `0B4A STATUS_COMPLETO_CENTRAL_ALARME` aparece documentado como SEND-COMMAND central -> dispositivo;
+- o resumo AMT 8000 lista `F0F0`, `F0F1`, `F0F7`, `0BB0`, `0B4A`, `401A`, `401E` e `401F`, mas não lista outro READ-COMMAND de status atual;
 - nos testes reais, `0B4A` não chegou espontaneamente após autenticação;
 - o diagnóstico bruto confirmou que nenhum `0B4A` estava escondido ou sendo descartado pelo parser;
 - não há, no material disponível, outro READ-COMMAND oficial da AMT 8000 para consultar status atual de partições, zonas, bateria, sirene ou falhas;
@@ -133,4 +167,4 @@ node --test tools/**/*.test.mjs
 pnpm build
 ```
 
-Os testes cobrem checksum, montagem de quadros ISECNet, fragmentação TCP, decoder passivo `0B4A`, decoder `3900`, varredura circular do buffer e seleção cronológica dos eventos recentes.
+Os testes cobrem checksum, montagem de quadros ISECNet, fragmentação TCP, decoder passivo `0B4A`, decoder `3900`, varredura circular do buffer, seleção cronológica dos eventos recentes e snapshot sanitizado do agente local.

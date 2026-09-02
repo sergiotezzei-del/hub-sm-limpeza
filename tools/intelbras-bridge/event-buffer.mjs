@@ -66,6 +66,12 @@ export function formatAmt8000EventIndex(index) {
   return index.toString(16).padStart(4, "0").toUpperCase();
 }
 
+export function formatMaybeAmt8000EventIndex(index) {
+  return Number.isInteger(index) && index >= 0 && index < AMT8000_EVENT_BUFFER_SIZE
+    ? formatAmt8000EventIndex(index)
+    : String(index ?? "-");
+}
+
 export function createCircularEventBufferScanPlan({ startIndex = 0, count = AMT8000_EVENT_BUFFER_SIZE } = {}) {
   if (!Number.isInteger(startIndex) || startIndex < 0 || startIndex >= AMT8000_EVENT_BUFFER_SIZE) {
     throw new Error(`startIndex must be between 0 and 511, got ${startIndex}`);
@@ -152,8 +158,28 @@ export function decodeAmt8000EventBufferResponse(data) {
 
 export function isUsableAmt8000EventRecord(record) {
   return parseAmt8000EventTimestamp(record?.timestamp) !== null
-    && typeof record.effectiveCode === "string"
-    && record.effectiveCode.length > 0;
+    && typeof (record.effectiveCode ?? record.eventCode) === "string"
+    && (record.effectiveCode ?? record.eventCode).length > 0;
+}
+
+export function fingerprintAmt8000EventRecord(record) {
+  return [
+    formatMaybeAmt8000EventIndex(record?.index),
+    record?.timestamp ?? "-",
+    record?.eventKind ?? "-",
+    record?.effectiveCode ?? record?.eventCode ?? "-",
+    record?.zoneOrUserText ?? record?.zoneOrUser ?? "-",
+    record?.partitionText ?? record?.partition ?? "-",
+  ].join("|");
+}
+
+export function dedupeAmt8000EventRecords(records) {
+  const unique = new Map();
+  for (const record of records) {
+    const key = fingerprintAmt8000EventRecord(record);
+    if (!unique.has(key)) unique.set(key, record);
+  }
+  return [...unique.values()];
 }
 
 export function sortAmt8000EventRecordsChronologically(records) {
@@ -174,6 +200,30 @@ export function selectRecentAmt8000EventRecords(records, { limit = 32 } = {}) {
     throw new Error(`recent event limit must be a positive integer, got ${limit}`);
   }
 
-  const chronological = sortAmt8000EventRecordsChronologically(records.filter(isUsableAmt8000EventRecord));
+  const chronological = sortAmt8000EventRecordsChronologically(dedupeAmt8000EventRecords(records).filter(isUsableAmt8000EventRecord));
   return chronological.slice(Math.max(0, chronological.length - limit));
+}
+
+export function sanitizeAmt8000EventRecord(record) {
+  return {
+    timestamp: record.timestamp ?? null,
+    index: Number.isInteger(record.index) ? record.index : null,
+    indexHex: formatMaybeAmt8000EventIndex(record.index),
+    eventKind: record.eventKind,
+    eventCode: record.effectiveCode ?? record.eventCode ?? null,
+    zoneOrUser: record.zoneOrUser ?? null,
+    partition: record.partition ?? null,
+    pictureAssociated: Boolean(record.pictureAssociated),
+  };
+}
+
+export function toAmt8000EventTableRows(records) {
+  return records.map((record) => ({
+    "data/hora": record.timestamp ?? "-",
+    indice: formatMaybeAmt8000EventIndex(record.index),
+    codigo: record.effectiveCode ?? record.eventCode ?? "-",
+    "new/restore": record.eventKind,
+    "zona/usuario": record.zoneOrUser ?? record.zoneOrUserText ?? "-",
+    particao: record.partition ?? record.partitionText ?? "-",
+  }));
 }
