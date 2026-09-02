@@ -69,7 +69,7 @@ export function decodeAmt8000EventRecord(bytes) {
     programmedCode,
     effectiveCode,
     zoneOrUser: parseNumericDigits(zoneUserText),
-    zoneOrUserText,
+    zoneOrUserText: zoneUserText,
     partition: parseNumericDigits(partitionText),
     partitionText,
     pictureAssociated: event[12] === 0x01,
