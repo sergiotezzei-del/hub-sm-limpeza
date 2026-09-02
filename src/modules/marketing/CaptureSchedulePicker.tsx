@@ -1,7 +1,6 @@
 import { useMemo, useState } from "react";
 import {
   addDaysToDateKey,
-  formatDuration,
   getDateKeyInTimeZone,
   getTimeKeyInTimeZone,
   isoWeekday,
@@ -9,7 +8,6 @@ import {
   MarketingOccupiedCaptureSlot,
   MarketingScheduleConfig,
   minutesFromTime,
-  timeFromMinutes,
   zonedLocalToIso,
 } from "./marketingConfig";
 
@@ -24,18 +22,17 @@ type CaptureSchedulePickerProps = {
 };
 
 const DATE_WINDOW_DAYS = 28;
-const TIME_STEP_MINUTES = 30;
-const MAX_BOOKINGS_PER_PERIOD = 2;
-const AFTERNOON_START_MINUTES = 12 * 60;
+const STANDARD_TIMES = ["08:00", "09:00", "10:00", "11:00", "14:00", "15:00", "16:00", "17:00"] as const;
+const AFTERNOON_START_MINUTES = 14 * 60;
+const DEFAULT_DURATION_MINUTES = 60;
 
 export function CaptureSchedulePicker(props: CaptureSchedulePickerProps) {
-  const initialDuration = props.value?.durationMinutes || props.config.durationOptionsMinutes[0];
+  const durationMinutes = props.config.durationOptionsMinutes[0] || DEFAULT_DURATION_MINUTES;
   const initialDate = props.value?.startAt
     ? getDateKeyInTimeZone(props.value.startAt, props.config.timezone)
     : firstWorkingDate(props.config);
   const initialTime = props.value?.startAt ? getTimeKeyInTimeZone(props.value.startAt, props.config.timezone) : "";
   const [selectedDate, setSelectedDate] = useState(initialDate);
-  const [durationMinutes, setDurationMinutes] = useState(initialDuration);
   const [selectedTime, setSelectedTime] = useState(initialTime);
 
   const dates = useMemo(() => buildWorkingDates(props.config), [props.config]);
@@ -47,22 +44,13 @@ export function CaptureSchedulePicker(props: CaptureSchedulePickerProps) {
     [props.excludedCaptureGroupId, props.excludedRequestId, props.occupiedSlots],
   );
 
-  const timeOptions = useMemo(
-    () => buildTimeOptions(selectedDate, durationMinutes, props.config, filteredOccupied),
-    [durationMinutes, filteredOccupied, props.config, selectedDate],
+  const selectedTimeIsAvailable = Boolean(
+    selectedTime && isTimeAvailable(selectedDate, selectedTime, props.config, filteredOccupied),
   );
-  const selectedTimeIsAvailable = Boolean(selectedTime && timeOptions.includes(selectedTime));
 
   function chooseDate(dateKey: string) {
     setSelectedDate(dateKey);
     setSelectedTime("");
-  }
-
-  function chooseDuration(duration: number) {
-    setDurationMinutes(duration);
-    if (selectedTime && !isTimeAvailable(selectedDate, selectedTime, duration, props.config, filteredOccupied)) {
-      setSelectedTime("");
-    }
   }
 
   function confirm() {
@@ -73,18 +61,21 @@ export function CaptureSchedulePicker(props: CaptureSchedulePickerProps) {
     });
   }
 
+  const morningReserved = periodIsOccupied(selectedDate, "morning", props.config, filteredOccupied);
+  const afternoonReserved = periodIsOccupied(selectedDate, "afternoon", props.config, filteredOccupied);
+
   return (
     <section className="marketing-schedule-picker" aria-label="Escolher data e horário da captação">
       <div className="marketing-picker-step">
         <strong>1. Escolha a data</strong>
         <div className="marketing-date-legend" aria-label="Legenda de disponibilidade">
           <span><i className="free" /> Livre</span>
-          <span><i className="partial" /> Parcial</span>
-          <span><i className="full" /> Lotado</span>
+          <span><i className="partial" /> Um período reservado</span>
+          <span><i className="full" /> Dia reservado</span>
         </div>
         <div className="marketing-date-grid">
           {dates.map((dateKey) => {
-            const availability = dayAvailability(dateKey, durationMinutes, props.config, filteredOccupied);
+            const availability = dayAvailability(dateKey, props.config, filteredOccupied);
             return (
               <button
                 type="button"
@@ -99,44 +90,35 @@ export function CaptureSchedulePicker(props: CaptureSchedulePickerProps) {
             );
           })}
         </div>
-        <small>Limite de 2 agendamentos pela manhã e 2 à tarde.</small>
+        <small>Regra: 1 agendamento pela manhã e 1 à tarde. Ao reservar um horário, todo o período fica bloqueado.</small>
       </div>
 
       <div className="marketing-picker-step">
-        <strong>2. Informe a duração estimada</strong>
-        <div className="marketing-duration-options">
-          {props.config.durationOptionsMinutes.map((duration) => (
-            <button
-              type="button"
-              key={duration}
-              className={durationMinutes === duration ? "selected" : ""}
-              onClick={() => chooseDuration(duration)}
-            >
-              {formatDuration(duration)}
-            </button>
-          ))}
+        <strong>2. Escolha o horário</strong>
+        <div className="marketing-period-status">
+          <span className={morningReserved ? "reserved" : "available"}>Manhã · {morningReserved ? "RESERVADA" : "LIVRE"}</span>
+          <span className={afternoonReserved ? "reserved" : "available"}>Tarde · {afternoonReserved ? "RESERVADA" : "LIVRE"}</span>
         </div>
-      </div>
-
-      <div className="marketing-picker-step">
-        <strong>3. Escolha o horário</strong>
         <div className="marketing-period-grid">
-          {timeOptions.length > 0 ? timeOptions.map((time) => (
-            <button
-              type="button"
-              key={time}
-              className={`available ${selectedTime === time ? "selected" : ""}`}
-              onClick={() => setSelectedTime(time)}
-            >
-              <strong>{time}</strong>
-            </button>
-          )) : (
-            <p>Não há horário disponível para essa duração neste dia.</p>
-          )}
+          {STANDARD_TIMES.map((time) => {
+            const available = isTimeAvailable(selectedDate, time, props.config, filteredOccupied);
+            const period = periodForTime(time);
+            return (
+              <button
+                type="button"
+                key={time}
+                className={`${available ? "available" : "unavailable"} ${selectedTime === time ? "selected" : ""}`}
+                disabled={!available}
+                title={!available ? `${period === "morning" ? "Manhã" : "Tarde"} já reservada` : undefined}
+                onClick={() => setSelectedTime(time)}
+              >
+                <strong>{time}</strong>
+                {!available && <small>RESERVADO</small>}
+              </button>
+            );
+          })}
         </div>
-        <small>
-          Horários entre {props.config.workdayStart} e {props.config.workdayEnd}, em intervalos de 30 minutos. Manhã: início antes de 12:00; tarde: início a partir de 12:00.
-        </small>
+        <small>Manhã: 08:00, 09:00, 10:00 e 11:00. Tarde: 14:00, 15:00, 16:00 e 17:00. O horário de almoço fica protegido.</small>
       </div>
 
       <footer>
@@ -163,58 +145,40 @@ function firstWorkingDate(config: MarketingScheduleConfig) {
 
 function dayAvailability(
   dateKey: string,
-  durationMinutes: number,
   config: MarketingScheduleConfig,
   occupied: MarketingOccupiedCaptureSlot[],
 ) {
-  if (buildTimeOptions(dateKey, durationMinutes, config, occupied).length === 0) return "full";
-  return occupiedForDate(dateKey, config, occupied).length === 0 ? "free" : "partial";
-}
-
-function buildTimeOptions(
-  dateKey: string,
-  durationMinutes: number,
-  config: MarketingScheduleConfig,
-  occupied: MarketingOccupiedCaptureSlot[],
-) {
-  const startMinutes = minutesFromTime(config.workdayStart);
-  const endMinutes = minutesFromTime(config.workdayEnd);
-  const latestStart = endMinutes - durationMinutes;
-  const result: string[] = [];
-
-  for (let minutes = startMinutes; minutes <= latestStart; minutes += TIME_STEP_MINUTES) {
-    const time = timeFromMinutes(minutes);
-    if (isTimeAvailable(dateKey, time, durationMinutes, config, occupied)) result.push(time);
-  }
-  return result;
+  const morning = periodIsOccupied(dateKey, "morning", config, occupied);
+  const afternoon = periodIsOccupied(dateKey, "afternoon", config, occupied);
+  if (morning && afternoon) return "full";
+  if (morning || afternoon) return "partial";
+  return "free";
 }
 
 function isTimeAvailable(
   dateKey: string,
   time: string,
-  durationMinutes: number,
   config: MarketingScheduleConfig,
   occupied: MarketingOccupiedCaptureSlot[],
 ) {
-  const daySlots = occupiedForDate(dateKey, config, occupied);
-  const candidatePeriod = periodForMinutes(minutesFromTime(time));
-  const periodCount = daySlots.filter((slot) => {
-    const slotTime = getTimeKeyInTimeZone(slot.startAt, config.timezone);
-    return periodForMinutes(minutesFromTime(slotTime)) === candidatePeriod;
-  }).length;
-  if (periodCount >= MAX_BOOKINGS_PER_PERIOD) return false;
+  if (!STANDARD_TIMES.includes(time as (typeof STANDARD_TIMES)[number])) return false;
+  return !periodIsOccupied(dateKey, periodForTime(time), config, occupied);
+}
 
-  const startAt = new Date(zonedLocalToIso(dateKey, time, config.timezone)).getTime();
-  const endAt = startAt + durationMinutes * 60000;
-  return !daySlots.some((slot) => {
-    const occupiedStart = new Date(slot.startAt).getTime();
-    const occupiedEnd = occupiedStart + slot.durationMinutes * 60000;
-    return startAt < occupiedEnd && endAt > occupiedStart;
+function periodIsOccupied(
+  dateKey: string,
+  period: "morning" | "afternoon",
+  config: MarketingScheduleConfig,
+  occupied: MarketingOccupiedCaptureSlot[],
+) {
+  return occupiedForDate(dateKey, config, occupied).some((slot) => {
+    const slotTime = getTimeKeyInTimeZone(slot.startAt, config.timezone);
+    return periodForTime(slotTime) === period;
   });
 }
 
-function periodForMinutes(minutes: number) {
-  return minutes < AFTERNOON_START_MINUTES ? "morning" : "afternoon";
+function periodForTime(time: string): "morning" | "afternoon" {
+  return minutesFromTime(time) < AFTERNOON_START_MINUTES ? "morning" : "afternoon";
 }
 
 function occupiedForDate(
