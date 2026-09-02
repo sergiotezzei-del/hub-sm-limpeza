@@ -46,6 +46,7 @@ Veja `tools/intelbras-bridge/`:
 - parser de stream TCP;
 - parser do status 0B4A;
 - scanner LAN somente leitura do `BUFFER_EVENTOS`;
+- agente local persistente somente leitura com snapshot JSON sanitizado;
 - probe LAN passivo para `0B4A`;
 - launcher Windows que solicita senha em modo oculto;
 - testes sem necessidade da central real.
@@ -56,9 +57,17 @@ Comando operacional da fase atual:
 powershell -ExecutionPolicy Bypass -File .\tools\intelbras-bridge\run-event-buffer-readonly-windows.ps1
 ```
 
+Base persistente local para eventos/online/histórico:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\tools\intelbras-bridge\run-readonly-agent-windows.ps1
+```
+
+Ela grava `.tmp/intelbras-readonly-agent-snapshot.json` com dados sanitizados e sem payload bruto. O HUB ainda não consome esse arquivo automaticamente nesta etapa.
+
 ## Lacuna documentada
 
-Revisão feita em 02/09/2026 nas fontes disponíveis no repositório e branches remotas de diagnóstico Intelbras não encontrou outro READ-COMMAND oficial da AMT 8000 para consultar status atual de partições, zonas, bateria, sirene ou falhas.
+Revisão feita em 02/09/2026 nas fontes disponíveis no repositório, branches remotas de diagnóstico Intelbras e SDK local AMT 8000 em `Downloads` não encontrou outro READ-COMMAND oficial da AMT 8000 para consultar status atual de partições, zonas, bateria, sirene ou falhas. No resumo AMT 8000, `0B4A` aparece como SEND-COMMAND central -> dispositivo; portanto segue somente passivo.
 
 Evidência necessária para avançar: trecho oficial do SDK/API AMT 8000 com direção, payload e resposta do comando de status; ou captura controlada do software oficial Intelbras compatível com AMT 8000 LITE firmware 3.1.5 consultando status pela porta TCP 9009.
 

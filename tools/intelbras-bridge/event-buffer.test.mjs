@@ -2,12 +2,16 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   createCircularEventBufferScanPlan,
+  dedupeAmt8000EventRecords,
   decodeAmt8000EventBufferResponse,
   decodeAmt8000EventRecord,
+  fingerprintAmt8000EventRecord,
   formatAmt8000EventIndex,
   isUsableAmt8000EventRecord,
   parseAmt8000EventTimestamp,
+  sanitizeAmt8000EventRecord,
   selectRecentAmt8000EventRecords,
+  toAmt8000EventTableRows,
 } from "./event-buffer.mjs";
 
 test("decodes one AMT 8000 event record", () => {
@@ -94,4 +98,39 @@ test("selects most recent usable records in chronological order", () => {
     selectRecentAmt8000EventRecords(records, { limit: 2 }).map((record) => record.index),
     [11, 14],
   );
+});
+
+test("sanitizes and deduplicates event records without raw fields", () => {
+  const records = [
+    { index: 0, timestamp: "2026-08-05 22:20:16", effectiveCode: "130", eventKind: "new", zoneOrUser: 13, zoneOrUserText: "013", partition: 1, partitionText: "01", pictureAssociated: false },
+    { index: 0, timestamp: "2026-08-05 22:20:16", effectiveCode: "130", eventKind: "new", zoneOrUser: 13, zoneOrUserText: "013", partition: 1, partitionText: "01", pictureAssociated: false },
+  ];
+  assert.equal(dedupeAmt8000EventRecords(records).length, 1);
+  assert.equal(fingerprintAmt8000EventRecord(records[0]), "0000|2026-08-05 22:20:16|new|130|013|01");
+  assert.deepEqual(sanitizeAmt8000EventRecord(records[0]), {
+    timestamp: "2026-08-05 22:20:16",
+    index: 0,
+    indexHex: "0000",
+    eventKind: "new",
+    eventCode: "130",
+    zoneOrUser: 13,
+    partition: 1,
+    pictureAssociated: false,
+  });
+  assert.deepEqual(toAmt8000EventTableRows(records.slice(0, 1)), [{
+    "data/hora": "2026-08-05 22:20:16",
+    indice: "0000",
+    codigo: "130",
+    "new/restore": "new",
+    "zona/usuario": 13,
+    particao: 1,
+  }]);
+});
+
+test("accepts already sanitized records in recent selection", () => {
+  const records = [
+    { index: 3, timestamp: "2026-08-05 22:20:16", eventCode: "130", eventKind: "new", zoneOrUser: 13, partition: 1 },
+    { index: 4, timestamp: "2026-08-06 22:20:16", eventCode: "407", eventKind: "new", zoneOrUser: null, partition: 1 },
+  ];
+  assert.deepEqual(selectRecentAmt8000EventRecords(records, { limit: 1 }).map((record) => record.index), [4]);
 });
