@@ -1,0 +1,51 @@
+.hub-alert-cards > .google-calendar-day-strip {
+  order: -10000 !important;
+}
+
+.hub-alert-cards > .google-calendar-alert-card {
+  order: -9999 !important;
+}
+
+.hub-cleaning-stock-check-enhanced {
+  position: relative;
+}
+
+.hub-cleaning-stock-check-enhanced .hub-cleaning-activity-button {
+  align-self: flex-start;
+}
+
+.hub-cleaning-stock-check-done {
+  position: absolute;
+  right: 17px;
+  bottom: 17px;
+  width: 112px !important;
+  min-width: 112px;
+  min-height: 34px;
+  margin: 0 !important;
+  padding: 6px 9px !important;
+  border: 1px solid #cbd5e1 !important;
+  border-radius: 9px !important;
+  background: #f8fafc !important;
+  color: #334155 !important;
+  font-size: .68rem !important;
+  line-height: 1.05;
+  letter-spacing: .035em;
+}
+
+.hub-cleaning-stock-check-done:hover {
+  background: #f1f5f9 !important;
+}
+
+.hub-cleaning-stock-check-dismissed {
+  display: none !important;
+}
+
+@media (max-width: 420px) {
+  .hub-cleaning-stock-check-done {
+    right: 15px;
+    bottom: 15px;
+    width: 104px !important;
+    min-width: 104px;
+    font-size: .64rem !important;
+  }
+}
