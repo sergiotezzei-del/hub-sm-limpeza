@@ -1,0 +1,13 @@
+.auditorio-calendar-event.status-pendente.is-future-pending {
+  border-color: #ef4444;
+  background: #fee2e2;
+}
+
+.auditorio-calendar-event.status-pendente.is-future-pending b {
+  color: #991b1b;
+}
+
+.auditorio-calendar-event.status-pendente.is-future-pending span,
+.auditorio-calendar-event.status-pendente.is-future-pending small {
+  color: #b91c1c;
+}
