@@ -7,17 +7,23 @@ import {
   buildAuthenticationFrame,
   buildIsecFrame,
 } from "./protocol.mjs";
+import { decodeAmt8000EventBufferResponse } from "./event-buffer.mjs";
 
 const EVENT_BUFFER_COMMAND = 0x3900;
 const host = process.env.INTELBRAS_PANEL_HOST || "192.168.1.100";
 const port = Number(process.env.INTELBRAS_PANEL_PORT || 9009);
 const password = process.env.INTELBRAS_REMOTE_PASSWORD || "";
 const timeoutMs = Number(process.env.INTELBRAS_PROBE_TIMEOUT_MS || 20000);
+const bufferIndex = Number(process.env.INTELBRAS_EVENT_BUFFER_INDEX || 0);
 const panelId = [...ISEC_ENDPOINTS.PANEL];
 const clientId = [...ISEC_ENDPOINTS.PROGRAMMING_SOFTWARE];
 
 if (!/^\d{6}$/.test(password)) {
   console.error("[AMT8000-EVENTS] A senha de acesso remoto deve conter exatamente 6 dígitos.");
+  process.exit(2);
+}
+if (!Number.isInteger(bufferIndex) || bufferIndex < 0 || bufferIndex > 0x01ff) {
+  console.error("[AMT8000-EVENTS] INTELBRAS_EVENT_BUFFER_INDEX deve estar entre 0 e 511.");
   process.exit(2);
 }
 
@@ -34,6 +40,10 @@ function formatCommand(command) {
   return command.toString(16).padStart(4, "0").toUpperCase();
 }
 
+function formatIndex(index) {
+  return index.toString(16).padStart(4, "0").toUpperCase();
+}
+
 function finish(code, message) {
   if (finished) return;
   finished = true;
@@ -44,9 +54,9 @@ function finish(code, message) {
 }
 
 console.log(`[AMT8000-EVENTS] Teste SOMENTE LEITURA: ${host}:${port}`);
-console.log("[AMT8000-EVENTS] Comando oficial 3900 (BUFFER_EVENTOS), índice inicial 0000.");
+console.log(`[AMT8000-EVENTS] Comando oficial 3900 (BUFFER_EVENTOS), índice ${formatIndex(bufferIndex)}.`);
 console.log("[AMT8000-EVENTS] Nenhum comando de arme, desarme, bypass, panic ou alteração de configuração existe neste teste.");
-console.log("[AMT8000-EVENTS] O conteúdo dos eventos não será impresso; apenas metadados da resposta.");
+console.log("[AMT8000-EVENTS] Serão exibidos somente os campos operacionais decodificados do evento; nenhum payload bruto será impresso.");
 
 const socket = net.createConnection({ host, port });
 socket.setNoDelay(true);
@@ -89,21 +99,36 @@ socket.on("data", (chunk) => {
           destination: panelId,
           source: clientId,
           command: EVENT_BUFFER_COMMAND,
-          data: [0x00, 0x00],
+          data: [(bufferIndex >> 8) & 0xff, bufferIndex & 0xff],
         });
         socket.write(readFrame);
         requestSent = true;
-        console.log("[AMT8000-EVENTS] TX READ-COMMAND 3900, buffer index 0000 (somente leitura).");
+        console.log(`[AMT8000-EVENTS] TX READ-COMMAND 3900, buffer index ${formatIndex(bufferIndex)} (somente leitura).`);
       }
       continue;
     }
 
     if (frame.command === EVENT_BUFFER_COMMAND) {
-      const index = frame.data.length >= 2
-        ? `${frame.data[0].toString(16).padStart(2, "0")}${frame.data[1].toString(16).padStart(2, "0")}`.toUpperCase()
-        : "indisponível";
-      console.log(`[AMT8000-EVENTS] BUFFER_EVENTOS recebido: ${frame.data.length} byte(s), índice retornado=${index}.`);
-      finish(0, "[AMT8000-EVENTS] Leitura oficial 3900 concluída. Nenhum estado da central foi alterado.");
+      try {
+        const decoded = decodeAmt8000EventBufferResponse(frame.data);
+        console.log(`[AMT8000-EVENTS] BUFFER_EVENTOS recebido: ${frame.data.length} byte(s), ${decoded.records.length} registro(s), sobra=${decoded.trailingBytes} byte(s).`);
+        for (const record of decoded.records) {
+          console.log(JSON.stringify({
+            index: formatIndex(record.index),
+            timestamp: record.timestamp,
+            eventKind: record.eventKind,
+            eventCode: record.effectiveCode,
+            internalCode: record.internalCode,
+            programmedCode: record.programmedCode,
+            zoneOrUser: record.zoneOrUser,
+            partition: record.partition,
+            pictureAssociated: record.pictureAssociated,
+          }, null, 2));
+        }
+        finish(0, "[AMT8000-EVENTS] Leitura oficial 3900 concluída. Nenhum estado da central foi alterado.");
+      } catch (error) {
+        finish(6, `[AMT8000-EVENTS] A resposta 3900 chegou, mas não pôde ser decodificada: ${error instanceof Error ? error.message : String(error)}`);
+      }
       return;
     }
 
