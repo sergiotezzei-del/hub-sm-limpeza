@@ -14,7 +14,7 @@ const MAX_FILE_BYTES = 25 * 1024 * 1024;
 type PlaylistSession = {
   id: string;
   title: string;
-  status: "queued" | "claimed" | "playing" | "stop_requested" | "completed" | "failed" | "cancelled";
+  status: "draft" | "queued" | "claimed" | "playing" | "stop_requested" | "completed" | "failed" | "cancelled";
   created_at: string;
   started_at: string | null;
   last_error: string | null;
@@ -23,7 +23,7 @@ type PlaylistSession = {
 export function RadioPlaylistEnhancer() {
   const [visible, setVisible] = useState(false);
   const [open, setOpen] = useState(false);
-  const [activeSession, setActiveSession] = useState<PlaylistSession | null>(null);
+  const [session, setSession] = useState<PlaylistSession | null>(null);
   const [title, setTitle] = useState("Playlist temporária");
   const [files, setFiles] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
@@ -52,37 +52,39 @@ export function RadioPlaylistEnhancer() {
     };
   }, []);
 
-  const loadActiveSession = useCallback(async () => {
+  const loadSession = useCallback(async () => {
     if (!visible) {
-      setActiveSession(null);
+      setSession(null);
       return;
     }
 
     try {
       const response = await authenticatedSupabaseFetch(
-        `${SUPABASE_URL}/rest/v1/radio_playlist_sessions?select=id,title,status,created_at,started_at,last_error&status=in.(queued,claimed,playing,stop_requested)&order=created_at.desc&limit=1`,
+        `${SUPABASE_URL}/rest/v1/radio_playlist_sessions?select=id,title,status,created_at,started_at,last_error&status=in.(draft,queued,claimed,playing,stop_requested)&order=created_at.desc&limit=1`,
         { headers: { Accept: "application/json" } },
       );
       if (!response.ok) return;
       const rows = (await response.json()) as PlaylistSession[];
-      setActiveSession(rows[0] ?? null);
+      setSession(rows[0] ?? null);
     } catch {
-      // O painel continua utilizável; a próxima leitura tenta novamente.
+      // A próxima leitura tenta novamente.
     }
   }, [visible]);
 
   useEffect(() => {
     if (!visible) return;
-    void loadActiveSession();
-    const timer = window.setInterval(() => void loadActiveSession(), 2000);
+    void loadSession();
+    const timer = window.setInterval(() => void loadSession(), 2000);
     return () => window.clearInterval(timer);
-  }, [loadActiveSession, visible]);
+  }, [loadSession, visible]);
 
   useEffect(() => {
     if (!visible) setOpen(false);
   }, [visible]);
 
   const totalSize = useMemo(() => files.reduce((sum, file) => sum + file.size, 0), [files]);
+  const playlistReady = session?.status === "draft";
+  const playlistActive = Boolean(session && session.status !== "draft");
 
   const chooseFiles = (list: FileList | null) => {
     setError(null);
@@ -109,8 +111,8 @@ export function RadioPlaylistEnhancer() {
     setFiles(selected);
   };
 
-  const startPlaylist = async () => {
-    if (busy || activeSession) return;
+  const addPlaylist = async () => {
+    if (busy || session) return;
     setError(null);
     setMessage(null);
 
@@ -132,13 +134,12 @@ export function RadioPlaylistEnhancer() {
       if (!supabase) throw new Error("Supabase indisponível.");
 
       const tracks: Array<{ position: number; file_name: string; storage_path: string }> = [];
-
       for (let index = 0; index < files.length; index += 1) {
         const file = files[index];
         const position = index + 1;
         const safeName = sanitizeFileName(file.name);
         const storagePath = `${sessionId}/${String(position).padStart(2, "0")}-${safeName}`;
-        setProgress(`Enviando ${position} de ${files.length}: ${file.name}`);
+        setProgress(`Adicionando ${position} de ${files.length}: ${file.name}`);
 
         const { error: uploadError } = await supabase.storage
           .from("radio-playlists")
@@ -153,7 +154,7 @@ export function RadioPlaylistEnhancer() {
         tracks.push({ position, file_name: file.name, storage_path: storagePath });
       }
 
-      setProgress("Preparando a Rádio Santa Maria...");
+      setProgress("Salvando playlist no HUB...");
       const response = await authenticatedSupabaseFetch(`${SUPABASE_URL}/rest/v1/rpc/radio_create_playlist_session`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
@@ -167,26 +168,50 @@ export function RadioPlaylistEnhancer() {
 
       setFiles([]);
       setProgress("");
-      setMessage("Playlist enviada. A automação será pausada e a playlist entrará em seguida.");
-      await loadActiveSession();
-    } catch (startError) {
+      setMessage("Playlist adicionada. Nada foi tocado. Use TOCAR PLAYLIST somente quando quiser iniciar.");
+      await loadSession();
+    } catch (addError) {
       if (uploadedPaths.length) {
         try {
           const supabase = await getSupabaseClient();
           await supabase?.storage.from("radio-playlists").remove(uploadedPaths);
         } catch {
-          // Limpeza best-effort; não mascara o erro original.
+          // Limpeza best-effort.
         }
       }
-      setError(formatPlaylistError(startError));
+      setError(formatPlaylistError(addError));
       setProgress("");
     } finally {
       setBusy(false);
     }
   };
 
+  const playPlaylist = async () => {
+    if (!session || session.status !== "draft" || busy) return;
+    setBusy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const response = await authenticatedSupabaseFetch(`${SUPABASE_URL}/rest/v1/rpc/radio_start_playlist`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ p_id: session.id }),
+      });
+      if (!response.ok) {
+        const details = await readSupabaseRestError(response);
+        throw new Error(details.message || `HTTP ${response.status}`);
+      }
+      setMessage("Playlist iniciada. A programação normal foi preservada para voltar ao encerrar.");
+      await loadSession();
+    } catch (playError) {
+      setError(formatPlaylistError(playError));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const stopPlaylist = async () => {
-    if (!activeSession || busy) return;
+    if (!session || session.status === "draft" || busy) return;
     setBusy(true);
     setError(null);
     setMessage(null);
@@ -194,14 +219,14 @@ export function RadioPlaylistEnhancer() {
       const response = await authenticatedSupabaseFetch(`${SUPABASE_URL}/rest/v1/rpc/radio_request_stop_playlist`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({ p_id: activeSession.id }),
+        body: JSON.stringify({ p_id: session.id }),
       });
       if (!response.ok) {
         const details = await readSupabaseRestError(response);
         throw new Error(details.message || `HTTP ${response.status}`);
       }
       setMessage("Parada solicitada. A Rádio Santa Maria vai voltar para a automação.");
-      await loadActiveSession();
+      await loadSession();
     } catch (stopError) {
       setError(formatPlaylistError(stopError));
     } finally {
@@ -216,11 +241,11 @@ export function RadioPlaylistEnhancer() {
       <style>{playlistCss}</style>
       <button
         type="button"
-        className={activeSession ? "radio-playlist-launch is-active" : "radio-playlist-launch"}
+        className={`radio-playlist-launch${playlistActive ? " is-active" : playlistReady ? " is-ready" : ""}`}
         onClick={() => setOpen(true)}
       >
         <span aria-hidden="true">♫</span>
-        {activeSession ? "PLAYLIST HUB • ATIVA" : "PLAYLIST HUB"}
+        {playlistActive ? "PLAYLIST HUB • ATIVA" : playlistReady ? "PLAYLIST HUB • PRONTA" : "PLAYLIST HUB"}
       </button>
 
       {open ? (
@@ -236,22 +261,39 @@ export function RadioPlaylistEnhancer() {
               <button type="button" onClick={() => setOpen(false)} aria-label="Fechar">×</button>
             </header>
 
-            {activeSession ? (
+            {playlistReady && session ? (
+              <div className="radio-playlist-active-card is-ready-card">
+                <div className="radio-playlist-status-line is-ready-status">
+                  <span className="radio-playlist-ready-dot" />
+                  <strong>PLAYLIST PRONTA</strong>
+                </div>
+                <h3>{session.title}</h3>
+                <p>As músicas já estão salvas no HUB. A Rádio continua tocando normalmente e nada será interrompido até você apertar TOCAR PLAYLIST.</p>
+                <button
+                  type="button"
+                  className="radio-playlist-play"
+                  disabled={busy}
+                  onClick={() => void playPlaylist()}
+                >
+                  {busy ? "INICIANDO..." : "▶ TOCAR PLAYLIST"}
+                </button>
+              </div>
+            ) : playlistActive && session ? (
               <div className="radio-playlist-active-card">
                 <div className="radio-playlist-status-line">
                   <span className="radio-playlist-live-dot" />
-                  <strong>{playlistStatus(activeSession.status)}</strong>
+                  <strong>{playlistStatus(session.status)}</strong>
                 </div>
-                <h3>{activeSession.title}</h3>
+                <h3>{session.title}</h3>
                 <p>A programação normal está preservada. Ao parar esta playlist, a automação volta.</p>
-                {activeSession.last_error ? <div className="radio-playlist-error">{activeSession.last_error}</div> : null}
+                {session.last_error ? <div className="radio-playlist-error">{session.last_error}</div> : null}
                 <button
                   type="button"
                   className="radio-playlist-stop"
-                  disabled={busy || activeSession.status === "stop_requested"}
+                  disabled={busy || session.status === "stop_requested"}
                   onClick={() => void stopPlaylist()}
                 >
-                  {activeSession.status === "stop_requested" ? "VOLTANDO À AUTOMAÇÃO..." : "PARAR E VOLTAR À AUTOMAÇÃO"}
+                  {session.status === "stop_requested" ? "VOLTANDO À AUTOMAÇÃO..." : "PARAR E VOLTAR À AUTOMAÇÃO"}
                 </button>
               </div>
             ) : (
@@ -290,12 +332,13 @@ export function RadioPlaylistEnhancer() {
 
                 <button
                   type="button"
-                  className="radio-playlist-start"
+                  className="radio-playlist-add"
                   disabled={busy || files.length === 0}
-                  onClick={() => void startPlaylist()}
+                  onClick={() => void addPlaylist()}
                 >
-                  {busy ? "PREPARANDO..." : "ENVIAR E TOCAR NO HUB"}
+                  {busy ? "ADICIONANDO..." : "+ ADICIONAR À PLAYLIST"}
                 </button>
+                <p className="radio-playlist-safe-note">Adicionar apenas salva as músicas. Não toca e não pausa a programação atual.</p>
               </div>
             )}
 
@@ -304,7 +347,7 @@ export function RadioPlaylistEnhancer() {
             {error ? <div className="radio-playlist-error">{error}</div> : null}
 
             <p className="radio-playlist-note">
-              A playlist usa o canal temporário da Rádio Santa Maria. Vinhetas continuam separadas da programação normal.
+              Primeiro adicione as músicas. Depois, quando for o momento certo, use TOCAR PLAYLIST para entrar no modo temporário.
             </p>
           </section>
         </div>
@@ -337,6 +380,7 @@ function sanitizeFileName(value: string) {
 }
 
 function playlistStatus(status: PlaylistSession["status"]) {
+  if (status === "draft") return "PRONTA";
   if (status === "queued") return "PREPARANDO";
   if (status === "claimed") return "BAIXANDO FAIXAS";
   if (status === "playing") return "TOCANDO NO HUB";
@@ -351,9 +395,10 @@ function formatBytes(value: number) {
 
 function formatPlaylistError(error: unknown) {
   const value = error instanceof Error ? error.message : String(error);
-  if (value.includes("RADIO_PLAYLIST_ALREADY_ACTIVE")) return "Já existe uma playlist temporária ativa.";
+  if (value.includes("RADIO_PLAYLIST_ALREADY_ACTIVE")) return "Já existe uma playlist salva ou ativa.";
+  if (value.includes("RADIO_PLAYLIST_NOT_READY")) return "Essa playlist não está disponível para iniciar.";
   if (value.includes("SUPABASE_AUTH_SESSION_REQUIRED")) return "Sessão do HUB não encontrada. Entre novamente como administrador.";
-  return `Não foi possível iniciar a playlist: ${value}`;
+  return `Não foi possível concluir a ação: ${value}`;
 }
 
 const playlistCss = `
@@ -375,6 +420,11 @@ const playlistCss = `
   font-size: 10px;
   font-weight: 900;
   letter-spacing: .03em;
+}
+.radio-playlist-launch.is-ready {
+  color: #1e3a8a;
+  background: #eff6ff;
+  border-color: #bfdbfe;
 }
 .radio-playlist-launch.is-active {
   color: #fff;
@@ -460,18 +510,9 @@ const playlistCss = `
   border-radius: 12px;
   background: #fff7ed;
 }
-.radio-playlist-file-box strong {
-  font-size: 13px;
-}
-.radio-playlist-file-box small {
-  color: #64748b;
-  font-size: 10px;
-}
-.radio-playlist-file-box input {
-  width: 100%;
-  margin-top: 5px;
-  font-size: 11px;
-}
+.radio-playlist-file-box strong { font-size: 13px; }
+.radio-playlist-file-box small { color: #64748b; font-size: 10px; }
+.radio-playlist-file-box input { width: 100%; margin-top: 5px; font-size: 11px; }
 .radio-playlist-files {
   display: grid;
   gap: 6px;
@@ -491,21 +532,11 @@ const playlistCss = `
   border-bottom: 1px solid #e2e8f0;
   font-size: 11px;
 }
-.radio-playlist-file {
-  min-width: 0;
-  color: #475569;
-  font-size: 10px;
-}
-.radio-playlist-file span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.radio-playlist-file small {
-  flex: 0 0 auto;
-}
-.radio-playlist-start,
+.radio-playlist-file { min-width: 0; color: #475569; font-size: 10px; }
+.radio-playlist-file span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.radio-playlist-file small { flex: 0 0 auto; }
+.radio-playlist-add,
+.radio-playlist-play,
 .radio-playlist-stop {
   min-height: 42px;
   border: 0;
@@ -513,28 +544,21 @@ const playlistCss = `
   font-size: 11px;
   font-weight: 900;
 }
-.radio-playlist-start {
-  color: #fff;
-  background: #111827;
-}
-.radio-playlist-stop {
-  color: #fff;
-  background: #dc2626;
-}
-.radio-playlist-start:disabled,
-.radio-playlist-stop:disabled {
-  opacity: .55;
-}
-.radio-playlist-active-card h3 {
-  margin: 0;
-  font-size: 19px;
-}
-.radio-playlist-active-card p {
+.radio-playlist-add { color: #fff; background: #111827; }
+.radio-playlist-play { color: #fff; background: #16a34a; }
+.radio-playlist-stop { color: #fff; background: #dc2626; }
+.radio-playlist-add:disabled,
+.radio-playlist-play:disabled,
+.radio-playlist-stop:disabled { opacity: .55; }
+.radio-playlist-active-card h3 { margin: 0; font-size: 19px; }
+.radio-playlist-active-card p,
+.radio-playlist-safe-note {
   margin: 0;
   color: #64748b;
-  font-size: 12px;
+  font-size: 11px;
   line-height: 1.5;
 }
+.is-ready-card { border-color: #bfdbfe; }
 .radio-playlist-status-line {
   display: flex;
   align-items: center;
@@ -543,12 +567,20 @@ const playlistCss = `
   font-size: 10px;
   letter-spacing: .05em;
 }
-.radio-playlist-live-dot {
+.radio-playlist-status-line.is-ready-status { color: #1d4ed8; }
+.radio-playlist-live-dot,
+.radio-playlist-ready-dot {
   width: 8px;
   height: 8px;
   border-radius: 999px;
+}
+.radio-playlist-live-dot {
   background: #22c55e;
   box-shadow: 0 0 0 4px rgba(34, 197, 94, .12);
+}
+.radio-playlist-ready-dot {
+  background: #3b82f6;
+  box-shadow: 0 0 0 4px rgba(59, 130, 246, .12);
 }
 .radio-playlist-progress,
 .radio-playlist-message,
@@ -559,18 +591,9 @@ const playlistCss = `
   font-size: 11px;
   line-height: 1.4;
 }
-.radio-playlist-progress {
-  color: #1d4ed8;
-  background: #eff6ff;
-}
-.radio-playlist-message {
-  color: #166534;
-  background: #f0fdf4;
-}
-.radio-playlist-error {
-  color: #991b1b;
-  background: #fef2f2;
-}
+.radio-playlist-progress { color: #1d4ed8; background: #eff6ff; }
+.radio-playlist-message { color: #166534; background: #f0fdf4; }
+.radio-playlist-error { color: #991b1b; background: #fef2f2; }
 .radio-playlist-note {
   margin: 16px 2px 0;
   color: #64748b;
@@ -578,14 +601,7 @@ const playlistCss = `
   line-height: 1.5;
 }
 @media (max-width: 720px) {
-  .radio-playlist-launch {
-    top: auto;
-    right: 12px;
-    bottom: 12px;
-  }
-  .radio-playlist-panel {
-    width: 100%;
-    padding: 18px;
-  }
+  .radio-playlist-launch { top: auto; right: 12px; bottom: 12px; }
+  .radio-playlist-panel { width: 100%; padding: 18px; }
 }
 `;
