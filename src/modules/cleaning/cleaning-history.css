@@ -1,0 +1,82 @@
+.cleaning-history {
+  display: grid;
+  gap: 16px;
+}
+
+.cleaning-history > .ghost-button {
+  justify-self: start;
+}
+
+.cleaning-history-menu > button {
+  min-height: 48px;
+}
+
+details.cleaning-history-record {
+  display: block;
+}
+
+.cleaning-history-summary {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  cursor: pointer;
+  list-style: none;
+  min-height: 44px;
+}
+
+.cleaning-history-summary::-webkit-details-marker {
+  display: none;
+}
+
+.cleaning-history-summary:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 5px;
+}
+
+.cleaning-history-summary-copy {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  overflow-wrap: anywhere;
+}
+
+.cleaning-history-summary-copy small {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.cleaning-history-chevron {
+  flex: 0 0 9px;
+  width: 9px;
+  height: 9px;
+  margin: 0 4px 4px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(45deg);
+}
+
+.cleaning-history-record[open] > summary .cleaning-history-chevron {
+  transform: rotate(225deg);
+  margin-bottom: 0;
+}
+
+.cleaning-history-details {
+  display: grid;
+  gap: 14px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #d8dee8;
+}
+
+.cleaning-stock-dates {
+  display: grid;
+  gap: 3px;
+  margin-top: 6px;
+}
+
+.inventory-stock-row .cleaning-stock-dates small {
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
