@@ -14,13 +14,31 @@ type MiniPlayerState = {
   updated_at: string;
 };
 
+type RadioRuntimeState = {
+  id: "main";
+  operating_mode: "automation" | "temporary";
+  temporary_started_at: string | null;
+  temporary_started_by: string | null;
+  resume_on_exit: boolean;
+  saved_player_status: string | null;
+  saved_title: string | null;
+  saved_artist: string | null;
+  saved_album: string | null;
+  saved_mode: number | null;
+  saved_current_ms: number | null;
+  saved_total_ms: number | null;
+  updated_at: string;
+};
+
 type MiniPlayerCommand = "pause" | "resume" | "next" | "volume" | "mute" | "unmute";
 
 export function RadioHomeEnhancer() {
   const [managementGrid, setManagementGrid] = useState<HTMLElement | null>(null);
   const [profileSide, setProfileSide] = useState<HTMLElement | null>(null);
   const [miniPlayer, setMiniPlayer] = useState<MiniPlayerState | null>(null);
+  const [runtimeState, setRuntimeState] = useState<RadioRuntimeState | null>(null);
   const [controlBusy, setControlBusy] = useState<MiniPlayerCommand | null>(null);
+  const [modeBusy, setModeBusy] = useState(false);
   const [volumeOpen, setVolumeOpen] = useState(false);
   const [volumeDraft, setVolumeDraft] = useState(0);
   const [open, setOpen] = useState(false);
@@ -64,6 +82,7 @@ export function RadioHomeEnhancer() {
   useEffect(() => {
     if (!managementGrid) {
       setMiniPlayer(null);
+      setRuntimeState(null);
       return;
     }
 
@@ -71,15 +90,31 @@ export function RadioHomeEnhancer() {
 
     const load = async () => {
       try {
-        const response = await authenticatedSupabaseFetch(
-          `${SUPABASE_URL}/rest/v1/radio_player_state?select=title,artist,player_status,volume,mute,updated_at&id=eq.main&limit=1`,
-          { headers: { Accept: "application/json" } },
-        );
-        if (!response.ok) return;
-        const rows = (await response.json()) as MiniPlayerState[];
-        if (!cancelled) setMiniPlayer(rows[0] ?? null);
+        const [playerResponse, runtimeResponse] = await Promise.all([
+          authenticatedSupabaseFetch(
+            `${SUPABASE_URL}/rest/v1/radio_player_state?select=title,artist,player_status,volume,mute,updated_at&id=eq.main&limit=1`,
+            { headers: { Accept: "application/json" } },
+          ),
+          authenticatedSupabaseFetch(
+            `${SUPABASE_URL}/rest/v1/radio_runtime_state?select=id,operating_mode,temporary_started_at,temporary_started_by,resume_on_exit,saved_player_status,saved_title,saved_artist,saved_album,saved_mode,saved_current_ms,saved_total_ms,updated_at&id=eq.main&limit=1`,
+            { headers: { Accept: "application/json" } },
+          ),
+        ]);
+
+        if (playerResponse.ok) {
+          const rows = (await playerResponse.json()) as MiniPlayerState[];
+          if (!cancelled) setMiniPlayer(rows[0] ?? null);
+        }
+
+        if (runtimeResponse.ok) {
+          const rows = (await runtimeResponse.json()) as RadioRuntimeState[];
+          if (!cancelled) setRuntimeState(rows[0] ?? null);
+        }
       } catch {
-        if (!cancelled) setMiniPlayer(null);
+        if (!cancelled) {
+          setMiniPlayer(null);
+          setRuntimeState(null);
+        }
       }
     };
 
@@ -125,6 +160,7 @@ export function RadioHomeEnhancer() {
   }, [miniPlayer]);
 
   const isPlaying = miniPlayer?.player_status === "play";
+  const temporaryActive = runtimeState?.operating_mode === "temporary";
 
   const sendMiniCommand = async (command: MiniPlayerCommand, value: number | null = null) => {
     if (!playerOnline || controlBusy) return;
@@ -161,6 +197,40 @@ export function RadioHomeEnhancer() {
     }
   };
 
+  const toggleTemporaryMode = async () => {
+    if (!playerOnline || modeBusy) return;
+    setModeBusy(true);
+    setVolumeOpen(false);
+
+    try {
+      const rpcName = temporaryActive ? "radio_finish_temporary_mode" : "radio_start_temporary_mode";
+      const response = await authenticatedSupabaseFetch(`${SUPABASE_URL}/rest/v1/rpc/${rpcName}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: "{}",
+      });
+
+      if (!response.ok) return;
+
+      const payload = await response.json() as RadioRuntimeState | RadioRuntimeState[];
+      const nextState = Array.isArray(payload) ? payload[0] : payload;
+      if (nextState) setRuntimeState(nextState);
+
+      if (!temporaryActive && isPlaying) {
+        setMiniPlayer((current) => current ? { ...current, player_status: "pause" } : current);
+      } else if (temporaryActive && runtimeState?.resume_on_exit) {
+        setMiniPlayer((current) => current ? { ...current, player_status: "play" } : current);
+      }
+    } catch {
+      // O polling confirma o estado real e evita travar o mini player em caso de falha transitória.
+    } finally {
+      window.setTimeout(() => setModeBusy(false), 700);
+    }
+  };
+
   const commitVolume = () => {
     void sendMiniCommand("volume", volumeDraft);
   };
@@ -170,7 +240,7 @@ export function RadioHomeEnhancer() {
       <style>{radioMiniCss}</style>
 
       {profileSide ? createPortal(
-        <div className="radio-mini-card" aria-label="Controle rápido da Rádio Santa Maria">
+        <div className={temporaryActive ? "radio-mini-card is-temporary" : "radio-mini-card"} aria-label="Controle rápido da Rádio Santa Maria">
           <button
             className="radio-mini-main"
             type="button"
@@ -185,15 +255,29 @@ export function RadioHomeEnhancer() {
                 <strong>Rádio Santa Maria</strong>
               </span>
               <span className="radio-mini-track">
-                {playerOnline ? (miniPlayer?.title || "Som ambiente") : "Ponte offline"}
+                {temporaryActive ? "Modo temporário ativo" : playerOnline ? (miniPlayer?.title || "Som ambiente") : "Ponte offline"}
               </span>
               <span className="radio-mini-artist">
-                {playerOnline ? (miniPlayer?.artist || (isPlaying ? "Tocando" : "Pausado")) : "Clique para abrir"}
+                {temporaryActive
+                  ? (miniPlayer?.title || "Programação normal pausada")
+                  : playerOnline
+                    ? (miniPlayer?.artist || (isPlaying ? "Tocando" : "Pausado"))
+                    : "Clique para abrir"}
               </span>
             </span>
           </button>
 
           <div className="radio-mini-controls" aria-label="Controles rápidos da rádio">
+            <button
+              type="button"
+              className={temporaryActive ? "radio-mini-control radio-mini-mode is-active" : "radio-mini-control radio-mini-mode"}
+              disabled={!playerOnline || modeBusy || Boolean(controlBusy)}
+              onClick={() => void toggleTemporaryMode()}
+              aria-label={temporaryActive ? "Voltar à programação normal" : "Ativar modo temporário"}
+              title={temporaryActive ? "Voltar à programação" : "Assumir rádio temporariamente"}
+            >
+              {modeBusy ? "..." : temporaryActive ? "VOLTAR" : "TEMP"}
+            </button>
             <button
               type="button"
               className="radio-mini-control"
@@ -337,6 +421,12 @@ const radioMiniCss = `
   overflow: visible;
 }
 
+.radio-mini-card.is-temporary {
+  border-color: #fdba74;
+  border-left-color: #ea580c;
+  background: #fffaf5;
+}
+
 .radio-mini-main {
   width: 100%;
   min-width: 0;
@@ -411,6 +501,10 @@ const radioMiniCss = `
   font-weight: 900;
 }
 
+.radio-mini-card.is-temporary .radio-mini-track {
+  color: #c2410c;
+}
+
 .radio-mini-artist {
   color: #667085;
   font-size: 9px;
@@ -423,7 +517,7 @@ const radioMiniCss = `
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 5px;
+  gap: 4px;
   padding-top: 3px;
   border-top: 1px solid #edf0f4;
 }
@@ -456,6 +550,19 @@ const radioMiniCss = `
 
 .radio-mini-control:disabled {
   opacity: 0.45;
+}
+
+.radio-mini-mode {
+  width: 48px;
+  min-width: 48px;
+  font-size: 7px;
+  letter-spacing: 0.02em;
+}
+
+.radio-mini-mode.is-active {
+  color: #9a3412;
+  background: #ffedd5;
+  border-color: #fb923c;
 }
 
 .radio-mini-volume-wrap {
@@ -552,6 +659,12 @@ const radioMiniCss = `
     width: 152px;
     height: 78px;
     flex-basis: 152px;
+  }
+
+  .radio-mini-mode {
+    width: 39px;
+    min-width: 39px;
+    font-size: 6px;
   }
 
   .radio-mini-volume-popover {
