@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { authenticatedSupabaseFetch, SUPABASE_URL } from "../security/services/supabaseClient";
 import { RadioTestPage } from "./RadioTestPage";
@@ -14,14 +14,17 @@ type MiniPlayerState = {
   updated_at: string;
 };
 
-type MiniPlayerCommand = "pause" | "resume" | "next" | "mute" | "unmute";
+type MiniPlayerCommand = "pause" | "resume" | "next" | "volume" | "mute" | "unmute";
 
 export function RadioHomeEnhancer() {
   const [managementGrid, setManagementGrid] = useState<HTMLElement | null>(null);
   const [profileSide, setProfileSide] = useState<HTMLElement | null>(null);
   const [miniPlayer, setMiniPlayer] = useState<MiniPlayerState | null>(null);
   const [controlBusy, setControlBusy] = useState<MiniPlayerCommand | null>(null);
+  const [volumeOpen, setVolumeOpen] = useState(false);
+  const [volumeDraft, setVolumeDraft] = useState(0);
   const [open, setOpen] = useState(false);
+  const volumeMenuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     const sync = () => {
@@ -89,6 +92,25 @@ export function RadioHomeEnhancer() {
   }, [managementGrid]);
 
   useEffect(() => {
+    if (miniPlayer?.volume !== null && miniPlayer?.volume !== undefined && !volumeOpen) {
+      setVolumeDraft(miniPlayer.volume);
+    }
+  }, [miniPlayer?.volume, volumeOpen]);
+
+  useEffect(() => {
+    if (!volumeOpen) return;
+
+    const closeOnOutsideClick = (event: PointerEvent) => {
+      if (!volumeMenuRef.current?.contains(event.target as Node)) {
+        setVolumeOpen(false);
+      }
+    };
+
+    document.addEventListener("pointerdown", closeOnOutsideClick);
+    return () => document.removeEventListener("pointerdown", closeOnOutsideClick);
+  }, [volumeOpen]);
+
+  useEffect(() => {
     if (!open) return;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -104,7 +126,7 @@ export function RadioHomeEnhancer() {
 
   const isPlaying = miniPlayer?.player_status === "play";
 
-  const sendMiniCommand = async (command: MiniPlayerCommand) => {
+  const sendMiniCommand = async (command: MiniPlayerCommand, value: number | null = null) => {
     if (!playerOnline || controlBusy) return;
     setControlBusy(command);
 
@@ -116,7 +138,7 @@ export function RadioHomeEnhancer() {
           Accept: "application/json",
           Prefer: "return=minimal",
         },
-        body: JSON.stringify({ command, value: null }),
+        body: JSON.stringify({ command, value: command === "volume" ? Math.round(value ?? volumeDraft) : null }),
       });
 
       if (!response.ok) return;
@@ -125,6 +147,8 @@ export function RadioHomeEnhancer() {
         setMiniPlayer((current) => current ? { ...current, player_status: "pause" } : current);
       } else if (command === "resume") {
         setMiniPlayer((current) => current ? { ...current, player_status: "play" } : current);
+      } else if (command === "volume") {
+        setMiniPlayer((current) => current ? { ...current, volume: Math.round(value ?? volumeDraft) } : current);
       } else if (command === "mute") {
         setMiniPlayer((current) => current ? { ...current, mute: true } : current);
       } else if (command === "unmute") {
@@ -135,6 +159,10 @@ export function RadioHomeEnhancer() {
     } finally {
       window.setTimeout(() => setControlBusy(null), 550);
     }
+  };
+
+  const commitVolume = () => {
+    void sendMiniCommand("volume", volumeDraft);
   };
 
   return (
@@ -186,17 +214,52 @@ export function RadioHomeEnhancer() {
             >
               ▶|
             </button>
-            <button
-              type="button"
-              className="radio-mini-control radio-mini-volume"
-              disabled={!playerOnline || Boolean(controlBusy)}
-              onClick={() => void sendMiniCommand(miniPlayer?.mute ? "unmute" : "mute")}
-              aria-label={miniPlayer?.mute ? "Ativar volume" : "Silenciar volume"}
-              title={miniPlayer?.mute ? "Ativar som" : `Volume ${miniPlayer?.volume ?? 0}%`}
-            >
-              <span aria-hidden="true">{miniPlayer?.mute ? "×" : "♪"}</span>
-              <small>{miniPlayer?.mute ? "0" : miniPlayer?.volume ?? 0}</small>
-            </button>
+
+            <div className="radio-mini-volume-wrap" ref={volumeMenuRef}>
+              <button
+                type="button"
+                className={volumeOpen ? "radio-mini-control radio-mini-volume is-open" : "radio-mini-control radio-mini-volume"}
+                disabled={!playerOnline}
+                onClick={() => setVolumeOpen((current) => !current)}
+                aria-label="Abrir controle de volume"
+                aria-expanded={volumeOpen}
+                title={`Volume ${miniPlayer?.mute ? 0 : miniPlayer?.volume ?? 0}%`}
+              >
+                <span aria-hidden="true">{miniPlayer?.mute ? "🔇" : "🔊"}</span>
+                <small>{miniPlayer?.mute ? "0" : miniPlayer?.volume ?? 0}</small>
+              </button>
+
+              {volumeOpen ? (
+                <div className="radio-mini-volume-popover" role="dialog" aria-label="Ajustar volume da Rádio Santa Maria">
+                  <div className="radio-mini-volume-head">
+                    <strong>Volume</strong>
+                    <span>{volumeDraft}%</span>
+                  </div>
+                  <input
+                    className="radio-mini-volume-slider"
+                    type="range"
+                    min={0}
+                    max={100}
+                    step={1}
+                    value={volumeDraft}
+                    disabled={!playerOnline || controlBusy === "volume"}
+                    aria-label="Nível do volume"
+                    onChange={(event) => setVolumeDraft(Number(event.target.value))}
+                    onPointerUp={commitVolume}
+                    onKeyUp={commitVolume}
+                    onBlur={commitVolume}
+                  />
+                  <button
+                    type="button"
+                    className={miniPlayer?.mute ? "radio-mini-mute-button is-muted" : "radio-mini-mute-button"}
+                    disabled={!playerOnline || Boolean(controlBusy)}
+                    onClick={() => void sendMiniCommand(miniPlayer?.mute ? "unmute" : "mute")}
+                  >
+                    {miniPlayer?.mute ? "Ativar som" : "Deixar mudo"}
+                  </button>
+                </div>
+              ) : null}
+            </div>
           </div>
         </div>,
         profileSide,
@@ -256,6 +319,7 @@ const radioMiniCss = `
 }
 
 .radio-mini-card {
+  position: relative;
   order: 1;
   width: 184px;
   height: 82px;
@@ -270,7 +334,7 @@ const radioMiniCss = `
   border-left: 4px solid #f97316;
   border-radius: 8px;
   box-shadow: 0 5px 14px rgba(31, 41, 51, 0.06);
-  overflow: hidden;
+  overflow: visible;
 }
 
 .radio-mini-main {
@@ -284,6 +348,7 @@ const radioMiniCss = `
   text-align: left;
   background: transparent;
   border: 0;
+  overflow: hidden;
 }
 
 .radio-mini-main:hover .radio-mini-track {
@@ -382,7 +447,8 @@ const radioMiniCss = `
   font-weight: 900;
 }
 
-.radio-mini-control:hover:not(:disabled) {
+.radio-mini-control:hover:not(:disabled),
+.radio-mini-control.is-open {
   color: #c2410c;
   background: #fff7ed;
   border-color: #fdba74;
@@ -392,14 +458,88 @@ const radioMiniCss = `
   opacity: 0.45;
 }
 
+.radio-mini-volume-wrap {
+  position: relative;
+  display: flex;
+}
+
 .radio-mini-volume {
-  width: 39px;
-  min-width: 39px;
+  width: 43px;
+  min-width: 43px;
 }
 
 .radio-mini-volume small {
   font-size: 7px;
   font-weight: 900;
+}
+
+.radio-mini-volume-popover {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 7px);
+  right: 0;
+  width: 156px;
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  color: #1f2933;
+  background: #ffffff;
+  border: 1px solid #d8dee8;
+  border-radius: 8px;
+  box-shadow: 0 12px 28px rgba(31, 41, 51, 0.18);
+}
+
+.radio-mini-volume-popover::before {
+  content: "";
+  position: absolute;
+  top: -5px;
+  right: 15px;
+  width: 8px;
+  height: 8px;
+  background: #ffffff;
+  border-left: 1px solid #d8dee8;
+  border-top: 1px solid #d8dee8;
+  transform: rotate(45deg);
+}
+
+.radio-mini-volume-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+}
+
+.radio-mini-volume-head span {
+  color: #667085;
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.radio-mini-volume-slider {
+  width: 100%;
+  min-height: 20px;
+  margin: 0;
+  padding: 0;
+  accent-color: #f97316;
+}
+
+.radio-mini-mute-button {
+  min-height: 28px;
+  padding: 5px 8px;
+  color: #7c2d12;
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  border-radius: 6px;
+  font-size: 10px;
+  line-height: 1;
+  font-weight: 900;
+}
+
+.radio-mini-mute-button.is-muted {
+  color: #166534;
+  background: #f0fdf4;
+  border-color: #bbf7d0;
 }
 
 @media (max-width: 720px) {
@@ -412,6 +552,10 @@ const radioMiniCss = `
     width: 152px;
     height: 78px;
     flex-basis: 152px;
+  }
+
+  .radio-mini-volume-popover {
+    width: 148px;
   }
 }
 `;
