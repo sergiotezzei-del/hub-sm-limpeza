@@ -9,13 +9,18 @@ type MiniPlayerState = {
   title: string | null;
   artist: string | null;
   player_status: string | null;
+  volume: number | null;
+  mute: boolean;
   updated_at: string;
 };
+
+type MiniPlayerCommand = "pause" | "resume" | "next" | "mute" | "unmute";
 
 export function RadioHomeEnhancer() {
   const [managementGrid, setManagementGrid] = useState<HTMLElement | null>(null);
   const [profileSide, setProfileSide] = useState<HTMLElement | null>(null);
   const [miniPlayer, setMiniPlayer] = useState<MiniPlayerState | null>(null);
+  const [controlBusy, setControlBusy] = useState<MiniPlayerCommand | null>(null);
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
@@ -64,7 +69,7 @@ export function RadioHomeEnhancer() {
     const load = async () => {
       try {
         const response = await authenticatedSupabaseFetch(
-          `${SUPABASE_URL}/rest/v1/radio_player_state?select=title,artist,player_status,updated_at&id=eq.main&limit=1`,
+          `${SUPABASE_URL}/rest/v1/radio_player_state?select=title,artist,player_status,volume,mute,updated_at&id=eq.main&limit=1`,
           { headers: { Accept: "application/json" } },
         );
         if (!response.ok) return;
@@ -76,7 +81,7 @@ export function RadioHomeEnhancer() {
     };
 
     void load();
-    const timer = window.setInterval(() => void load(), 3000);
+    const timer = window.setInterval(() => void load(), 2500);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
@@ -97,32 +102,103 @@ export function RadioHomeEnhancer() {
     return Date.now() - new Date(miniPlayer.updated_at).getTime() < 12000;
   }, [miniPlayer]);
 
+  const isPlaying = miniPlayer?.player_status === "play";
+
+  const sendMiniCommand = async (command: MiniPlayerCommand) => {
+    if (!playerOnline || controlBusy) return;
+    setControlBusy(command);
+
+    try {
+      const response = await authenticatedSupabaseFetch(`${SUPABASE_URL}/rest/v1/radio_player_commands`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          Prefer: "return=minimal",
+        },
+        body: JSON.stringify({ command, value: null }),
+      });
+
+      if (!response.ok) return;
+
+      if (command === "pause") {
+        setMiniPlayer((current) => current ? { ...current, player_status: "pause" } : current);
+      } else if (command === "resume") {
+        setMiniPlayer((current) => current ? { ...current, player_status: "play" } : current);
+      } else if (command === "mute") {
+        setMiniPlayer((current) => current ? { ...current, mute: true } : current);
+      } else if (command === "unmute") {
+        setMiniPlayer((current) => current ? { ...current, mute: false } : current);
+      }
+    } catch {
+      // A atualização automática do player confirma o estado real em seguida.
+    } finally {
+      window.setTimeout(() => setControlBusy(null), 550);
+    }
+  };
+
   return (
     <>
       <style>{radioMiniCss}</style>
 
       {profileSide ? createPortal(
-        <button
-          className="radio-mini-card"
-          type="button"
-          onClick={() => setOpen(true)}
-          aria-label="Abrir Rádio Santa Maria"
-          title="Abrir Rádio Santa Maria"
-        >
-          <span className="radio-mini-icon" aria-hidden="true">♫</span>
-          <span className="radio-mini-copy">
-            <span className="radio-mini-topline">
-              <span className={playerOnline ? "radio-mini-dot is-online" : "radio-mini-dot"} />
-              <strong>Rádio Santa Maria</strong>
+        <div className="radio-mini-card" aria-label="Controle rápido da Rádio Santa Maria">
+          <button
+            className="radio-mini-main"
+            type="button"
+            onClick={() => setOpen(true)}
+            aria-label="Abrir Rádio Santa Maria"
+            title="Abrir Rádio Santa Maria"
+          >
+            <span className="radio-mini-icon" aria-hidden="true">♫</span>
+            <span className="radio-mini-copy">
+              <span className="radio-mini-topline">
+                <span className={playerOnline ? "radio-mini-dot is-online" : "radio-mini-dot"} />
+                <strong>Rádio Santa Maria</strong>
+              </span>
+              <span className="radio-mini-track">
+                {playerOnline ? (miniPlayer?.title || "Som ambiente") : "Ponte offline"}
+              </span>
+              <span className="radio-mini-artist">
+                {playerOnline ? (miniPlayer?.artist || (isPlaying ? "Tocando" : "Pausado")) : "Clique para abrir"}
+              </span>
             </span>
-            <span className="radio-mini-track">
-              {playerOnline ? (miniPlayer?.title || "Som ambiente") : "Ponte offline"}
-            </span>
-            <span className="radio-mini-artist">
-              {playerOnline ? (miniPlayer?.artist || (miniPlayer?.player_status === "pause" ? "Pausado" : "Tocando")) : "Clique para abrir"}
-            </span>
-          </span>
-        </button>,
+          </button>
+
+          <div className="radio-mini-controls" aria-label="Controles rápidos da rádio">
+            <button
+              type="button"
+              className="radio-mini-control"
+              disabled={!playerOnline || Boolean(controlBusy)}
+              onClick={() => void sendMiniCommand(isPlaying ? "pause" : "resume")}
+              aria-label={isPlaying ? "Pausar música" : "Tocar música"}
+              title={isPlaying ? "Pausar" : "Tocar"}
+            >
+              {isPlaying ? "Ⅱ" : "▶"}
+            </button>
+            <button
+              type="button"
+              className="radio-mini-control"
+              disabled={!playerOnline || Boolean(controlBusy)}
+              onClick={() => void sendMiniCommand("next")}
+              aria-label="Próxima música"
+              title="Próxima"
+            >
+              ▶|
+            </button>
+            <button
+              type="button"
+              className="radio-mini-control radio-mini-volume"
+              disabled={!playerOnline || Boolean(controlBusy)}
+              onClick={() => void sendMiniCommand(miniPlayer?.mute ? "unmute" : "mute")}
+              aria-label={miniPlayer?.mute ? "Ativar volume" : "Silenciar volume"}
+              title={miniPlayer?.mute ? "Ativar som" : `Volume ${miniPlayer?.volume ?? 0}%`}
+            >
+              <span aria-hidden="true">{miniPlayer?.mute ? "×" : "♪"}</span>
+              <small>{miniPlayer?.mute ? "0" : miniPlayer?.volume ?? 0}</small>
+            </button>
+          </div>
+        </div>,
         profileSide,
       ) : null}
 
@@ -171,7 +247,7 @@ const radioMiniCss = `
   flex-direction: row;
   align-items: center;
   flex-wrap: nowrap;
-  gap: 12px;
+  gap: 10px;
 }
 
 .profile-hero-side.radio-mini-active .panel-corner-brand {
@@ -181,53 +257,66 @@ const radioMiniCss = `
 
 .radio-mini-card {
   order: 1;
-  width: 178px;
-  min-height: 74px;
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  padding: 9px 10px;
+  width: 184px;
+  height: 82px;
+  flex: 0 0 184px;
+  display: grid;
+  grid-template-rows: 1fr 25px;
+  gap: 3px;
+  padding: 7px 8px 6px;
   color: #1f2933;
-  text-align: left;
   background: #ffffff;
   border: 1px solid #d8dee8;
   border-left: 4px solid #f97316;
   border-radius: 8px;
   box-shadow: 0 5px 14px rgba(31, 41, 51, 0.06);
+  overflow: hidden;
 }
 
-.radio-mini-card:hover {
-  border-color: #fdba74;
-  background: #fffaf5;
+.radio-mini-main {
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0;
+  color: inherit;
+  text-align: left;
+  background: transparent;
+  border: 0;
+}
+
+.radio-mini-main:hover .radio-mini-track {
+  color: #c2410c;
 }
 
 .radio-mini-icon {
-  width: 34px;
-  height: 34px;
-  flex: 0 0 34px;
+  width: 29px;
+  height: 29px;
+  flex: 0 0 29px;
   display: grid;
   place-items: center;
   color: #c2410c;
   background: #fff1e6;
   border: 1px solid #fed7aa;
-  border-radius: 8px;
-  font-size: 18px;
+  border-radius: 7px;
+  font-size: 16px;
   font-weight: 900;
 }
 
 .radio-mini-copy {
   min-width: 0;
   display: grid;
-  gap: 2px;
+  gap: 1px;
 }
 
 .radio-mini-topline {
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 5px;
-  font-size: 10px;
-  line-height: 1.15;
+  gap: 4px;
+  font-size: 9px;
+  line-height: 1.1;
 }
 
 .radio-mini-topline strong,
@@ -239,9 +328,9 @@ const radioMiniCss = `
 }
 
 .radio-mini-dot {
-  width: 7px;
-  height: 7px;
-  flex: 0 0 7px;
+  width: 6px;
+  height: 6px;
+  flex: 0 0 6px;
   border-radius: 999px;
   background: #ef4444;
 }
@@ -252,14 +341,65 @@ const radioMiniCss = `
 
 .radio-mini-track {
   color: #111827;
-  font-size: 12px;
+  font-size: 11px;
+  line-height: 1.15;
   font-weight: 900;
 }
 
 .radio-mini-artist {
   color: #667085;
-  font-size: 10px;
+  font-size: 9px;
+  line-height: 1.1;
   font-weight: 700;
+}
+
+.radio-mini-controls {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 5px;
+  padding-top: 3px;
+  border-top: 1px solid #edf0f4;
+}
+
+.radio-mini-control {
+  width: 23px;
+  height: 22px;
+  min-width: 23px;
+  min-height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  padding: 0;
+  color: #334155;
+  background: #f8fafc;
+  border: 1px solid #d8dee8;
+  border-radius: 6px;
+  font-size: 9px;
+  line-height: 1;
+  font-weight: 900;
+}
+
+.radio-mini-control:hover:not(:disabled) {
+  color: #c2410c;
+  background: #fff7ed;
+  border-color: #fdba74;
+}
+
+.radio-mini-control:disabled {
+  opacity: 0.45;
+}
+
+.radio-mini-volume {
+  width: 39px;
+  min-width: 39px;
+}
+
+.radio-mini-volume small {
+  font-size: 7px;
+  font-weight: 900;
 }
 
 @media (max-width: 720px) {
@@ -269,8 +409,9 @@ const radioMiniCss = `
   }
 
   .radio-mini-card {
-    width: 154px;
-    min-height: 66px;
+    width: 152px;
+    height: 78px;
+    flex-basis: 152px;
   }
 }
 `;
