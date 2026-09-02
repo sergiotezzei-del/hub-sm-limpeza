@@ -2,12 +2,19 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { RadioTestPage } from "./RadioTestPage";
 
+const HUB_SESSION_KEY = "hub-sm-active-session";
+
 export function RadioHomeEnhancer() {
   const [managementGrid, setManagementGrid] = useState<HTMLElement | null>(null);
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
     const sync = () => {
+      if (!isTezzeiAdminSession()) {
+        setManagementGrid(null);
+        return;
+      }
+
       const sections = Array.from(document.querySelectorAll<HTMLElement>(".hub-home-section"));
       const managementSection = sections.find((section) => section.querySelector("h2")?.textContent?.trim() === "Gestão");
       const nextGrid = managementSection?.querySelector<HTMLElement>(".module-grid") ?? null;
@@ -63,6 +70,17 @@ export function RadioHomeEnhancer() {
       ) : null}
     </>
   );
+}
+
+function isTezzeiAdminSession() {
+  try {
+    const raw = window.sessionStorage.getItem(HUB_SESSION_KEY);
+    if (!raw) return false;
+    const parsed = JSON.parse(raw) as { currentUser?: unknown };
+    return parsed.currentUser === "tezzei";
+  } catch {
+    return false;
+  }
 }
 
 const overlayStyle: React.CSSProperties = {
