@@ -14,9 +14,16 @@ const host = process.env.INTELBRAS_PANEL_HOST || "192.168.1.100";
 const port = Number(process.env.INTELBRAS_PANEL_PORT || 9009);
 const password = process.env.INTELBRAS_REMOTE_PASSWORD || "";
 const timeoutMs = Number(process.env.INTELBRAS_PROBE_TIMEOUT_MS || 90000);
+const deviceType = Number(process.env.INTELBRAS_DEVICE_TYPE || 1);
 const keepAliveMs = 45000;
 const panelId = [...ISEC_ENDPOINTS.PANEL];
 const clientId = [...ISEC_ENDPOINTS.PROGRAMMING_SOFTWARE];
+
+const deviceTypeLabels = Object.freeze({
+  1: "Software programação Remoto",
+  2: "Software de monitoramento",
+  3: "Mobile APP",
+});
 
 const partitionNames = {
   1: "Sub Solo",
@@ -33,9 +40,14 @@ if (!Number.isInteger(port) || port < 1 || port > 65535) {
   console.error("[AMT8000] Porta inválida.");
   process.exit(2);
 }
+if (!Object.hasOwn(deviceTypeLabels, deviceType)) {
+  console.error("[AMT8000] INTELBRAS_DEVICE_TYPE inválido. Use 1 (programação remota), 2 (monitoramento) ou 3 (Mobile APP).");
+  process.exit(2);
+}
 
 console.log(`[AMT8000] Teste SOMENTE LEITURA: ${host}:${port}`);
-console.log("[AMT8000] Identificação ISECNet do software: 8F FF (conforme SDK oficial).");
+console.log("[AMT8000] Identificação ISECNet do dispositivo: 8F FF (conforme SDK oficial).");
+console.log(`[AMT8000] Device type F0F0: ${deviceType} (${deviceTypeLabels[deviceType]}).`);
 console.log("[AMT8000] Diagnóstico passivo: serão exibidos apenas código, origem/destino e tamanho dos quadros recebidos; o conteúdo não será mostrado.");
 console.log("[AMT8000] O agente não possui caminho de código para arme, desarme ou bypass neste teste.");
 
@@ -78,8 +90,8 @@ const deadline = setTimeout(() => {
 deadline.unref();
 
 socket.on("connect", () => {
-  console.log("[AMT8000] TCP conectado. Enviando somente autenticação F0F0 como software 8F FF...");
-  socket.write(buildAuthenticationFrame({ password, destination: panelId, source: clientId }));
+  console.log(`[AMT8000] TCP conectado. Enviando somente autenticação F0F0 como device type ${deviceType} (${deviceTypeLabels[deviceType]})...`);
+  socket.write(buildAuthenticationFrame({ password, deviceType, destination: panelId, source: clientId }));
 });
 
 socket.on("data", (chunk) => {
