@@ -406,7 +406,7 @@ const radioMiniCss = `
   position: relative;
   order: 1;
   width: 184px;
-  height: 98px;
+  height: 105px;
   flex: 0 0 184px;
   display: grid;
   grid-template-rows: 1fr 25px;
