@@ -1,0 +1,49 @@
+name: One-time Marketing period exception UI
+
+on:
+  push:
+    branches:
+      - feat/marketing-excecao-periodo-aprovacao
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/marketing-excecao-periodo-aprovacao
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Apply UI patch
+        run: python3 .github/scripts/apply_marketing_period_exception_ui.py
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build
+        run: pnpm run build
+      - name: TypeScript
+        run: npx tsc --noEmit
+      - name: Verify exception UI
+        shell: bash
+        run: |
+          grep -q 'SOLICITAR EXCEÇÃO / EMERGÊNCIA' src/modules/marketing/MarketingFeature.tsx
+          grep -q 'PEDIR AUTORIZAÇÃO AO TEZZEI' src/modules/marketing/MarketingFeature.tsx
+          grep -q 'marketing_v2_request_period_exception' src/modules/marketing/marketingService.ts
+          grep -q 'specialCaptureStatus' src/modules/marketing/marketingService.ts
+      - name: Commit verified implementation
+        shell: bash
+        run: |
+          rm -f .github/workflows/one-time-marketing-period-exception-ui.yml
+          rm -f .github/scripts/apply_marketing_period_exception_ui.py
+          git config user.name 'Sergio Tezzei'
+          git config user.email 'sergiotezzei@gmail.com'
+          git add src/modules/marketing/MarketingFeature.tsx src/modules/marketing/marketingService.ts src/modules/marketing/marketing.css supabase/migrations/20260902123821_marketing_period_exception_requires_tezzei_approval.sql .github
+          git commit -m 'feat(marketing): solicitar excecao de agenda ao admin'
+          git push origin HEAD:feat/marketing-excecao-periodo-aprovacao
