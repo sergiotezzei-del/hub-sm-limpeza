@@ -40,6 +40,7 @@ import {
   saveMarketingAccess,
   updateMarketingRequest,
 } from "./marketingService";
+import { MarketingGoogleCalendarBridge, MarketingGoogleCalendarPanel } from "./MarketingGoogleCalendarPanel";
 import "./marketing.css";
 
 const REFRESH_MS = 20000;
@@ -255,6 +256,14 @@ export function MarketingFeature(props: MarketingFeatureProps) {
 
   return (
     <>
+      {props.sessionToken && (
+        <MarketingGoogleCalendarBridge
+          sessionToken={props.sessionToken}
+          currentUserId={props.currentUserId}
+          onConnected={(message) => { setNotice(message); setError(""); setTab("agenda"); props.onOpen(); }}
+          onError={(message) => { setError(message); props.onOpen(); }}
+        />
+      )}
       {alertHost && adminAlerts.map((request) => createPortal(
         <article className={`hub-alert-card marketing-day-alert ${request.urgencyRequested && !request.urgencyDecidedAt ? "is-urgent" : ""}`} key={`marketing-alert-${request.id}`} data-marketing-request-id={request.id}>
           <div className="hub-alert-card-status"><span>{request.urgencyRequested && !request.urgencyDecidedAt ? "URGÊNCIA" : "MARKETING"}</span><time>{formatTime(request.createdAt)}</time></div>
@@ -371,7 +380,7 @@ function MarketingScreen(props: {
             onNotice={props.onNotice}
           />
         )}
-        {props.tab === "agenda" && <AgendaView dashboard={props.dashboard} onSelect={props.onSelect} />}
+        {props.tab === "agenda" && <AgendaView sessionToken={props.sessionToken} dashboard={props.dashboard} onSelect={props.onSelect} onError={props.onError} onNotice={props.onNotice} />}
         {props.tab === "request" && (
           <RequestView
             sessionToken={props.sessionToken}
@@ -542,7 +551,13 @@ function QueueOverridePanel(props: {
   );
 }
 
-function AgendaView({ dashboard, onSelect }: { dashboard: MarketingDashboard; onSelect: (request: MarketingRequest) => void }) {
+function AgendaView({ sessionToken, dashboard, onSelect, onError, onNotice }: {
+  sessionToken: string;
+  dashboard: MarketingDashboard;
+  onSelect: (request: MarketingRequest) => void;
+  onError: (message: string) => void;
+  onNotice: (message: string) => void;
+}) {
   const scheduled = dashboard.requests
     .filter((request) => request.requestKind === "capture_edit" && request.status !== "cancelado" && (request.confirmedCaptureAt || request.preferredCaptureAt))
     .sort((a, b) => new Date(a.confirmedCaptureAt || a.preferredCaptureAt || 0).getTime() - new Date(b.confirmedCaptureAt || b.preferredCaptureAt || 0).getTime())
@@ -550,6 +565,13 @@ function AgendaView({ dashboard, onSelect }: { dashboard: MarketingDashboard; on
       || requests.findIndex((candidate) => candidate.captureGroupId === request.captureGroupId) === index);
   return (
     <section className="marketing-agenda-view">
+      <MarketingGoogleCalendarPanel
+        sessionToken={sessionToken}
+        currentUserId={dashboard.context.userId}
+        role={dashboard.context.role}
+        onError={onError}
+        onNotice={onNotice}
+      />
       <div className="marketing-section-head"><div><h2>Agenda de captação</h2><p>Data solicitada pelo gerente e confirmação do Marketing ficam separadas.</p></div></div>
       {scheduled.length === 0 ? <div className="marketing-empty"><h3>Nenhuma captação agendada.</h3><p>Os novos pedidos aparecem aqui assim que tiverem data.</p></div> : (
         <div className="marketing-agenda-list">

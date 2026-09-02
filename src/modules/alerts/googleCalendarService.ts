@@ -83,6 +83,7 @@ export function readGoogleCalendarCallback() {
   if (typeof window === "undefined") return null;
   const params = new URLSearchParams(window.location.search);
   const state = params.get("state")?.trim() ?? "";
+  if (state.startsWith("mkt_")) return null;
   const code = params.get("code")?.trim() ?? "";
   const error = params.get("error")?.trim() ?? "";
   if (!state || (!code && !error)) return null;
