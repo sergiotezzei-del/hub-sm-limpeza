@@ -24,6 +24,7 @@ import { isMarketingNotificationReceiver, readPendingMarketingPushSetup } from "
 import { HubPublicPushReceiverPage } from "./modules/public-push/HubPublicPushReceiverPage";
 import { PublicPushBroadcastEnhancer } from "./modules/public-push/PublicPushBroadcastEnhancer";
 import { readPendingHubPublicPushSetup } from "./modules/public-push/hubPublicPushClient";
+import { RadioHomeEnhancer } from "./modules/radio/RadioHomeEnhancer";
 import { RadioTestPage } from "./modules/radio/RadioTestPage";
 import { HubAuthSessionGuard } from "./modules/security/HubAuthSessionGuard";
 import { PublicServiceRequestPage } from "./modules/service-requests/PublicServiceRequestPage";
@@ -117,6 +118,7 @@ createRoot(document.getElementById("root")!).render(
         <PatrimonySpaceMapsFeature />
         <MarketingPushAttentionHost />
         <PublicPushBroadcastEnhancer />
+        <RadioHomeEnhancer />
       </>
     )}
   </StrictMode>,
