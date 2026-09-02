@@ -30,6 +30,7 @@ import { PublicPushBroadcastEnhancer } from "./modules/public-push/PublicPushBro
 import { readPendingHubPublicPushSetup } from "./modules/public-push/hubPublicPushClient";
 import { RadioHomeEnhancer } from "./modules/radio/RadioHomeEnhancer";
 import { RadioPlaylistEnhancer } from "./modules/radio/RadioPlaylistEnhancer";
+import { RadioPlaylistMountGuard } from "./modules/radio/RadioPlaylistMountGuard";
 import { RadioTestPage } from "./modules/radio/RadioTestPage";
 import { HubAuthSessionGuard } from "./modules/security/HubAuthSessionGuard";
 import { PublicServiceRequestPage } from "./modules/service-requests/PublicServiceRequestPage";
@@ -128,7 +129,7 @@ createRoot(document.getElementById("root")!).render(
         <MarketingPushAttentionHost />
         <PublicPushBroadcastEnhancer />
         <RadioHomeEnhancer />
-        <RadioPlaylistEnhancer />
+        <RadioPlaylistMountGuard />
       </>
     )}
   </StrictMode>,
