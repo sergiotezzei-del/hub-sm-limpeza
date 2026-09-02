@@ -1,0 +1,33 @@
+.auditorio-pending-alert-actions {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  margin-top: auto;
+}
+
+.auditorio-pending-alert-actions .hub-alert-done-button {
+  flex: 0 0 112px;
+  width: 112px !important;
+  min-width: 112px;
+  min-height: 34px;
+  margin-top: 0 !important;
+  padding: 6px 9px !important;
+  font-size: .68rem;
+  line-height: 1.05;
+}
+
+.auditorio-pending-alert-actions .auditorio-pending-alert-done {
+  border: 1px solid #cbd5e1 !important;
+  background: #f8fafc !important;
+  color: #334155 !important;
+}
+
+@media (max-width: 420px) {
+  .auditorio-pending-alert-actions .hub-alert-done-button {
+    flex-basis: 104px;
+    width: 104px !important;
+    min-width: 104px;
+    font-size: .64rem;
+  }
+}
