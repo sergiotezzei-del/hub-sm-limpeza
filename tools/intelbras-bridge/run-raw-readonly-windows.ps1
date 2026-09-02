@@ -1,6 +1,6 @@
 $ErrorActionPreference = "Stop"
 
-$panelHost = if ($env:INTELBRAS_PANEL_HOST) { $env:INTELBRAS_PANEL_HOST } else { "192.168.1.100" }
+$panelHost = if ($env:INTELBRAS_PANEL_HOST) { $env:INTELBRAS_PANEL_HOST } else { "10.11.22.11" }
 $panelPort = if ($env:INTELBRAS_PANEL_PORT) { $env:INTELBRAS_PANEL_PORT } else { "9009" }
 $deviceType = if ($env:INTELBRAS_DEVICE_TYPE) { $env:INTELBRAS_DEVICE_TYPE } else { "3" }
 

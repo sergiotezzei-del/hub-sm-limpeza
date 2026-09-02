@@ -4,6 +4,7 @@ export const ISEC_COMMANDS = Object.freeze({
   ACK: 0xf0fe,
   NACK: 0xf0fd,
   FULL_STATUS: 0x0b4a,
+  EVENT_BUFFER: 0x3900,
   ARM_DISARM: 0x401e,
   BYPASS_ZONE: 0x401f,
 });

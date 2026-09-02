@@ -60,6 +60,18 @@ test("authentication frame contains F0F0 and 9 data bytes", () => {
   assert.deepEqual([...parsed.data], [0x01, 1, 2, 3, 4, 5, 6, 0x01, 0x00]);
 });
 
+test("event buffer read frame contains official 3900 command and index payload", () => {
+  const parsed = parseIsecFrame(buildIsecFrame({
+    destination: [...ISEC_ENDPOINTS.PANEL],
+    source: [...ISEC_ENDPOINTS.PROGRAMMING_SOFTWARE],
+    command: ISEC_COMMANDS.EVENT_BUFFER,
+    data: [0x01, 0xff],
+  }));
+  assert.equal(parsed.command, 0x3900);
+  assert.deepEqual([...parsed.data], [0x01, 0xff]);
+  assert.equal(parsed.numBytes, 4);
+});
+
 test("stream parser handles TCP fragmentation and multiple frames", () => {
   const first = buildIsecFrame({ command: ISEC_COMMANDS.KEEP_ALIVE });
   const second = buildIsecFrame({ command: ISEC_COMMANDS.AUTHENTICATE, data: [0x00] });
