@@ -74,6 +74,11 @@ export type MarketingRequest = {
   captureGroupRequestNumbers?: number[];
   managerReviewStatus?: MarketingManagerReviewStatus | null;
   managerReviewUpdatedAt?: string | null;
+  specialCaptureAt?: string | null;
+  specialCaptureReason?: string | null;
+  specialCaptureStatus?: "pending" | "approved" | "rejected" | null;
+  specialCaptureDecidedByName?: string | null;
+  specialCaptureDecidedAt?: string | null;
   completedAt?: string | null;
   createdAt: string;
   updatedAt: string;
@@ -367,6 +372,32 @@ export async function rescheduleMarketingRequest(sessionToken: string, requestId
   });
 }
 
+export async function requestMarketingPeriodException(
+  sessionToken: string,
+  requestId: string,
+  specialCaptureAt: string,
+  reason: string,
+) {
+  await rpc<unknown>("marketing_v2_request_period_exception", {
+    p_session_token: sessionToken,
+    p_request_id: requestId,
+    p_special_capture_at: specialCaptureAt,
+    p_reason: reason,
+  });
+}
+
+export async function decideMarketingPeriodException(
+  sessionToken: string,
+  requestId: string,
+  decision: "approved" | "rejected",
+) {
+  await rpc<unknown>("marketing_v2_decide_special_capture", {
+    p_session_token: sessionToken,
+    p_request_id: requestId,
+    p_decision: decision,
+  });
+}
+
 export async function requestMarketingQueueOverride(sessionToken: string, requestId: string, reason: string) {
   return rpc<string>("marketing_v2_request_queue_override", {
     p_session_token: sessionToken,
@@ -455,6 +486,15 @@ export function getMarketingErrorMessage(error: unknown) {
   if (normalized.includes("MARKETING_RESCHEDULE_DENIED")) return "Somente Maria e Arthur podem reagendar pedidos do Marketing.";
   if (normalized.includes("MARKETING_RESCHEDULE_CAPTURE_ONLY")) return "Somente pedidos com captação podem ser reagendados.";
   if (normalized.includes("MARKETING_RESCHEDULE_NOT_SCHEDULED")) return "Este pedido não está mais agendado. Atualize o Marketing e confira a fila.";
+  if (normalized.includes("MARKETING_SPECIAL_REQUEST_DENIED")) return "Somente Maria e Arthur podem solicitar uma exceção de agenda.";
+  if (normalized.includes("MARKETING_SPECIAL_DECISION_DENIED")) return "Somente Sérgio Tezzei pode aprovar ou negar esta exceção de agenda.";
+  if (normalized.includes("MARKETING_SPECIAL_REASON_REQUIRED")) return "Explique o motivo da emergência com pelo menos 5 caracteres.";
+  if (normalized.includes("MARKETING_SPECIAL_TIME_INVALID")) return "Escolha uma data e horário futuros.";
+  if (normalized.includes("MARKETING_SPECIAL_TIME_NOT_STANDARD_SLOT")) return "A exceção deve usar um dos horários da agenda: 08, 09, 10, 11, 14, 15, 16 ou 17h.";
+  if (normalized.includes("MARKETING_SPECIAL_PERIOD_NOT_RESERVED")) return "Esse período está livre. Use o agendamento normal, sem pedir exceção.";
+  if (normalized.includes("MARKETING_SPECIAL_EXACT_CONFLICT")) return "Já existe uma captação exatamente nesse horário. Escolha outro horário do período.";
+  if (normalized.includes("MARKETING_SPECIAL_ALREADY_PENDING")) return "Já existe uma exceção aguardando autorização para este pedido.";
+  if (normalized.includes("MARKETING_SPECIAL_NOT_PENDING")) return "Esta exceção já foi analisada ou não está mais pendente.";
   if (normalized.includes("MARKETING_TEAM_REQUIRED")) return "Escolha a equipe deste gerente.";
   if (normalized.includes("MARKETING_USER_NOT_FOUND")) return "O usuário do HUB não foi encontrado ou está inativo.";
   if (normalized.includes("MARKETING_REQUEST_NOT_FOUND")) return "Este pedido não foi encontrado.";
