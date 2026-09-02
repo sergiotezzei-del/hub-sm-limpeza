@@ -1949,3 +1949,70 @@
 .marketing-period-exception-form label { display: grid; gap: 6px; margin-top: 10px; }
 .marketing-period-exception-form textarea { min-height: 90px; }
 @media (max-width: 640px) { .marketing-period-exception-fields { grid-template-columns: 1fr; } }
+
+
+/* Agenda simplificada do Marketing */
+.marketing-schedule-picker-head { display:flex; justify-content:space-between; gap:12px; }
+.marketing-schedule-picker-head > div { display:grid; gap:3px; }
+.marketing-schedule-picker-head small { color:#6f6678; }
+.marketing-period-cards { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+.marketing-period-card { border:1px solid #d8d1e1; border-radius:10px; padding:13px; display:grid; gap:12px; background:#fff; }
+.marketing-period-card > header { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
+.marketing-period-card > header > div { display:grid; gap:3px; }
+.marketing-period-card > header small { color:#706879; font-size:.78rem; }
+.marketing-period-card > header > span { border-radius:999px; padding:4px 8px; font-size:.7rem; font-weight:900; }
+.marketing-period-card.free > header > span { background:#e9f5ed; color:#276641; }
+.marketing-period-card.reserved { background:#fff8e8; border-color:#dfc070; }
+.marketing-period-card.reserved > header > span { background:#f5dfaa; color:#76520a; }
+.marketing-time-buttons { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:7px; }
+.marketing-time-buttons button { min-height:48px; border:1px solid #bddac6; border-radius:8px; background:#fff; color:#245f3b; font:inherit; font-weight:850; cursor:pointer; }
+.marketing-time-buttons button.selected { border-color:#4e38a5; box-shadow:0 0 0 2px rgba(78,56,165,.14); color:#4e38a5; }
+.marketing-time-buttons button.unavailable { border-color:#ead2cf; background:#f8f3f2; color:#9b766f; cursor:not-allowed; }
+.marketing-time-buttons button small { display:block; font-size:.62rem; margin-top:2px; }
+.marketing-period-reserved-message { display:grid; gap:8px; }
+.marketing-period-reserved-message p { margin:0; color:#6f5316; }
+.marketing-period-reserved-message button { min-height:40px; border:1px solid #b17a12; border-radius:8px; background:#fff; color:#7b5510; font:inherit; font-weight:900; cursor:pointer; }
+.marketing-lunch-note { color:#6e6676; }
+.marketing-schedule-picker footer { align-items:center; justify-content:space-between; }
+.marketing-selected-slot { display:grid; gap:2px; text-align:left; }
+.marketing-selected-slot span { color:#756c82; font-size:.76rem; }
+.marketing-schedule-footer-actions { display:flex; flex-wrap:wrap; gap:8px; }
+.marketing-capture-control-head h4 { margin:0; }
+.marketing-capture-control-head small { color:#6f6678; }
+.marketing-custom-time-button { border-style:dashed !important; }
+.marketing-exception-eyebrow { color:#8b6411; font-size:.72rem; font-weight:900; }
+.marketing-period-exception.pending h3 { margin:2px 0; }
+.marketing-period-exception.pending > strong { font-size:1.05rem; }
+.marketing-schedule-exception-modal { width:min(620px,calc(100vw - 28px)); max-height:calc(100vh - 28px); overflow:auto; display:grid; gap:14px; padding:20px; border-radius:12px; background:#fff; box-shadow:0 24px 70px rgba(25,13,50,.3); }
+.marketing-schedule-exception-modal > header { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
+.marketing-schedule-exception-modal > header small { color:#9b6b0d; font-weight:900; }
+.marketing-schedule-exception-modal > header h2 { margin:3px 0 0; }
+.marketing-schedule-exception-modal > header > button { border:0; background:transparent; font-size:1.8rem; cursor:pointer; }
+.marketing-exception-intro { margin:0; color:#5f5868; line-height:1.45; }
+.marketing-exception-mode { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+.marketing-exception-mode button { display:grid; gap:4px; text-align:left; min-height:76px; padding:12px; border:1px solid #d8d1e1; border-radius:9px; background:#fff; color:#443b4d; font:inherit; cursor:pointer; }
+.marketing-exception-mode button.selected { border-color:#8b6411; background:#fff8e8; box-shadow:0 0 0 2px rgba(139,100,17,.1); }
+.marketing-exception-mode button small { color:#6f6678; }
+.marketing-schedule-exception-modal .marketing-period-exception-fields { margin:0; }
+.marketing-schedule-exception-modal label { display:grid; gap:6px; font-weight:800; }
+.marketing-schedule-exception-modal input,
+.marketing-schedule-exception-modal select,
+.marketing-schedule-exception-modal textarea { width:100%; border:1px solid #cfc8d8; border-radius:8px; padding:10px; background:#fff; font:inherit; }
+.marketing-schedule-exception-modal textarea { min-height:100px; resize:vertical; }
+.marketing-exception-approval-note { display:grid; gap:3px; padding:11px; border-left:4px solid #8b6411; background:#fff8e8; }
+.marketing-exception-approval-note span { color:#625b69; }
+.marketing-schedule-exception-modal > footer { display:flex; justify-content:flex-end; gap:8px; }
+.marketing-schedule-exception-modal > footer button { min-height:42px; border:0; border-radius:8px; padding:10px 14px; background:#5d386e; color:#fff; font:inherit; font-weight:900; cursor:pointer; }
+.marketing-schedule-exception-modal > footer button.secondary { background:#ebe7ef; color:#4e3f57; }
+.marketing-schedule-exception-modal > footer button:disabled { opacity:.55; cursor:not-allowed; }
+@media (max-width:700px) {
+  .marketing-period-cards,
+  .marketing-exception-mode,
+  .marketing-period-exception-fields { grid-template-columns:1fr; }
+  .marketing-time-buttons { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .marketing-schedule-picker footer { align-items:stretch; flex-direction:column; }
+  .marketing-schedule-footer-actions,
+  .marketing-schedule-exception-modal > footer { display:grid; grid-template-columns:1fr; }
+  .marketing-schedule-footer-actions button,
+  .marketing-schedule-exception-modal > footer button { width:100%; }
+}

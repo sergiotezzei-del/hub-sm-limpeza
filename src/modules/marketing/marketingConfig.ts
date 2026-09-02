@@ -18,8 +18,8 @@ export const MARKETING_REVIEW_REASONS = [
 ] as const;
 
 export const DEFAULT_MARKETING_CAPTURE_WINDOWS = [
-  { id: "morning", label: "Manhã", start: "08:30", end: "11:00" },
-  { id: "afternoon", label: "Tarde", start: "14:00", end: "16:00" },
+  { id: "morning", label: "Manhã", start: "08:00", end: "12:00" },
+  { id: "afternoon", label: "Tarde", start: "14:00", end: "18:00" },
 ] as const;
 
 export type MarketingCaptureWindow = {
@@ -77,22 +77,21 @@ export function formatMarketingDateTime(value: string, timezone: string) {
   }).format(date);
 }
 
-export function formatCaptureRange(startAt: string, durationMinutes: number, timezone: string) {
+export function formatCaptureRange(startAt: string, _durationMinutes: number, timezone: string) {
   const start = new Date(startAt);
   if (Number.isNaN(start.getTime())) return "Data não informada";
-  const end = new Date(start.getTime() + durationMinutes * 60000);
   const date = new Intl.DateTimeFormat("pt-BR", {
     timeZone: timezone,
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
   }).format(start);
-  const timeFormatter = new Intl.DateTimeFormat("pt-BR", {
+  const time = new Intl.DateTimeFormat("pt-BR", {
     timeZone: timezone,
     hour: "2-digit",
     minute: "2-digit",
-  });
-  return `${date} · ${timeFormatter.format(start)} às ${timeFormatter.format(end)}`;
+  }).format(start);
+  return `${date} · ${time}`;
 }
 
 export function getDateKeyInTimeZone(value: Date | string, timezone: string) {
