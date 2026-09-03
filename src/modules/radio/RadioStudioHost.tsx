@@ -33,7 +33,7 @@ export function RadioStudioHost() {
 
   return (
     <>
-      <RadioNotebookPlayer playerOnline={playerOnline} />
+      <RadioNotebookPlayer playerOnline={playerOnline} playerMode={player?.mode ?? null} />
       <RadioStudioPanel player={player} playerOnline={playerOnline} />
     </>
   );
