@@ -42,7 +42,8 @@ O script:
 5. percorre o buffer circular `0..511` com READ-COMMAND `3900`;
 6. decodifica os registros recebidos;
 7. seleciona automaticamente os registros mais recentes com data/código válidos;
-8. mostra tabela sanitizada em ordem cronológica.
+8. grava snapshot sanitizado completo em `.tmp/intelbras-event-buffer-last-scan.json`;
+9. mostra tabela sanitizada em ordem cronológica.
 
 Tabela exibida:
 
@@ -62,6 +63,7 @@ $env:INTELBRAS_EVENT_BUFFER_START="0"      # 0..511, padrão 0
 $env:INTELBRAS_EVENT_BUFFER_COUNT="512"   # 1..512, padrão 512
 $env:INTELBRAS_EVENT_RECENT_LIMIT="32"    # 1..512, padrão 32
 $env:INTELBRAS_EVENT_REQUEST_RETRIES="1"  # retries somente leitura por índice, padrão 1
+$env:INTELBRAS_EVENT_OUTPUT=".tmp/intelbras-event-buffer-last-scan.json"
 ```
 
 O script também aceita `INTELBRAS_PANEL_HOST`, `INTELBRAS_PANEL_PORT`, `INTELBRAS_DEVICE_TYPE`, `INTELBRAS_PROBE_TIMEOUT_MS`, `INTELBRAS_EVENT_REQUEST_TIMEOUT_MS` e `INTELBRAS_EVENT_REQUEST_GAP_MS`.

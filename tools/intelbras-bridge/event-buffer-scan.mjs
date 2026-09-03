@@ -1,9 +1,13 @@
+import { mkdir, writeFile } from "node:fs/promises";
+import path from "node:path";
 import {
   AMT8000_EVENT_BUFFER_SIZE,
   dedupeAmt8000EventRecords,
   formatAmt8000EventIndex,
   isUsableAmt8000EventRecord,
+  sanitizeAmt8000EventRecord,
   selectRecentAmt8000EventRecords,
+  sortAmt8000EventRecordsChronologically,
   toAmt8000EventTableRows,
 } from "./event-buffer.mjs";
 import {
@@ -20,6 +24,7 @@ import {
 } from "./event-buffer-client.mjs";
 
 const DEFAULT_RECENT_LIMIT = 32;
+const DEFAULT_OUTPUT_PATH = path.resolve(".tmp", "intelbras-event-buffer-last-scan.json");
 
 function failConfig(message) {
   console.error(`[AMT8000-EVENTS] ${message}`);
@@ -45,8 +50,47 @@ const startIndex = readIntegerEnv("INTELBRAS_EVENT_BUFFER_START", 0, { min: 0, m
 const scanCount = readIntegerEnv("INTELBRAS_EVENT_BUFFER_COUNT", AMT8000_EVENT_BUFFER_SIZE, { min: 1, max: AMT8000_EVENT_BUFFER_SIZE });
 const recentLimit = readIntegerEnv("INTELBRAS_EVENT_RECENT_LIMIT", DEFAULT_RECENT_LIMIT, { min: 1, max: AMT8000_EVENT_BUFFER_SIZE });
 const deviceType = readIntegerEnv("INTELBRAS_DEVICE_TYPE", 1, { min: 1, max: 3 });
+const outputPath = path.resolve(process.env.INTELBRAS_EVENT_OUTPUT || DEFAULT_OUTPUT_PATH);
 
-function printSummary(result) {
+async function writeSanitizedSnapshot(result, { uniqueRecords, usableRecords, recentRecords }) {
+  const chronologicalRecords = sortAmt8000EventRecordsChronologically(usableRecords);
+  const snapshot = {
+    schemaVersion: 1,
+    generatedAt: new Date().toISOString(),
+    panel: {
+      host: result.host,
+      port: result.port,
+      model: "AMT 8000 LITE",
+      firmware: "3.1.5",
+    },
+    mode: {
+      readonly: true,
+      command: "3900_BUFFER_EVENTOS",
+      activeStatusQuery: false,
+      controlCommandsEnabled: false,
+    },
+    scan: {
+      startIndex: result.startIndex,
+      scanCount: result.scanCount,
+      completedReads: result.completedReads,
+      eventResponses: result.eventResponses,
+      ackFrames: result.ackFrames,
+      passiveStatusFrames: result.passiveStatusFrames,
+      warningCount: result.warnings.length,
+      warnings: result.warnings,
+      decodedRecords: uniqueRecords.length,
+      usableRecords: usableRecords.length,
+    },
+    recordsByIndex: uniqueRecords.map(sanitizeAmt8000EventRecord),
+    recordsChronological: chronologicalRecords.map(sanitizeAmt8000EventRecord),
+    recentRecords: recentRecords.map(sanitizeAmt8000EventRecord),
+  };
+
+  await mkdir(path.dirname(outputPath), { recursive: true });
+  await writeFile(outputPath, `${JSON.stringify(snapshot, null, 2)}\n`, "utf8");
+}
+
+async function printSummary(result) {
   const uniqueRecords = dedupeAmt8000EventRecords(result.records);
   const usableRecords = uniqueRecords.filter(isUsableAmt8000EventRecord);
   const recentRecords = selectRecentAmt8000EventRecords(uniqueRecords, { limit: recentLimit });
@@ -55,6 +99,8 @@ function printSummary(result) {
   console.log("[AMT8000-EVENTS] Varredura 3900 concluida.");
   console.log(`[AMT8000-EVENTS] Indices lidos: ${result.completedReads}/${result.scanCount}; respostas 3900: ${result.eventResponses}; ACKs recebidos: ${result.ackFrames}; 0B4A passivos: ${result.passiveStatusFrames}.`);
   console.log(`[AMT8000-EVENTS] Registros decodificados: ${uniqueRecords.length}; registros com data/codigo validos: ${usableRecords.length}; exibindo os ${recentRecords.length} mais recentes em ordem cronologica.`);
+  await writeSanitizedSnapshot(result, { uniqueRecords, usableRecords, recentRecords });
+  console.log(`[AMT8000-EVENTS] Snapshot sanitizado completo: ${outputPath}`);
 
   if (result.warnings.length) {
     console.log("[AMT8000-EVENTS] Avisos sanitizados:");
@@ -126,7 +172,7 @@ try {
       }
     },
   });
-  printSummary(result);
+  await printSummary(result);
   process.exit(0);
 } catch (error) {
   const message = error instanceof Error ? error.message : String(error);
