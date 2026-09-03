@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { authenticatedSupabaseFetch, SUPABASE_URL } from "../security/services/supabaseClient";
+import { RadioNotebookPlayer } from "./RadioNotebookPlayer";
 import { RadioStudioPanel, type StudioPlayerState } from "./RadioStudioPanel";
 
 export function RadioStudioHost() {
@@ -30,5 +31,10 @@ export function RadioStudioHost() {
     return Date.now() - new Date(player.updated_at).getTime() < 12000;
   }, [player]);
 
-  return <RadioStudioPanel player={player} playerOnline={playerOnline} />;
+  return (
+    <>
+      <RadioNotebookPlayer playerOnline={playerOnline} />
+      <RadioStudioPanel player={player} playerOnline={playerOnline} />
+    </>
+  );
 }
