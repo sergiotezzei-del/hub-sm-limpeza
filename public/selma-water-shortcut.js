@@ -10,52 +10,36 @@
       .toLowerCase();
   }
 
+  function activeScreen() {
+    return Array.from(document.querySelectorAll('.screen')).find((screen) => {
+      if (!(screen instanceof HTMLElement)) return false;
+      const style = window.getComputedStyle(screen);
+      return style.display !== 'none' && style.visibility !== 'hidden';
+    }) || null;
+  }
+
   function isSelmaScreen() {
-    const text = normalize(document.body?.innerText || '');
+    const screen = activeScreen();
+    const text = normalize(screen?.textContent || '');
     return text.includes('selma') && text.includes('retirada');
   }
 
   function findWithdrawalButton() {
-    return Array.from(document.querySelectorAll('button')).find((button) => {
+    const screen = activeScreen();
+    if (!screen) return null;
+    return Array.from(screen.querySelectorAll('button')).find((button) => {
       const text = normalize(button.textContent || '');
       return text.includes('retirada') && (text.includes('material') || text.includes('estoque'));
-    });
+    }) || null;
   }
 
-  function openExistingWaterCheck() {
-    const directCard = document.querySelector('[data-water-stock-card="1"]');
-    if (directCard instanceof HTMLElement) {
-      directCard.click();
+  function openWaterCheck() {
+    const waterFeature = window.HubWaterStockCheck;
+    if (waterFeature && typeof waterFeature.open === 'function') {
+      void waterFeature.open();
       return;
     }
-
-    const helper = document.createElement('div');
-    helper.setAttribute('aria-hidden', 'true');
-    helper.style.position = 'fixed';
-    helper.style.left = '-99999px';
-    helper.style.top = '-99999px';
-    helper.style.width = '1px';
-    helper.style.height = '1px';
-    helper.style.overflow = 'hidden';
-    helper.innerHTML = '<span>Copa & Café Estoque de água Compras de água</span><div class="module-grid"></div>';
-    document.body.appendChild(helper);
-
-    let attempts = 0;
-    const timer = window.setInterval(() => {
-      attempts += 1;
-      const generated = helper.querySelector('[data-water-stock-card="1"]');
-      if (generated instanceof HTMLElement) {
-        window.clearInterval(timer);
-        generated.click();
-        window.setTimeout(() => helper.remove(), 100);
-        return;
-      }
-      if (attempts >= 20) {
-        window.clearInterval(timer);
-        helper.remove();
-        window.alert('Não foi possível abrir a Conferência de Água. Avise o Tezzei.');
-      }
-    }, 50);
+    window.alert('Não foi possível abrir a Conferência de Água. Avise o Tezzei.');
   }
 
   function addShortcut() {
@@ -76,17 +60,23 @@
     button.style.minHeight = '48px';
     button.style.fontWeight = '900';
     button.style.cursor = 'pointer';
-    button.addEventListener('click', openExistingWaterCheck);
+    button.addEventListener('click', openWaterCheck);
 
     withdrawalButton.insertAdjacentElement('afterend', button);
   }
 
-  function run() {
-    addShortcut();
+  let scheduled = false;
+  function schedule() {
+    if (scheduled) return;
+    scheduled = true;
+    requestAnimationFrame(() => {
+      scheduled = false;
+      addShortcut();
+    });
   }
 
-  document.addEventListener('DOMContentLoaded', run);
-  window.addEventListener('load', run);
-  new MutationObserver(run).observe(document.documentElement, { childList: true, subtree: true });
-  window.setInterval(run, 1500);
+  document.addEventListener('DOMContentLoaded', schedule);
+  window.addEventListener('load', schedule);
+  new MutationObserver(schedule).observe(document.documentElement, { childList: true, subtree: true });
+  schedule();
 })();
