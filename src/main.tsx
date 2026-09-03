@@ -4,6 +4,7 @@ import App from "./App";
 import { AlertToastHost } from "./modules/alerts/AlertToastHost";
 import { LiveAlertDashboardEnhancer } from "./modules/alerts/LiveAlertDashboardEnhancer";
 import { CleaningActivityAlertEnhancer } from "./modules/alerts/CleaningActivityAlertEnhancer";
+import { CleaningOrderAlertEnhancer } from "./modules/alerts/CleaningOrderAlertEnhancer";
 import { GoogleCalendarAlertEnhancer } from "./modules/alerts/GoogleCalendarAlertEnhancer";
 import { AlertPanelPriorityEnhancer } from "./modules/alerts/AlertPanelPriorityEnhancer";
 import { AuditorioPendingAlertEnhancer } from "./modules/alerts/AuditorioPendingAlertEnhancer";
@@ -118,6 +119,7 @@ createRoot(document.getElementById("root")!).render(
         <WindowsNotificationControl />
         <AlertToastHost />
         <CleaningActivityAlertEnhancer />
+        <CleaningOrderAlertEnhancer />
         <GoogleCalendarAlertEnhancer />
         <AlertPanelPriorityEnhancer />
         <AuditorioPendingAlertEnhancer />
