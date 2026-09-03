@@ -14,6 +14,7 @@ import { AuditorioPublicPushEnhancer } from "./modules/auditorio/AuditorioPublic
 import { PublicAuditorioPage } from "./modules/auditorio/PublicAuditorioPage";
 import { SimplePublicAuditorioPage } from "./modules/auditorio/SimplePublicAuditorioPage";
 import "./modules/auditorio/auditorioCalendarStatusRuntime";
+import "./modules/auditorio/auditorioAvailabilityStatic.css";
 import { CleaningDeliveryFeature } from "./modules/cleaning/components/CleaningDeliveryFeature";
 import { CleaningConsumptionEnhancer } from "./modules/cleaning/components/CleaningConsumptionEnhancer";
 import { CleaningNewOrderEnhancer } from "./modules/cleaning/components/CleaningNewOrderEnhancer";
