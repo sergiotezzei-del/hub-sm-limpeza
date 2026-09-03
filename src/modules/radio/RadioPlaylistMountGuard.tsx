@@ -1,21 +1,22 @@
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { RadioStudioHost } from "./RadioStudioHost";
 
 const RADIO_DIALOG_SELECTOR = '[role="dialog"][aria-label="Rádio Santa Maria"]';
 
-function shouldMountStudio() {
-  const path = window.location.pathname.replace(/\/+$/, "") || "/";
-  if (path === "/radio") return true;
-  return Boolean(document.querySelector(RADIO_DIALOG_SELECTOR));
+function findStudioHost() {
+  const dialog = document.querySelector<HTMLElement>(RADIO_DIALOG_SELECTOR);
+  if (!dialog) return null;
+  return dialog.querySelector<HTMLElement>(":scope > div") ?? dialog;
 }
 
 export function RadioPlaylistMountGuard() {
-  const [mounted, setMounted] = useState(() => shouldMountStudio());
+  const [host, setHost] = useState<HTMLElement | null>(() => findStudioHost());
 
   useEffect(() => {
     const sync = () => {
-      const next = shouldMountStudio();
-      setMounted((current) => current === next ? current : next);
+      const next = findStudioHost();
+      setHost((current) => current === next ? current : next);
     };
 
     sync();
@@ -27,5 +28,5 @@ export function RadioPlaylistMountGuard() {
     };
   }, []);
 
-  return mounted ? <RadioStudioHost /> : null;
+  return host ? createPortal(<RadioStudioHost />, host) : null;
 }
