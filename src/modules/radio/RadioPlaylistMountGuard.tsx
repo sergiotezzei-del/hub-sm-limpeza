@@ -1,25 +1,25 @@
 import { useEffect, useState } from "react";
-import { RadioPlaylistEnhancer } from "./RadioPlaylistEnhancer";
+import { RadioStudioHost } from "./RadioStudioHost";
 
 const RADIO_DIALOG_SELECTOR = '[role="dialog"][aria-label="Rádio Santa Maria"]';
 
-function shouldMountPlaylist() {
+function shouldMountStudio() {
   const path = window.location.pathname.replace(/\/+$/, "") || "/";
   if (path === "/radio") return true;
   return Boolean(document.querySelector(RADIO_DIALOG_SELECTOR));
 }
 
 export function RadioPlaylistMountGuard() {
-  const [mounted, setMounted] = useState(() => shouldMountPlaylist());
+  const [mounted, setMounted] = useState(() => shouldMountStudio());
 
   useEffect(() => {
     const sync = () => {
-      const next = shouldMountPlaylist();
+      const next = shouldMountStudio();
       setMounted((current) => current === next ? current : next);
     };
 
     sync();
-    const timer = window.setInterval(sync, 900);
+    const timer = window.setInterval(sync, 1500);
     window.addEventListener("focus", sync);
     return () => {
       window.clearInterval(timer);
@@ -27,5 +27,5 @@ export function RadioPlaylistMountGuard() {
     };
   }, []);
 
-  return mounted ? <RadioPlaylistEnhancer /> : null;
+  return mounted ? <RadioStudioHost /> : null;
 }
