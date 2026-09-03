@@ -15,6 +15,7 @@ import "./modules/auditorio/auditorioCalendarStatusRuntime";
 import { CleaningDeliveryFeature } from "./modules/cleaning/components/CleaningDeliveryFeature";
 import { CleaningConsumptionEnhancer } from "./modules/cleaning/components/CleaningConsumptionEnhancer";
 import { CleaningNewOrderEnhancer } from "./modules/cleaning/components/CleaningNewOrderEnhancer";
+import { CleaningOrdersCollapseEnhancer } from "./modules/cleaning/components/CleaningOrdersCollapseEnhancer";
 import { NeiaDeliveryShortcutFeature } from "./modules/cleaning/components/NeiaDeliveryShortcutFeature";
 import { NeiaHistoryEnhancer } from "./modules/cleaning/components/NeiaHistoryEnhancer";
 import { MarketingAlertAcknowledgementEnhancer } from "./modules/marketing/MarketingAlertAcknowledgementEnhancer";
@@ -123,6 +124,7 @@ createRoot(document.getElementById("root")!).render(
         <CleaningDeliveryFeature />
         <CleaningConsumptionEnhancer />
         <CleaningNewOrderEnhancer />
+        <CleaningOrdersCollapseEnhancer />
         <NeiaDeliveryShortcutFeature />
         <NeiaHistoryEnhancer />
         <AirConditioningMapFeature />

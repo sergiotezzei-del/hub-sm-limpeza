@@ -1,0 +1,46 @@
+.cleaning-order-collapse-toggle {
+  width: 100%;
+  margin-top: 10px;
+  min-height: 42px;
+  border: 1px solid #d8dee8;
+  background: #fff;
+  color: #183153;
+  font-weight: 800;
+}
+
+.cleaning-order-collapse-toggle::after {
+  content: "⌄";
+  display: inline-block;
+  margin-left: 8px;
+  font-size: 1rem;
+  transition: transform 160ms ease;
+}
+
+.cleaning-order-expanded > .cleaning-order-collapse-toggle::after {
+  transform: rotate(180deg);
+}
+
+.cleaning-order-collapse-toggle:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.cleaning-order-collapsed > .item-list,
+.cleaning-order-collapsed > .edit-list,
+.cleaning-order-collapsed > .button-grid {
+  display: none !important;
+}
+
+.cleaning-order-collapsed.order-card {
+  padding-bottom: 14px;
+}
+
+.cleaning-order-collapsed .order-head {
+  margin-bottom: 0;
+}
+
+@media (max-width: 720px) {
+  .cleaning-order-collapse-toggle {
+    min-height: 46px;
+  }
+}
