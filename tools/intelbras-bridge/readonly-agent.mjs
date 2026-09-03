@@ -7,6 +7,7 @@ import {
   DEFAULT_PANEL_HOST,
   DEFAULT_PANEL_PORT,
   DEFAULT_REQUEST_GAP_MS,
+  DEFAULT_REQUEST_RETRIES,
   DEFAULT_REQUEST_TIMEOUT_MS,
   DEFAULT_TIMEOUT_MS,
   INTELBRAS_DEVICE_TYPE_LABELS,
@@ -41,6 +42,7 @@ const password = process.env.INTELBRAS_REMOTE_PASSWORD || "";
 const timeoutMs = readIntegerEnv("INTELBRAS_PROBE_TIMEOUT_MS", DEFAULT_TIMEOUT_MS, { min: 1000, max: 900000 });
 const requestTimeoutMs = readIntegerEnv("INTELBRAS_EVENT_REQUEST_TIMEOUT_MS", DEFAULT_REQUEST_TIMEOUT_MS, { min: 500, max: 60000 });
 const requestGapMs = readIntegerEnv("INTELBRAS_EVENT_REQUEST_GAP_MS", DEFAULT_REQUEST_GAP_MS, { min: 0, max: 5000 });
+const requestRetries = readIntegerEnv("INTELBRAS_EVENT_REQUEST_RETRIES", DEFAULT_REQUEST_RETRIES, { min: 0, max: 10 });
 const startIndex = readIntegerEnv("INTELBRAS_EVENT_BUFFER_START", 0, { min: 0, max: AMT8000_EVENT_BUFFER_SIZE - 1 });
 const scanCount = readIntegerEnv("INTELBRAS_EVENT_BUFFER_COUNT", AMT8000_EVENT_BUFFER_SIZE, { min: 1, max: AMT8000_EVENT_BUFFER_SIZE });
 const historyLimit = readIntegerEnv("INTELBRAS_AGENT_HISTORY_LIMIT", DEFAULT_HISTORY_LIMIT, { min: 1, max: 5000 });
@@ -95,6 +97,7 @@ async function runScanCycle() {
       timeoutMs,
       requestTimeoutMs,
       requestGapMs,
+      requestRetries,
       startIndex,
       scanCount,
       onLog(event) {
@@ -104,6 +107,10 @@ async function runScanCycle() {
         }
         if (event.type === "event-buffer-response" && (event.completedReads === event.total || event.completedReads % 128 === 0)) {
           console.log(`[AMT8000-AGENT] Progresso 3900: ${event.completedReads}/${event.total}.`);
+          return;
+        }
+        if (event.type === "event-buffer-retry") {
+          console.log(`[AMT8000-AGENT] Retry 3900 indice=${event.indexHex} tentativa=${event.attempt}/${event.maxAttempts}.`);
           return;
         }
         if (event.type === "passive-status") {

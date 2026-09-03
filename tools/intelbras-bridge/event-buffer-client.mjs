@@ -21,6 +21,7 @@ export const DEFAULT_PANEL_PORT = 9009;
 export const DEFAULT_TIMEOUT_MS = 180000;
 export const DEFAULT_REQUEST_TIMEOUT_MS = 7000;
 export const DEFAULT_REQUEST_GAP_MS = 20;
+export const DEFAULT_REQUEST_RETRIES = 1;
 export const DEFAULT_KEEP_ALIVE_MS = 45000;
 
 export const INTELBRAS_DEVICE_TYPE_LABELS = Object.freeze({
@@ -72,6 +73,7 @@ export function readAmt8000EventBuffer({
   timeoutMs = DEFAULT_TIMEOUT_MS,
   requestTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
   requestGapMs = DEFAULT_REQUEST_GAP_MS,
+  requestRetries = DEFAULT_REQUEST_RETRIES,
   keepAliveMs = DEFAULT_KEEP_ALIVE_MS,
   startIndex = 0,
   scanCount = AMT8000_EVENT_BUFFER_SIZE,
@@ -81,6 +83,9 @@ export function readAmt8000EventBuffer({
 
   if (!Object.hasOwn(INTELBRAS_DEVICE_TYPE_LABELS, deviceType)) {
     throw new IsecReadOnlyError("INTELBRAS_DEVICE_TYPE invalido. Use 1, 2 ou 3.", { exitCode: 2 });
+  }
+  if (!Number.isInteger(requestRetries) || requestRetries < 0 || requestRetries > 10) {
+    throw new IsecReadOnlyError("INTELBRAS_EVENT_REQUEST_RETRIES deve ser um inteiro entre 0 e 10.", { exitCode: 2 });
   }
 
   const scanPlan = createCircularEventBufferScanPlan({ startIndex, count: scanCount });
@@ -100,6 +105,7 @@ export function readAmt8000EventBuffer({
   let authenticated = false;
   let finished = false;
   let currentIndex = null;
+  let currentAttempt = 0;
   let completedReads = 0;
   let eventResponses = 0;
   let ackFrames = 0;
@@ -156,6 +162,53 @@ export function readAmt8000EventBuffer({
       nextReadTimer.unref();
     }
 
+    function armRequestTimeout(index) {
+      if (requestTimer) clearTimeout(requestTimer);
+      requestTimer = setTimeout(() => {
+        if (currentIndex !== index) return;
+        if (currentAttempt < requestRetries) {
+          currentAttempt += 1;
+          const maxAttempts = requestRetries + 1;
+          warnings.push(`Sem resposta 3900 do indice ${formatAmt8000EventIndex(index)} na tentativa ${currentAttempt}/${maxAttempts}; reenviando READ-COMMAND somente leitura.`);
+          onLog({
+            type: "event-buffer-retry",
+            index,
+            indexHex: formatAmt8000EventIndex(index),
+            attempt: currentAttempt + 1,
+            maxAttempts,
+          });
+          writeCurrentRead();
+          return;
+        }
+        finishError(new IsecReadOnlyError(`Tempo esgotado aguardando resposta 3900 do indice ${formatAmt8000EventIndex(index)}. Nenhuma alteracao foi enviada.`, { exitCode: 4 }));
+      }, requestTimeoutMs);
+      requestTimer.unref();
+    }
+
+    function writeCurrentRead() {
+      if (finished || !authenticated || currentIndex === null) return;
+      const ordinal = completedReads + 1;
+      const maxAttempts = requestRetries + 1;
+      const readFrame = buildIsecFrame({
+        destination: panelId,
+        source: clientId,
+        command: ISEC_COMMANDS.EVENT_BUFFER,
+        data: [(currentIndex >> 8) & 0xff, currentIndex & 0xff],
+      });
+
+      socket.write(readFrame);
+      onLog({
+        type: "event-buffer-request",
+        index: currentIndex,
+        indexHex: formatAmt8000EventIndex(currentIndex),
+        ordinal,
+        total: scanCount,
+        attempt: currentAttempt + 1,
+        maxAttempts,
+      });
+      armRequestTimeout(currentIndex);
+    }
+
     function sendNextRead() {
       if (finished || !authenticated || currentIndex !== null) return;
 
@@ -166,27 +219,8 @@ export function readAmt8000EventBuffer({
       }
 
       currentIndex = nextIndex;
-      const ordinal = completedReads + 1;
-      const readFrame = buildIsecFrame({
-        destination: panelId,
-        source: clientId,
-        command: ISEC_COMMANDS.EVENT_BUFFER,
-        data: [(nextIndex >> 8) & 0xff, nextIndex & 0xff],
-      });
-
-      socket.write(readFrame);
-      onLog({
-        type: "event-buffer-request",
-        index: nextIndex,
-        indexHex: formatAmt8000EventIndex(nextIndex),
-        ordinal,
-        total: scanCount,
-      });
-
-      requestTimer = setTimeout(() => {
-        finishError(new IsecReadOnlyError(`Tempo esgotado aguardando resposta 3900 do indice ${formatAmt8000EventIndex(nextIndex)}. Nenhuma alteracao foi enviada.`, { exitCode: 4 }));
-      }, requestTimeoutMs);
-      requestTimer.unref();
+      currentAttempt = 0;
+      writeCurrentRead();
     }
 
     function handleAuthentication(frame) {
@@ -222,6 +256,7 @@ export function readAmt8000EventBuffer({
 
       const requestedIndex = currentIndex;
       currentIndex = null;
+      currentAttempt = 0;
 
       try {
         const decoded = decodeAmt8000EventBufferResponse(frame.data);

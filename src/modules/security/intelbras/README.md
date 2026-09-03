@@ -71,6 +71,14 @@ Revisão feita em 02/09/2026 nas fontes disponíveis no repositório, branches r
 
 Evidência necessária para avançar: trecho oficial do SDK/API AMT 8000 com direção, payload e resposta do comando de status; ou captura controlada do software oficial Intelbras compatível com AMT 8000 LITE firmware 3.1.5 consultando status pela porta TCP 9009.
 
+Próximo diagnóstico seguro preparado:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\tools\intelbras-bridge\run-passive-official-capture-windows.ps1
+```
+
+Ele observa passivamente o tráfego do AMT Remoto oficial filtrado para `10.11.22.11:9009`, usando `tshark` quando houver driver de captura ou `PktMon` nativo como fallback. O PCAP bruto sensível fica em `.tmp`, e o resumo sanitizado não inclui payload de autenticação.
+
 ## Funcionalidades-alvo
 - Online/offline, bateria, sirene e falhas.
 - Lista e estado das 16 partições.
