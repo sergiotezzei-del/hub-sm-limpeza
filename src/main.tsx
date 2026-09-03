@@ -12,6 +12,7 @@ import { WindowsNotificationControl } from "./modules/alerts/WindowsNotification
 import "./modules/alerts/browserAlertAttention";
 import { AuditorioPublicPushEnhancer } from "./modules/auditorio/AuditorioPublicPushEnhancer";
 import { PublicAuditorioPage } from "./modules/auditorio/PublicAuditorioPage";
+import { SimplePublicAuditorioPage } from "./modules/auditorio/SimplePublicAuditorioPage";
 import "./modules/auditorio/auditorioCalendarStatusRuntime";
 import { CleaningDeliveryFeature } from "./modules/cleaning/components/CleaningDeliveryFeature";
 import { CleaningConsumptionEnhancer } from "./modules/cleaning/components/CleaningConsumptionEnhancer";
@@ -92,7 +93,7 @@ createRoot(document.getElementById("root")!).render(
       </>
     ) : isPublicAuditorioPage ? (
       <>
-        <PublicAuditorioPage />
+        {normalizedPath === "/auditorio" ? <SimplePublicAuditorioPage /> : <PublicAuditorioPage />}
         <AuditorioPublicPushEnhancer />
       </>
     ) : isPublicMarketingRequestPage ? (
