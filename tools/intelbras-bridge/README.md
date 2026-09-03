@@ -61,6 +61,7 @@ Parâmetros opcionais por variável de ambiente:
 $env:INTELBRAS_EVENT_BUFFER_START="0"      # 0..511, padrão 0
 $env:INTELBRAS_EVENT_BUFFER_COUNT="512"   # 1..512, padrão 512
 $env:INTELBRAS_EVENT_RECENT_LIMIT="32"    # 1..512, padrão 32
+$env:INTELBRAS_EVENT_REQUEST_RETRIES="1"  # retries somente leitura por índice, padrão 1
 ```
 
 O script também aceita `INTELBRAS_PANEL_HOST`, `INTELBRAS_PANEL_PORT`, `INTELBRAS_DEVICE_TYPE`, `INTELBRAS_PROBE_TIMEOUT_MS`, `INTELBRAS_EVENT_REQUEST_TIMEOUT_MS` e `INTELBRAS_EVENT_REQUEST_GAP_MS`.
@@ -102,6 +103,7 @@ $env:INTELBRAS_AGENT_SCAN_INTERVAL_MS="300000" # minimo 60000
 $env:INTELBRAS_AGENT_HISTORY_LIMIT="200"
 $env:INTELBRAS_AGENT_OUTPUT=".tmp/intelbras-readonly-agent-snapshot.json"
 $env:INTELBRAS_AGENT_ONCE="1" # uma varredura e encerra
+$env:INTELBRAS_EVENT_REQUEST_RETRIES="1"
 ```
 
 O snapshot informa explicitamente `activeStatusQuery.available=false`, porque ainda não existe READ-COMMAND oficial comprovado para status atual da AMT 8000 LITE.
@@ -145,6 +147,27 @@ Evidência adicional necessária para avançar:
 - captura controlada do software oficial Intelbras compatível com AMT 8000 LITE firmware 3.1.5 consultando status pela porta `9009`, mostrando comando host -> painel, payload e resposta.
 
 Até existir essa evidência, o HUB deve tratar status atual de partições/zonas/bateria/sirene/falhas como indisponível por leitura ativa.
+
+## Captura passiva do software oficial
+
+Como não há READ-COMMAND oficial de status atual identificado, o próximo passo seguro é observar o software oficial Intelbras enquanto ele consulta a AMT 8000 LITE:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\tools\intelbras-bridge\run-passive-official-capture-windows.ps1
+```
+
+Essa captura:
+
+1. usa `tshark`/Wireshark portátil local quando houver Npcap; caso contrário usa `PktMon` nativo como captura filtrada;
+2. filtra apenas `tcp host 10.11.22.11 and port 9009`;
+3. não envia nenhum pacote para a central;
+4. grava o PCAP bruto somente em `.tmp`;
+5. gera um resumo JSON sanitizado dos quadros ISECNet;
+6. redige a autenticação `F0F0` e não imprime payload bruto.
+
+Durante a captura, use somente a tela de consulta/status do AMT Remoto. Não acione arme, desarme, bypass, panic ou alteração de configuração.
+
+O PCAP bruto pode conter payload sensível e nunca deve ser commitado ou enviado ao GitHub. O arquivo sanitizado `.summary.json` serve para identificar, com segurança, quais comandos o software oficial realmente envia para consultar status.
 
 ## Segurança da senha
 
