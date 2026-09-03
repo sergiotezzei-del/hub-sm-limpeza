@@ -1,0 +1,40 @@
+.cleaning-new-order-host {
+  display: contents;
+}
+
+.cleaning-new-order-button {
+  min-height: 40px;
+  white-space: nowrap;
+}
+
+.cleaning-new-order-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10070;
+  overflow: auto;
+  background: #f5f7f6;
+  padding: 16px;
+}
+
+.cleaning-new-order-screen {
+  width: min(1000px, 100%);
+  margin: 0 auto;
+}
+
+.cleaning-new-order-screen .product-list {
+  margin-top: 14px;
+}
+
+.cleaning-new-order-screen .manual-form {
+  margin-top: 14px;
+}
+
+@media (max-width: 640px) {
+  .cleaning-new-order-overlay {
+    padding: 8px;
+  }
+
+  .cleaning-new-order-button {
+    flex: 1 1 auto;
+  }
+}
