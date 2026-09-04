@@ -1,11 +1,16 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { authenticatedSupabaseFetch, readSupabaseRestError, SUPABASE_URL } from "../security/services/supabaseClient";
+
+type SourceKind = "system" | "spotify" | "edge" | "chrome";
 
 type NotebookAudioState = {
   id: "main";
   active: boolean;
   started_at: string | null;
   status: "idle" | "requested" | "starting" | "streaming" | "stopping" | "error";
+  source_kind: SourceKind;
+  source_process_name: string | null;
+  source_label: string | null;
   last_error: string | null;
   bridge_updated_at: string | null;
   updated_at: string;
@@ -15,8 +20,32 @@ type Props = {
   playerOnline: boolean;
 };
 
+const SOURCES: Array<{ kind: SourceKind; label: string; help: string }> = [
+  {
+    kind: "edge",
+    label: "YouTube / navegador · Microsoft Edge",
+    help: "Envia somente o áudio do Edge. WhatsApp, sons do Windows e outros aplicativos ficam no notebook.",
+  },
+  {
+    kind: "spotify",
+    label: "Spotify",
+    help: "Envia somente o Spotify. Navegador, WhatsApp e demais aplicativos continuam particulares no notebook.",
+  },
+  {
+    kind: "chrome",
+    label: "YouTube / navegador · Google Chrome",
+    help: "Envia somente o áudio do Chrome. Outros aplicativos não entram na Rádio.",
+  },
+  {
+    kind: "system",
+    label: "Som inteiro do notebook",
+    help: "Envia tudo que estiver tocando no Windows. Use apenas quando realmente quiser compartilhar todos os sons.",
+  },
+];
+
 export function RadioNotebookPlayer({ playerOnline }: Props) {
   const [state, setState] = useState<NotebookAudioState | null>(null);
+  const [selectedSource, setSelectedSource] = useState<SourceKind>("edge");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -24,7 +53,7 @@ export function RadioNotebookPlayer({ playerOnline }: Props) {
   const loadState = useCallback(async () => {
     try {
       const response = await authenticatedSupabaseFetch(
-        `${SUPABASE_URL}/rest/v1/radio_notebook_audio_state?select=id,active,started_at,status,last_error,bridge_updated_at,updated_at&id=eq.main&limit=1`,
+        `${SUPABASE_URL}/rest/v1/radio_notebook_audio_state?select=id,active,started_at,status,source_kind,source_process_name,source_label,last_error,bridge_updated_at,updated_at&id=eq.main&limit=1`,
         { headers: { Accept: "application/json" } },
       );
       if (!response.ok) return;
@@ -43,6 +72,11 @@ export function RadioNotebookPlayer({ playerOnline }: Props) {
 
   const status = state?.status ?? "idle";
   const active = Boolean(state?.active) || status === "starting" || status === "streaming" || status === "stopping";
+  const selected = useMemo(
+    () => SOURCES.find((source) => source.kind === selectedSource) ?? SOURCES[0],
+    [selectedSource],
+  );
+  const activeLabel = state?.source_label || sourceLabel(state?.source_kind ?? selectedSource);
 
   const activate = async () => {
     if (busy || active) return;
@@ -55,7 +89,7 @@ export function RadioNotebookPlayer({ playerOnline }: Props) {
     }
 
     const confirmed = window.confirm(
-      "Ativar SOM DO NOTEBOOK PELA REDE? O áudio que estiver tocando no Windows será enviado pela rede local e entrará por cima da automação. Bluetooth não será usado.",
+      `Transmitir somente: ${selected.label}?\n\nA automação continua conectada. Esse áudio entrará por cima pela rede local.`,
     );
     if (!confirmed) return;
 
@@ -64,13 +98,13 @@ export function RadioNotebookPlayer({ playerOnline }: Props) {
       const response = await authenticatedSupabaseFetch(`${SUPABASE_URL}/rest/v1/rpc/radio_start_notebook_audio`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: "{}",
+        body: JSON.stringify({ p_source_kind: selectedSource }),
       });
       if (!response.ok) {
         const details = await readSupabaseRestError(response);
         throw new Error(details.message || `HTTP ${response.status}`);
       }
-      setMessage("Solicitado. A ponte vai capturar o som do Windows e transmitir pela rede local.");
+      setMessage(`Solicitado: ${selected.label}. Os demais sons do notebook não serão enviados.`);
       await loadState();
     } catch (activateError) {
       setError(formatError(activateError));
@@ -94,7 +128,7 @@ export function RadioNotebookPlayer({ playerOnline }: Props) {
         const details = await readSupabaseRestError(response);
         throw new Error(details.message || `HTTP ${response.status}`);
       }
-      setMessage("Encerrando o som do notebook. A automação continua conectada e volta a ser ouvida normalmente.");
+      setMessage("Transmissão encerrada. A automação continua conectada e volta a ser ouvida normalmente.");
       await loadState();
     } catch (deactivateError) {
       setError(formatError(deactivateError));
@@ -106,13 +140,13 @@ export function RadioNotebookPlayer({ playerOnline }: Props) {
   const stateError = status === "error" ? state?.last_error : null;
 
   return (
-    <section style={styles.card} aria-label="Som completo do notebook pela rede">
+    <section style={styles.card} aria-label="Áudio seletivo do notebook pela rede">
       <div style={styles.heading}>
         <div>
           <div style={styles.kicker}>ENTRADA AO VIVO PELA REDE</div>
           <h3 style={styles.title}>Som do notebook</h3>
           <p style={styles.help}>
-            Captura o áudio que o Windows já está reproduzindo e envia pela rede local para a Rádio. YouTube, navegador, Spotify, vídeos e outros sons entram por cima da automação, sem Bluetooth e sem trocar a fonte principal do AudioCast.
+            Escolha qual aplicativo pode entrar na Rádio. Assim você pode transmitir YouTube ou Spotify e continuar ouvindo WhatsApp e outros sons particulares somente no notebook.
           </p>
         </div>
         <span style={{ ...styles.badge, ...(active ? styles.activeBadge : playerOnline ? styles.online : styles.offline) }}>
@@ -120,10 +154,37 @@ export function RadioNotebookPlayer({ playerOnline }: Props) {
         </span>
       </div>
 
+      {!active ? (
+        <div style={styles.sourceArea}>
+          <label style={styles.sourceLabel} htmlFor="radio-notebook-source">O que você quer mandar para a Rádio?</label>
+          <select
+            id="radio-notebook-source"
+            value={selectedSource}
+            onChange={(event) => {
+              setSelectedSource(event.target.value as SourceKind);
+              setMessage(null);
+              setError(null);
+            }}
+            style={styles.select}
+            disabled={busy}
+          >
+            {SOURCES.map((source) => (
+              <option key={source.kind} value={source.kind}>{source.label}</option>
+            ))}
+          </select>
+          <div style={styles.sourceHelp}>{selected.help}</div>
+          {(selectedSource === "edge" || selectedSource === "chrome") ? (
+            <div style={styles.warning}>
+              Se o WhatsApp estiver aberto dentro deste mesmo navegador, o áudio dele também pertence ao navegador. Para manter o WhatsApp particular, use o aplicativo do WhatsApp ou outro navegador.
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
       <div style={active ? styles.activeBox : styles.infoBox}>
         <div>
-          <strong>{statusTitle(status)}</strong>
-          <div style={styles.meta}>{statusHelp(status)}</div>
+          <strong>{active ? activeLabel : statusTitle(status)}</strong>
+          <div style={styles.meta}>{active ? statusHelp(status, activeLabel) : "A automação e o AudioCast continuam na rede normal da Santa Maria."}</div>
         </div>
 
         {active ? (
@@ -132,7 +193,7 @@ export function RadioNotebookPlayer({ playerOnline }: Props) {
           </button>
         ) : (
           <button type="button" style={styles.playButton} disabled={busy || !playerOnline} onClick={() => void activate()}>
-            {busy ? "AGUARDE..." : "🔊 ATIVAR SOM DO NOTEBOOK"}
+            {busy ? "AGUARDE..." : `🔊 TRANSMITIR ${shortLabel(selectedSource)}`}
           </button>
         )}
       </div>
@@ -144,27 +205,39 @@ export function RadioNotebookPlayer({ playerOnline }: Props) {
   );
 }
 
+function sourceLabel(kind: SourceKind) {
+  return SOURCES.find((source) => source.kind === kind)?.label ?? "Som do notebook";
+}
+
+function shortLabel(kind: SourceKind) {
+  if (kind === "spotify") return "SPOTIFY";
+  if (kind === "edge") return "EDGE";
+  if (kind === "chrome") return "CHROME";
+  return "SOM INTEIRO";
+}
+
 function statusTitle(status: NotebookAudioState["status"]) {
   if (status === "requested") return "Solicitação enviada para a ponte";
-  if (status === "starting") return "Capturando o áudio do Windows...";
-  if (status === "streaming") return "Áudio do notebook entrando pela rede";
+  if (status === "starting") return "Preparando captura selecionada...";
+  if (status === "streaming") return "Áudio entrando pela rede";
   if (status === "stopping") return "Encerrando transmissão ao vivo...";
   if (status === "error") return "Transmissão não iniciada";
   return "Automação conectada normalmente";
 }
 
-function statusHelp(status: NotebookAudioState["status"]) {
-  if (status === "requested" || status === "starting") return "A Rádio continua em Wi‑Fi. A ponte está preparando o stream de áudio local.";
-  if (status === "streaming") return "Tudo que você ouvir no Windows está sendo enviado pela rede e entra por cima da programação normal.";
+function statusHelp(status: NotebookAudioState["status"], label: string) {
+  if (status === "requested" || status === "starting") return `Preparando somente ${label}. A Rádio continua em Wi‑Fi.`;
+  if (status === "streaming") return `Somente ${label} está sendo enviado para o prédio.`;
   if (status === "stopping") return "O stream está sendo fechado; a programação base permanece preservada.";
-  if (status === "error") return "Veja o erro abaixo. A automação normal não foi alterada.";
-  return "Nenhum pareamento é necessário. O notebook e o AudioCast continuam na mesma rede da Santa Maria.";
+  if (status === "error") return "A automação normal não foi alterada.";
+  return "Automação conectada normalmente.";
 }
 
 function formatError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
   if (message.includes("RADIO_PLAYLIST_ALREADY_ACTIVE")) return "Já existe uma playlist ou outro conteúdo temporário ativo. Encerre-o antes de assumir pelo notebook.";
   if (message.includes("RADIO_TEMPORARY_MODE_ALREADY_ACTIVE")) return "A Rádio já está em outro modo temporário. Volte à automação antes de assumir pelo notebook.";
+  if (message.includes("RADIO_NOTEBOOK_SOURCE_INVALID")) return "Fonte de áudio inválida.";
   return message;
 }
 
@@ -185,6 +258,11 @@ const styles: Record<string, React.CSSProperties> = {
   online: { background: "#dcfce7", color: "#166534" },
   offline: { background: "#fee2e2", color: "#991b1b" },
   activeBadge: { background: "#ffedd5", color: "#9a3412" },
+  sourceArea: { marginTop: 16, display: "grid", gap: 7, maxWidth: 720 },
+  sourceLabel: { fontSize: 12, fontWeight: 900, color: "#334155" },
+  select: { width: "100%", minHeight: 44, border: "1px solid #cbd5e1", borderRadius: 12, background: "#fff", padding: "0 12px", color: "#0f172a", fontSize: 14, fontWeight: 800 },
+  sourceHelp: { color: "#64748b", fontSize: 12, lineHeight: 1.45 },
+  warning: { border: "1px solid #fde68a", background: "#fffbeb", color: "#92400e", borderRadius: 10, padding: "9px 10px", fontSize: 12, lineHeight: 1.4 },
   infoBox: { marginTop: 16, display: "flex", justifyContent: "space-between", gap: 14, alignItems: "center", flexWrap: "wrap", borderRadius: 14, background: "#f8fafc", border: "1px solid #e2e8f0", padding: 14 },
   activeBox: { marginTop: 16, display: "flex", justifyContent: "space-between", gap: 14, alignItems: "center", flexWrap: "wrap", borderRadius: 14, background: "#fff7ed", border: "1px solid #fed7aa", padding: 14 },
   meta: { color: "#64748b", fontSize: 12, marginTop: 4, lineHeight: 1.4 },
