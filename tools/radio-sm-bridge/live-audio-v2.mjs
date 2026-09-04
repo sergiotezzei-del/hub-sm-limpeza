@@ -4,7 +4,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 
 const SUPABASE_URL = (process.env.RADIO_SUPABASE_URL || "https://dtdepfpkyiqtnsjztjit.supabase.co").replace(/\/+$/, "");
-const SUPABASE_ANON_KEY = process.env.RADIO_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJIUzI1NiIsInJlZiI6ImR0ZGVwZnBreWlxdG5zanp0aml0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMxODkyMTcsImV4cCI6MjA5ODc2NTIxN30.kNYAYQTw8gqUaYqRTqdcPtthXO5vbZD6XwxeBvhpRgo";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR0ZGVwZnBreWlxdG5zanp0aml0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMxODkyMTcsImV4cCI6MjA5ODc2NTIxN30.kNYAYQTw8gqUaYqRTqdcPtthXO5vbZD6XwxeBvhpRgo";
 const BRIDGE_TOKEN = (process.env.RADIO_BRIDGE_TOKEN || "").trim();
 const AUDIOCAST_IP = (process.env.RADIO_AUDIOCAST_IP || "10.11.22.53").trim();
 const BIND_IP = (process.env.RADIO_BIND_IP || "10.11.22.50").trim();
@@ -282,7 +282,8 @@ async function spawnCapture(source) {
         "-hide_banner",
         "-loglevel", "error",
         "-f", "dshow",
-        "-audio_buffer_size", "60",
+        "-thread_queue_size", "1024",
+        "-audio_buffer_size", "80",
         "-i", `audio=${microphone}`,
         "-ac", "2",
         "-ar", "48000",
@@ -430,7 +431,7 @@ async function poll() {
     const requestedSource = normalizeSource(remote);
 
     if (!desiredActive) {
-      if (liveState || fatalStreamError) await stopLiveAudio();
+      if (liveState || fatalStreamError || remote?.status !== "idle") await stopLiveAudio();
       return;
     }
 
