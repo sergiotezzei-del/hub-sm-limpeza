@@ -121,8 +121,6 @@ function mapCommand(command) {
     case "previous": return "setPlayerCmd:prev";
     case "mute": return "setPlayerCmd:mute:1";
     case "unmute": return "setPlayerCmd:mute:0";
-    case "source_bluetooth": return "setPlayerCmd:switchmode:bluetooth";
-    case "source_wifi": return "setPlayerCmd:switchmode:wifi";
     case "volume": {
       const value = Math.max(0, Math.min(100, Number(command.value)));
       if (!Number.isFinite(value)) throw new Error("volume invalido");
@@ -153,10 +151,9 @@ function decodeLinkPlayText(value) {
 }
 
 function commandLabel(command) {
-  if (command?.command === "volume") return `volume ${command.value}%`;
-  if (command?.command === "source_bluetooth") return "fonte Bluetooth";
-  if (command?.command === "source_wifi") return "fonte Wi-Fi";
-  return String(command?.command || "desconhecido");
+  return command?.command === "volume"
+    ? `volume ${command.value}%`
+    : String(command?.command || "desconhecido");
 }
 
 function integerOr(value, fallback) {
