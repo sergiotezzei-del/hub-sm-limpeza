@@ -5,15 +5,17 @@ type NotebookAudioState = {
   id: "main";
   active: boolean;
   started_at: string | null;
+  status: "idle" | "requested" | "starting" | "streaming" | "stopping" | "error";
+  last_error: string | null;
+  bridge_updated_at: string | null;
   updated_at: string;
 };
 
 type Props = {
   playerOnline: boolean;
-  playerMode: number | null;
 };
 
-export function RadioNotebookPlayer({ playerOnline, playerMode }: Props) {
+export function RadioNotebookPlayer({ playerOnline }: Props) {
   const [state, setState] = useState<NotebookAudioState | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -22,7 +24,7 @@ export function RadioNotebookPlayer({ playerOnline, playerMode }: Props) {
   const loadState = useCallback(async () => {
     try {
       const response = await authenticatedSupabaseFetch(
-        `${SUPABASE_URL}/rest/v1/radio_notebook_audio_state?select=id,active,started_at,updated_at&id=eq.main&limit=1`,
+        `${SUPABASE_URL}/rest/v1/radio_notebook_audio_state?select=id,active,started_at,status,last_error,bridge_updated_at,updated_at&id=eq.main&limit=1`,
         { headers: { Accept: "application/json" } },
       );
       if (!response.ok) return;
@@ -35,12 +37,12 @@ export function RadioNotebookPlayer({ playerOnline, playerMode }: Props) {
 
   useEffect(() => {
     void loadState();
-    const timer = window.setInterval(() => void loadState(), 2500);
+    const timer = window.setInterval(() => void loadState(), 2000);
     return () => window.clearInterval(timer);
   }, [loadState]);
 
-  const active = Boolean(state?.active);
-  const bluetoothReady = active && playerMode === 41;
+  const status = state?.status ?? "idle";
+  const active = Boolean(state?.active) || status === "starting" || status === "streaming" || status === "stopping";
 
   const activate = async () => {
     if (busy || active) return;
@@ -53,7 +55,7 @@ export function RadioNotebookPlayer({ playerOnline, playerMode }: Props) {
     }
 
     const confirmed = window.confirm(
-      "Ativar SOM DO NOTEBOOK? A automação será pausada e o AudioCast entrará em Bluetooth. Tudo que tocar no Windows poderá sair no som do prédio.",
+      "Ativar SOM DO NOTEBOOK PELA REDE? O áudio que estiver tocando no Windows será enviado pela rede local e entrará por cima da automação. Bluetooth não será usado.",
     );
     if (!confirmed) return;
 
@@ -68,7 +70,7 @@ export function RadioNotebookPlayer({ playerOnline, playerMode }: Props) {
         const details = await readSupabaseRestError(response);
         throw new Error(details.message || `HTTP ${response.status}`);
       }
-      setMessage("Modo notebook ativado. Use SOM SANTAMARIATEM como saída de áudio do Windows.");
+      setMessage("Solicitado. A ponte vai capturar o som do Windows e transmitir pela rede local.");
       await loadState();
     } catch (activateError) {
       setError(formatError(activateError));
@@ -92,7 +94,7 @@ export function RadioNotebookPlayer({ playerOnline, playerMode }: Props) {
         const details = await readSupabaseRestError(response);
         throw new Error(details.message || `HTTP ${response.status}`);
       }
-      setMessage("Voltando para Wi-Fi e para a automação normal da Rádio.");
+      setMessage("Encerrando o som do notebook. A automação continua conectada e volta a ser ouvida normalmente.");
       await loadState();
     } catch (deactivateError) {
       setError(formatError(deactivateError));
@@ -101,34 +103,32 @@ export function RadioNotebookPlayer({ playerOnline, playerMode }: Props) {
     }
   };
 
+  const stateError = status === "error" ? state?.last_error : null;
+
   return (
-    <section style={styles.card} aria-label="Som completo do notebook">
+    <section style={styles.card} aria-label="Som completo do notebook pela rede">
       <div style={styles.heading}>
         <div>
-          <div style={styles.kicker}>ENTRADA AO VIVO</div>
+          <div style={styles.kicker}>ENTRADA AO VIVO PELA REDE</div>
           <h3 style={styles.title}>Som do notebook</h3>
           <p style={styles.help}>
-            Espelha o áudio do Windows pelo Bluetooth do AudioCast. YouTube, navegador, Spotify, vídeos e qualquer outro som do notebook passam a sair no prédio.
+            Captura o áudio que o Windows já está reproduzindo e envia pela rede local para a Rádio. YouTube, navegador, Spotify, vídeos e outros sons entram por cima da automação, sem Bluetooth e sem trocar a fonte principal do AudioCast.
           </p>
         </div>
         <span style={{ ...styles.badge, ...(active ? styles.activeBadge : playerOnline ? styles.online : styles.offline) }}>
-          {active ? "NOTEBOOK ATIVO" : playerOnline ? "PONTE ONLINE" : "PONTE OFFLINE"}
+          {active ? "NOTEBOOK AO VIVO" : playerOnline ? "PONTE ONLINE" : "PONTE OFFLINE"}
         </span>
       </div>
 
       <div style={active ? styles.activeBox : styles.infoBox}>
         <div>
-          <strong>{active ? (bluetoothReady ? "AudioCast em Bluetooth" : "Mudando para Bluetooth...") : "Conexão direta com o áudio do Windows"}</strong>
-          <div style={styles.meta}>
-            {active
-              ? "Selecione SOM SANTAMARIATEM como saída de som do Windows."
-              : "O pareamento Bluetooth é feito uma única vez. Depois o HUB assume e devolve a Rádio para a automação."}
-          </div>
+          <strong>{statusTitle(status)}</strong>
+          <div style={styles.meta}>{statusHelp(status)}</div>
         </div>
 
         {active ? (
-          <button type="button" style={styles.stopButton} disabled={busy} onClick={() => void deactivate()}>
-            {busy ? "AGUARDE..." : "VOLTAR À AUTOMAÇÃO"}
+          <button type="button" style={styles.stopButton} disabled={busy || status === "stopping"} onClick={() => void deactivate()}>
+            {busy || status === "stopping" ? "ENCERRANDO..." : "VOLTAR À AUTOMAÇÃO"}
           </button>
         ) : (
           <button type="button" style={styles.playButton} disabled={busy || !playerOnline} onClick={() => void activate()}>
@@ -138,9 +138,27 @@ export function RadioNotebookPlayer({ playerOnline, playerMode }: Props) {
       </div>
 
       {message ? <div style={styles.success}>{message}</div> : null}
+      {stateError ? <div style={styles.error}>{stateError}</div> : null}
       {error ? <div style={styles.error}>{error}</div> : null}
     </section>
   );
+}
+
+function statusTitle(status: NotebookAudioState["status"]) {
+  if (status === "requested") return "Solicitação enviada para a ponte";
+  if (status === "starting") return "Capturando o áudio do Windows...";
+  if (status === "streaming") return "Áudio do notebook entrando pela rede";
+  if (status === "stopping") return "Encerrando transmissão ao vivo...";
+  if (status === "error") return "Transmissão não iniciada";
+  return "Automação conectada normalmente";
+}
+
+function statusHelp(status: NotebookAudioState["status"]) {
+  if (status === "requested" || status === "starting") return "A Rádio continua em Wi‑Fi. A ponte está preparando o stream de áudio local.";
+  if (status === "streaming") return "Tudo que você ouvir no Windows está sendo enviado pela rede e entra por cima da programação normal.";
+  if (status === "stopping") return "O stream está sendo fechado; a programação base permanece preservada.";
+  if (status === "error") return "Veja o erro abaixo. A automação normal não foi alterada.";
+  return "Nenhum pareamento é necessário. O notebook e o AudioCast continuam na mesma rede da Santa Maria.";
 }
 
 function formatError(error: unknown) {
@@ -162,7 +180,7 @@ const styles: Record<string, React.CSSProperties> = {
   heading: { display: "flex", justifyContent: "space-between", gap: 16, alignItems: "flex-start", flexWrap: "wrap" },
   kicker: { fontSize: 11, fontWeight: 900, letterSpacing: ".08em", color: "#f97316" },
   title: { margin: "5px 0 4px", fontSize: 22, color: "#0f172a" },
-  help: { margin: 0, maxWidth: 820, color: "#64748b", fontSize: 14, lineHeight: 1.45 },
+  help: { margin: 0, maxWidth: 900, color: "#64748b", fontSize: 14, lineHeight: 1.45 },
   badge: { borderRadius: 999, padding: "7px 10px", fontSize: 11, fontWeight: 900 },
   online: { background: "#dcfce7", color: "#166534" },
   offline: { background: "#fee2e2", color: "#991b1b" },
