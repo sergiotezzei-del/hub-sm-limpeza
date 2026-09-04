@@ -13,6 +13,9 @@ const POLL_MS = Math.max(700, Number(process.env.RADIO_LIVE_POLL_MS || 1000));
 const BASE_DIR = path.resolve(process.env.RADIO_HOME || process.cwd());
 const CAPTURE_EXE = path.resolve(process.env.RADIO_CAPTURE_EXE || path.join(BASE_DIR, "audio_capture.exe"));
 const FFMPEG_EXE = path.resolve(process.env.RADIO_FFMPEG_EXE || path.join(BASE_DIR, "ffmpeg.exe"));
+const PROCTAP_EXE = path.resolve(
+  process.env.RADIO_PROCTAP_EXE || path.join(BASE_DIR, "proctap-venv", "Scripts", "proctap.exe"),
+);
 
 if (!BRIDGE_TOKEN) {
   console.error("[radio-live] RADIO_BRIDGE_TOKEN nao informado.");
@@ -90,7 +93,7 @@ function serveLiveAudio(res) {
 
 server.listen(LIVE_PORT, "0.0.0.0", () => {
   console.log(`[radio-live] Ponte de audio ao vivo em http://${BIND_IP}:${LIVE_PORT}`);
-  console.log("[radio-live] Captura do Windows pronta; aguardando comando do HUB.");
+  console.log("[radio-live] Captura seletiva pronta; aguardando comando do HUB.");
 });
 
 async function supabaseRpc(name, body) {
@@ -138,10 +141,28 @@ async function audioCastCommand(command) {
   return text;
 }
 
-function createLiveState() {
+function normalizeSource(remote) {
+  const kind = ["system", "spotify", "edge", "chrome"].includes(remote?.source_kind)
+    ? remote.source_kind
+    : "system";
+  const processName = typeof remote?.source_process_name === "string" ? remote.source_process_name.trim() : "";
+  const label = typeof remote?.source_label === "string" && remote.source_label.trim()
+    ? remote.source_label.trim()
+    : kind === "spotify"
+      ? "Spotify"
+      : kind === "edge"
+        ? "YouTube / navegador - Microsoft Edge"
+        : kind === "chrome"
+          ? "YouTube / navegador - Google Chrome"
+          : "Som inteiro do notebook";
+  return { kind, processName, label, key: `${kind}:${processName.toLowerCase()}` };
+}
+
+function createLiveState(source) {
   let resolveStarted;
   const started = new Promise((resolve) => { resolveStarted = resolve; });
   return {
+    source,
     capture: null,
     encoder: null,
     response: null,
@@ -152,33 +173,105 @@ function createLiveState() {
   };
 }
 
-function validateLocalTools() {
+function validateLocalTools(source) {
   if (process.platform !== "win32") {
     throw new Error("A captura de audio ao vivo esta configurada somente para Windows.");
-  }
-  if (!fs.existsSync(CAPTURE_EXE)) {
-    throw new Error(`Capturador de audio nao encontrado: ${CAPTURE_EXE}`);
   }
   if (!fs.existsSync(FFMPEG_EXE)) {
     throw new Error(`Codificador MP3 nao encontrado: ${FFMPEG_EXE}`);
   }
+  if (source.kind === "system") {
+    if (!fs.existsSync(CAPTURE_EXE)) {
+      throw new Error(`Capturador de audio nao encontrado: ${CAPTURE_EXE}`);
+    }
+    return;
+  }
+  if (!source.processName) {
+    throw new Error(`Processo nao definido para a fonte ${source.label}.`);
+  }
+  if (!fs.existsSync(PROCTAP_EXE)) {
+    throw new Error("Captura por aplicativo ainda nao esta instalada neste notebook.");
+  }
 }
 
-async function startLiveAudio() {
-  if (liveState || stopped) return;
-  validateLocalTools();
-  await setNotebookStatus("starting", null);
+async function resolveRootProcessPid(processName) {
+  const safeName = processName.replace(/'/g, "''");
+  const script = [
+    `$name='${safeName}'`,
+    `$rows=@(Get-CimInstance Win32_Process -Filter \"Name='$name'\" | Select-Object ProcessId,ParentProcessId)`,
+    `if($rows.Count -eq 0){ exit 3 }`,
+    `$ids=@{}`,
+    `foreach($r in $rows){ $ids[[int]$r.ProcessId]=$true }`,
+    `$roots=@($rows | Where-Object { -not $ids.ContainsKey([int]$_.ParentProcessId) } | Sort-Object ProcessId)`,
+    `if($roots.Count -eq 0){ $roots=@($rows | Sort-Object ProcessId) }`,
+    `[Console]::Out.Write([string]$roots[0].ProcessId)`,
+  ].join("; ");
 
-  const state = createLiveState();
-  liveState = state;
+  const result = await runAndCollect("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], 8000);
+  const pid = Number.parseInt(result.stdout.trim(), 10);
+  if (!Number.isInteger(pid) || pid <= 0) {
+    throw new Error(`${processName} nao esta aberto neste notebook.`);
+  }
+  return pid;
+}
 
-  try {
-    const capture = spawn(
+function runAndCollect(executable, args, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(executable, args, {
+      cwd: BASE_DIR,
+      windowsHide: true,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stdout = "";
+    let stderr = "";
+    const timer = setTimeout(() => {
+      try { child.kill(); } catch {}
+      reject(new Error(`${path.basename(executable)} excedeu o tempo de resposta.`));
+    }, timeoutMs);
+
+    child.stdout.on("data", (chunk) => { stdout += chunk.toString("utf8"); });
+    child.stderr.on("data", (chunk) => { stderr += chunk.toString("utf8"); });
+    child.once("error", (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+    child.once("exit", (code) => {
+      clearTimeout(timer);
+      if (code === 0) resolve({ stdout, stderr });
+      else reject(new Error(stderr.trim() || stdout.trim() || `${path.basename(executable)} encerrou com codigo ${code ?? "?"}.`));
+    });
+  });
+}
+
+async function spawnCapture(source) {
+  if (source.kind === "system") {
+    return spawn(
       CAPTURE_EXE,
       ["--sample-rate", "48000", "--channels", "2", "--bit-depth", "16", "--chunk-duration", "0.05"],
       { cwd: BASE_DIR, windowsHide: true, stdio: ["ignore", "pipe", "pipe"] },
     );
+  }
 
+  const pid = await resolveRootProcessPid(source.processName);
+  console.log(`[radio-live] Fonte selecionada: ${source.label} | PID raiz ${pid}`);
+  return spawn(
+    PROCTAP_EXE,
+    ["--pid", String(pid), "--format", "int16", "--stdout"],
+    { cwd: BASE_DIR, windowsHide: true, stdio: ["ignore", "pipe", "pipe"] },
+  );
+}
+
+async function startLiveAudio(remote) {
+  if (liveState || stopped) return;
+  const source = normalizeSource(remote);
+  validateLocalTools(source);
+  await setNotebookStatus("starting", null);
+
+  const state = createLiveState(source);
+  liveState = state;
+
+  try {
+    const capture = await spawnCapture(source);
     const encoder = spawn(
       FFMPEG_EXE,
       [
@@ -202,7 +295,7 @@ async function startLiveAudio() {
     state.encoder = encoder;
     capture.stdout.pipe(encoder.stdin);
 
-    attachProcessDiagnostics(state, capture, "capturador");
+    attachProcessDiagnostics(state, capture, source.kind === "system" ? "capturador do Windows" : `capturador de ${source.label}`);
     attachProcessDiagnostics(state, encoder, "codificador");
 
     const audioUrl = `http://${BIND_IP}:${LIVE_PORT}/radio-live/notebook.mp3`;
@@ -211,7 +304,7 @@ async function startLiveAudio() {
 
     if (state.streamError) throw new Error(state.streamError);
     await setNotebookStatus("streaming", null);
-    console.log("[radio-live] Som do notebook entrando pela rede local.");
+    console.log(`[radio-live] Ao vivo pela rede: ${source.label}.`);
   } catch (error) {
     const message = errorMessage(error);
     await stopLocalProcesses(state);
@@ -225,7 +318,7 @@ function attachProcessDiagnostics(state, child, label) {
   let stderr = "";
   child.stderr?.on("data", (chunk) => {
     stderr += chunk.toString("utf8");
-    if (stderr.length > 1200) stderr = stderr.slice(-1200);
+    if (stderr.length > 1600) stderr = stderr.slice(-1600);
   });
 
   child.once("error", (error) => {
@@ -276,6 +369,7 @@ async function poll() {
   try {
     const remote = await getNotebookAudioState();
     desiredActive = remote?.active === true;
+    const requestedSource = normalizeSource(remote);
 
     if (liveState?.streamError) {
       const message = liveState.streamError;
@@ -287,8 +381,14 @@ async function poll() {
       return;
     }
 
+    if (desiredActive && liveState && liveState.source.key !== requestedSource.key) {
+      console.log(`[radio-live] Mudando fonte para ${requestedSource.label}.`);
+      await stopLocalProcesses(liveState);
+      liveState = null;
+    }
+
     if (desiredActive && !liveState) {
-      await startLiveAudio();
+      await startLiveAudio(remote);
       return;
     }
 
@@ -296,7 +396,7 @@ async function poll() {
       await stopLiveAudio();
     }
   } catch (error) {
-    console.warn(`[radio-live] Falha transitória: ${errorMessage(error)}`);
+    console.warn(`[radio-live] Falha transitoria: ${errorMessage(error)}`);
   } finally {
     pollBusy = false;
   }
