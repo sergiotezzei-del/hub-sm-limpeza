@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { authenticatedSupabaseFetch, readSupabaseRestError, SUPABASE_URL } from "../security/services/supabaseClient";
 
-type SourceKind = "system" | "spotify" | "edge" | "chrome";
+type SourceKind = "system" | "spotify" | "edge" | "chrome" | "microphone";
 
 type NotebookAudioState = {
   id: "main";
@@ -21,6 +21,11 @@ type Props = {
 };
 
 const SOURCES: Array<{ kind: SourceKind; label: string; help: string }> = [
+  {
+    kind: "microphone",
+    label: "🎙️ Microfone do notebook",
+    help: "Use o microfone do notebook para falar ao vivo no sistema de som do prédio. A automação continua como base e volta quando você encerrar.",
+  },
   {
     kind: "edge",
     label: "YouTube / navegador · Microsoft Edge",
@@ -45,7 +50,7 @@ const SOURCES: Array<{ kind: SourceKind; label: string; help: string }> = [
 
 export function RadioNotebookPlayer({ playerOnline }: Props) {
   const [state, setState] = useState<NotebookAudioState | null>(null);
-  const [selectedSource, setSelectedSource] = useState<SourceKind>("edge");
+  const [selectedSource, setSelectedSource] = useState<SourceKind>("microphone");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -76,7 +81,9 @@ export function RadioNotebookPlayer({ playerOnline }: Props) {
     () => SOURCES.find((source) => source.kind === selectedSource) ?? SOURCES[0],
     [selectedSource],
   );
-  const activeLabel = state?.source_label || sourceLabel(state?.source_kind ?? selectedSource);
+  const activeKind = state?.source_kind ?? selectedSource;
+  const activeLabel = state?.source_label || sourceLabel(activeKind);
+  const microphoneActive = active && activeKind === "microphone";
 
   const activate = async () => {
     if (busy || active) return;
@@ -89,7 +96,9 @@ export function RadioNotebookPlayer({ playerOnline }: Props) {
     }
 
     const confirmed = window.confirm(
-      `Transmitir somente: ${selected.label}?\n\nA automação continua conectada. Esse áudio entrará por cima pela rede local.`,
+      selectedSource === "microphone"
+        ? "Colocar o microfone do notebook AO VIVO no prédio?\n\nEnquanto estiver ativo, tudo que o microfone captar será enviado para a Rádio."
+        : `Transmitir somente: ${selected.label}?\n\nA automação continua conectada. Esse áudio entrará por cima pela rede local.`,
     );
     if (!confirmed) return;
 
@@ -104,7 +113,11 @@ export function RadioNotebookPlayer({ playerOnline }: Props) {
         const details = await readSupabaseRestError(response);
         throw new Error(details.message || `HTTP ${response.status}`);
       }
-      setMessage(`Solicitado: ${selected.label}. Os demais sons do notebook não serão enviados.`);
+      setMessage(
+        selectedSource === "microphone"
+          ? "Microfone solicitado. Quando aparecer MICROFONE AO VIVO, você já pode falar."
+          : `Solicitado: ${selected.label}. Os demais sons do notebook não serão enviados.`,
+      );
       await loadState();
     } catch (activateError) {
       setError(formatError(activateError));
@@ -128,7 +141,11 @@ export function RadioNotebookPlayer({ playerOnline }: Props) {
         const details = await readSupabaseRestError(response);
         throw new Error(details.message || `HTTP ${response.status}`);
       }
-      setMessage("Transmissão encerrada. A automação continua conectada e volta a ser ouvida normalmente.");
+      setMessage(
+        microphoneActive
+          ? "Microfone encerrado. A automação volta a ser ouvida normalmente."
+          : "Transmissão encerrada. A automação continua conectada e volta a ser ouvida normalmente.",
+      );
       await loadState();
     } catch (deactivateError) {
       setError(formatError(deactivateError));
@@ -140,17 +157,17 @@ export function RadioNotebookPlayer({ playerOnline }: Props) {
   const stateError = status === "error" ? state?.last_error : null;
 
   return (
-    <section style={styles.card} aria-label="Áudio seletivo do notebook pela rede">
+    <section style={styles.card} aria-label="Áudio e microfone do notebook pela rede">
       <div style={styles.heading}>
         <div>
           <div style={styles.kicker}>ENTRADA AO VIVO PELA REDE</div>
-          <h3 style={styles.title}>Som do notebook</h3>
+          <h3 style={styles.title}>Som e microfone do notebook</h3>
           <p style={styles.help}>
-            Escolha qual aplicativo pode entrar na Rádio. Assim você pode transmitir YouTube ou Spotify e continuar ouvindo WhatsApp e outros sons particulares somente no notebook.
+            Escolha uma fonte para entrar na Rádio: microfone para falar ao vivo, Spotify, navegador ou o som completo do Windows.
           </p>
         </div>
         <span style={{ ...styles.badge, ...(active ? styles.activeBadge : playerOnline ? styles.online : styles.offline) }}>
-          {active ? "NOTEBOOK AO VIVO" : playerOnline ? "PONTE ONLINE" : "PONTE OFFLINE"}
+          {microphoneActive ? "MICROFONE AO VIVO" : active ? "NOTEBOOK AO VIVO" : playerOnline ? "PONTE ONLINE" : "PONTE OFFLINE"}
         </span>
       </div>
 
@@ -173,6 +190,11 @@ export function RadioNotebookPlayer({ playerOnline }: Props) {
             ))}
           </select>
           <div style={styles.sourceHelp}>{selected.help}</div>
+          {selectedSource === "microphone" ? (
+            <div style={styles.warning}>
+              Evite deixar o notebook perto de uma caixa de som para não gerar microfonia. Use VOLTAR À AUTOMAÇÃO assim que terminar de falar.
+            </div>
+          ) : null}
           {(selectedSource === "edge" || selectedSource === "chrome") ? (
             <div style={styles.warning}>
               Se o WhatsApp estiver aberto dentro deste mesmo navegador, o áudio dele também pertence ao navegador. Para manter o WhatsApp particular, use o aplicativo do WhatsApp ou outro navegador.
@@ -184,7 +206,7 @@ export function RadioNotebookPlayer({ playerOnline }: Props) {
       <div style={active ? styles.activeBox : styles.infoBox}>
         <div>
           <strong>{active ? activeLabel : statusTitle(status)}</strong>
-          <div style={styles.meta}>{active ? statusHelp(status, activeLabel) : "A automação e o AudioCast continuam na rede normal da Santa Maria."}</div>
+          <div style={styles.meta}>{active ? statusHelp(status, activeLabel, activeKind) : "A automação e o AudioCast continuam na rede normal da Santa Maria."}</div>
         </div>
 
         {active ? (
@@ -192,8 +214,8 @@ export function RadioNotebookPlayer({ playerOnline }: Props) {
             {busy || status === "stopping" ? "ENCERRANDO..." : "VOLTAR À AUTOMAÇÃO"}
           </button>
         ) : (
-          <button type="button" style={styles.playButton} disabled={busy || !playerOnline} onClick={() => void activate()}>
-            {busy ? "AGUARDE..." : `🔊 TRANSMITIR ${shortLabel(selectedSource)}`}
+          <button type="button" style={selectedSource === "microphone" ? styles.micButton : styles.playButton} disabled={busy || !playerOnline} onClick={() => void activate()}>
+            {busy ? "AGUARDE..." : selectedSource === "microphone" ? "🎙️ FALAR AO VIVO" : `🔊 TRANSMITIR ${shortLabel(selectedSource)}`}
           </button>
         )}
       </div>
@@ -206,13 +228,14 @@ export function RadioNotebookPlayer({ playerOnline }: Props) {
 }
 
 function sourceLabel(kind: SourceKind) {
-  return SOURCES.find((source) => source.kind === kind)?.label ?? "Som do notebook";
+  return SOURCES.find((source) => source.kind === kind)?.label.replace("🎙️ ", "") ?? "Som do notebook";
 }
 
 function shortLabel(kind: SourceKind) {
   if (kind === "spotify") return "SPOTIFY";
   if (kind === "edge") return "EDGE";
   if (kind === "chrome") return "CHROME";
+  if (kind === "microphone") return "MICROFONE";
   return "SOM INTEIRO";
 }
 
@@ -225,9 +248,13 @@ function statusTitle(status: NotebookAudioState["status"]) {
   return "Automação conectada normalmente";
 }
 
-function statusHelp(status: NotebookAudioState["status"], label: string) {
-  if (status === "requested" || status === "starting") return `Preparando somente ${label}. A Rádio continua em Wi‑Fi.`;
-  if (status === "streaming") return `Somente ${label} está sendo enviado para o prédio.`;
+function statusHelp(status: NotebookAudioState["status"], label: string, kind: SourceKind) {
+  if (status === "requested" || status === "starting") {
+    return kind === "microphone" ? "Preparando o microfone do notebook..." : `Preparando somente ${label}. A Rádio continua em Wi‑Fi.`;
+  }
+  if (status === "streaming") {
+    return kind === "microphone" ? "O microfone do notebook está AO VIVO no prédio." : `Somente ${label} está sendo enviado para o prédio.`;
+  }
   if (status === "stopping") return "O stream está sendo fechado; a programação base permanece preservada.";
   if (status === "error") return "A automação normal não foi alterada.";
   return "Automação conectada normalmente.";
@@ -267,6 +294,7 @@ const styles: Record<string, React.CSSProperties> = {
   activeBox: { marginTop: 16, display: "flex", justifyContent: "space-between", gap: 14, alignItems: "center", flexWrap: "wrap", borderRadius: 14, background: "#fff7ed", border: "1px solid #fed7aa", padding: 14 },
   meta: { color: "#64748b", fontSize: 12, marginTop: 4, lineHeight: 1.4 },
   playButton: { border: "1px solid #f97316", borderRadius: 12, background: "#fff7ed", color: "#c2410c", padding: "12px 16px", fontWeight: 900, cursor: "pointer" },
+  micButton: { border: "1px solid #dc2626", borderRadius: 12, background: "#fff1f2", color: "#b91c1c", padding: "12px 18px", fontWeight: 900, cursor: "pointer" },
   stopButton: { border: "1px solid #dc2626", borderRadius: 12, background: "#fff", color: "#b91c1c", padding: "12px 16px", fontWeight: 900, cursor: "pointer" },
   success: { marginTop: 10, borderRadius: 10, background: "#f0fdf4", color: "#166534", padding: "9px 11px", fontSize: 13 },
   error: { marginTop: 10, borderRadius: 10, background: "#fef2f2", color: "#991b1b", padding: "9px 11px", fontSize: 13 },
