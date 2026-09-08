@@ -26,11 +26,12 @@
   ];
 
   const leituras = [
-    { date: '17/06/2026', total: 1477, doses: [159,126,55,28,207,25,246,2,336,154,91,47,1] },
-    { date: '23/06/2026', total: 1680, doses: [181,137,63,34,242,30,278,3,387,171,98,55,1] },
-    { date: '30/06/2026', total: 1822, doses: [195,145,67,39,253,35,306,3,428,183,106,61,1] },
-    { date: '24/08/2026', total: 3326, doses: [348,280,133,93,481,76,504,4,765,280,234,127,1] },
-    { date: '31/08/2026', total: 3511, doses: [372,299,136,98,518,85,532,4,801,289,243,133,1] }
+    { date: '17/06/2026', total: 1477, realTime: null, machineDateTime: null, doses: [159,126,55,28,207,25,246,2,336,154,91,47,1] },
+    { date: '23/06/2026', total: 1680, realTime: null, machineDateTime: null, doses: [181,137,63,34,242,30,278,3,387,171,98,55,1] },
+    { date: '30/06/2026', total: 1822, realTime: null, machineDateTime: null, doses: [195,145,67,39,253,35,306,3,428,183,106,61,1] },
+    { date: '24/08/2026', total: 3326, realTime: null, machineDateTime: null, doses: [348,280,133,93,481,76,504,4,765,280,234,127,1] },
+    { date: '31/08/2026', total: 3511, realTime: '11:13', machineDateTime: '31/08/2026 15:48', doses: [372,299,136,98,518,85,532,4,801,289,243,133,1] },
+    { date: '08/09/2026', total: 3748, realTime: '13:06', machineDateTime: null, doses: [387,319,148,104,564,93,571,4,861,297,262,137,1] }
   ];
 
   const nfDetalhes = [
@@ -70,45 +71,91 @@
     return `<div class="cafe-table-wrap"><table><thead><tr>${headers.map((h) => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map(tr).join('')}</tbody></table></div>`;
   }
 
+  function brNumber(value) {
+    return Number(value).toLocaleString('pt-BR');
+  }
+
+  function parseBrDate(value) {
+    const [day, month, year] = String(value).split('/').map(Number);
+    return new Date(Date.UTC(year, month - 1, day));
+  }
+
+  function daysBetween(start, end) {
+    return Math.max(1, Math.round((parseBrDate(end) - parseBrDate(start)) / 86400000));
+  }
+
+  function currentPeriod() {
+    const latest = leituras[leituras.length - 1];
+    const previous = leituras[leituras.length - 2];
+    const deltas = latest.doses.map((value, index) => value - previous.doses[index]);
+    const consumed = latest.total - previous.total;
+    const days = daysBetween(previous.date, latest.date);
+    const average = consumed / days;
+    const ranking = deltas
+      .map((value, index) => ({ name: drinkNames[index], value }))
+      .filter((item) => item.value > 0 && !item.name.startsWith('#13'))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 6);
+    return { latest, previous, deltas, consumed, days, average, ranking };
+  }
+
+  function rankingChart(ranking) {
+    const max = Math.max(...ranking.map((item) => item.value), 1);
+    return `<div class="cafe-ranking">${ranking.map((item, index) => `
+      <div class="cafe-ranking-row">
+        <div class="cafe-ranking-label"><span>${index + 1}. ${esc(item.name)}</span><strong>${item.value}</strong></div>
+        <div class="cafe-ranking-track"><i style="width:${Math.max(4, (item.value / max) * 100)}%"></i></div>
+      </div>`).join('')}</div>`;
+  }
+
   function machinePage() {
+    const { latest, previous, consumed, days, average, ranking } = currentPeriod();
     return `
       <div class="cafe-metrics">
-        <article><span>Total acumulado</span><strong>3.511 doses</strong></article>
-        <article><span>Última leitura</span><strong>31/08/2026</strong></article>
-        <article><span>Consumo entre as leituras de 24/08 e 31/08</span><strong>185 doses</strong></article>
-        <article><span>Média diária no período de 24/08 a 31/08</span><strong>26,4 doses/dia</strong></article>
+        <article><span>Total acumulado</span><strong>${brNumber(latest.total)} doses</strong></article>
+        <article><span>Última leitura</span><strong>${latest.date}</strong></article>
+        <article><span>Consumo de ${previous.date} a ${latest.date}</span><strong>${brNumber(consumed)} doses</strong></article>
+        <article><span>Média diária de ${previous.date} a ${latest.date}</span><strong>${average.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} doses/dia</strong></article>
       </div>
       <section class="cafe-panel">
         <h3>Situação atual</h3>
-        <p>A leitura mais recente foi registrada em <strong>31/08/2026</strong>, com total acumulado de <strong>3.511 doses</strong>.</p>
-        <p>O consumo entre a leitura de <strong>24/08/2026 (3.326 doses)</strong> e a leitura de <strong>31/08/2026 (3.511 doses)</strong> foi de <strong>185 doses</strong>.</p>
+        <p>A leitura mais recente foi registrada em <strong>${latest.date}${latest.realTime ? ` às ${latest.realTime}` : ''}</strong>, com total acumulado de <strong>${brNumber(latest.total)} doses</strong>.</p>
+        <p>Entre <strong>${previous.date}</strong> e <strong>${latest.date}</strong> foram consumidas <strong>${brNumber(consumed)} bebidas</strong> em <strong>${days} dias</strong>, média de <strong>${average.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} por dia</strong>.</p>
+      </section>
+      <section class="cafe-panel">
+        <h3>Bebidas mais consumidas — ${previous.date} a ${latest.date}</h3>
+        ${rankingChart(ranking)}
       </section>`;
   }
 
   function readingsPage() {
-    const latest = leituras[leituras.length - 1];
-    const previous = leituras[leituras.length - 2];
-    const deltas = latest.doses.map((value, index) => value - previous.doses[index]);
+    const { latest, previous, deltas, consumed, average, ranking } = currentPeriod();
     const latestRows = latest.doses.map((value, index) => [
       `#${String(index + 1).padStart(2, '0')} — ${drinkNames[index]}`,
-      value,
-      `+${deltas[index]}`.replace('+0', '0')
+      brNumber(value),
+      deltas[index] === 0 ? '0' : `+${deltas[index]}`
     ]);
-    const historyRows = leituras.map((reading) => [reading.date, reading.total.toLocaleString('pt-BR') + ' doses']);
+    const historyRows = [...leituras].reverse().map((reading) => [
+      reading.date,
+      reading.realTime || '—',
+      brNumber(reading.total) + ' doses'
+    ]);
     return `
       <div class="cafe-metrics cafe-metrics-three">
-        <article><span>Leitura anterior</span><strong>24/08 — 3.326</strong></article>
-        <article><span>Leitura atual</span><strong>31/08 — 3.511</strong></article>
-        <article><span>Consumo entre 24/08 e 31/08</span><strong>185 doses</strong></article>
+        <article><span>Leitura anterior</span><strong>${previous.date} — ${brNumber(previous.total)}</strong></article>
+        <article><span>Leitura atual</span><strong>${latest.date} — ${brNumber(latest.total)}</strong></article>
+        <article><span>Consumo de ${previous.date} a ${latest.date}</span><strong>${brNumber(consumed)} doses</strong></article>
       </div>
-      <section class="cafe-panel"><h3>Contadores em 31/08/2026</h3>${table(['Bebida', 'Acumulado', 'Consumo desde 24/08'], latestRows)}</section>
-      <section class="cafe-panel"><h3>Histórico de leituras</h3>${table(['Data da leitura', 'Total acumulado'], historyRows)}</section>`;
+      <section class="cafe-panel"><h3>Contadores em ${latest.date}</h3>${table(['Bebida', 'Acumulado', `Consumo desde ${previous.date}`], latestRows)}</section>
+      <section class="cafe-panel"><h3>Média do período</h3><p><strong>${brNumber(consumed)} bebidas ÷ 8 dias = ${average.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} bebidas/dia.</strong></p></section>
+      <section class="cafe-panel"><h3>Ranking do período</h3>${rankingChart(ranking)}</section>
+      <section class="cafe-panel"><h3>Histórico de leituras</h3>${table(['Data real', 'Hora real', 'Total acumulado'], historyRows)}</section>`;
   }
 
   function stockPage() {
     return `
-      <section class="cafe-panel"><h3>Estoque fechado em 31/08/2026</h3>${table(['Produto', 'Quantidade', 'Situação'], estoqueMaquina)}</section>
-      <section class="cafe-panel cafe-note"><h3>Produto aberto / em uso</h3><p><strong>Achocolatado Dois Frades:</strong> aproximadamente meio pacote aberto/em uso. Esse volume não foi somado ao estoque fechado.</p><p>Produto que estiver dentro dos reservatórios da máquina também não entra no estoque fechado.</p></section>`;
+      <section class="cafe-panel"><h3>Estoque fechado — última conferência física</h3>${table(['Produto', 'Quantidade', 'Situação'], estoqueMaquina)}</section>
+      <section class="cafe-panel cafe-note"><h3>Produto aberto / em uso</h3><p><strong>Achocolatado Dois Frades:</strong> aproximadamente meio pacote aberto/em uso. Esse volume não foi somado ao estoque fechado.</p><p>Produto que estiver dentro dos reservatórios da máquina também não entra no estoque fechado.</p><p><strong>A leitura da máquina não altera o estoque automaticamente.</strong> O estoque continua baseado em entradas, baixas e conferências físicas.</p></section>`;
   }
 
   function nestlePage() {
@@ -128,11 +175,11 @@
         <article><span>Com gás</span><strong>24 garrafas</strong></article>
         <article><span>Total fechado</span><strong>60 garrafas</strong></article>
       </div>
-      <section class="cafe-panel"><h3>Resumo</h3><p>Estoque informado em 31/08/2026: <strong>3 fardos sem gás</strong> e <strong>2 fardos com gás</strong>, cada fardo com 12 unidades.</p></section>`;
+      <section class="cafe-panel"><h3>Resumo</h3><p>Último estoque confirmado: <strong>3 fardos sem gás</strong> e <strong>2 fardos com gás</strong>, cada fardo com 12 unidades.</p></section>`;
   }
 
   function waterStockPage() {
-    return `<section class="cafe-panel"><h3>Estoque físico em 31/08/2026</h3>${table(['Produto', 'Fardos fechados', 'Garrafas fechadas', 'Conversão'], aguas)}</section>`;
+    return `<section class="cafe-panel"><h3>Estoque físico</h3>${table(['Produto', 'Fardos fechados', 'Garrafas fechadas', 'Conversão'], aguas)}</section>`;
   }
 
   function waterPurchasesPage() {
@@ -229,9 +276,9 @@
   }
 
   function estilo() {
-    if (document.querySelector('[data-cafe-style="3"]')) return;
+    if (document.querySelector('[data-cafe-style="4"]')) return;
     const s = document.createElement('style');
-    s.dataset.cafeStyle = '3';
+    s.dataset.cafeStyle = '4';
     s.textContent = `
       .cafe-card-ok{border-left:4px solid #f97316!important}
       .cafe-page-shell{position:fixed;inset:0;z-index:9999;background:#f6f8fb;overflow:auto;color:#17212b}
@@ -259,6 +306,11 @@
       .cafe-panel tr:last-child td{border-bottom:0}
       .cafe-totals{display:flex;flex-wrap:wrap;gap:8px 20px;margin-top:12px}
       .cafe-totals p{margin:0}
+      .cafe-ranking{display:grid;gap:10px}
+      .cafe-ranking-row{display:grid;gap:5px}
+      .cafe-ranking-label{display:flex;justify-content:space-between;gap:12px;color:#334155;font-size:.82rem;font-weight:800}
+      .cafe-ranking-track{height:9px;background:#f1f5f9;border-radius:999px;overflow:hidden}
+      .cafe-ranking-track i{display:block;height:100%;background:#f97316;border-radius:999px}
       @media(max-width:760px){
         .cafe-page-inner{padding:12px}
         .cafe-page-header{padding-top:8px}
