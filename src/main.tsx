@@ -2,6 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
 import { AlertToastHost } from "./modules/alerts/AlertToastHost";
+import { AlertTimeEnhancer } from "./modules/alerts/AlertTimeEnhancer";
 import { LiveAlertDashboardEnhancer } from "./modules/alerts/LiveAlertDashboardEnhancer";
 import { CleaningActivityAlertEnhancer } from "./modules/alerts/CleaningActivityAlertEnhancer";
 import { CleaningOrderAlertEnhancer } from "./modules/alerts/CleaningOrderAlertEnhancer";
@@ -118,6 +119,7 @@ createRoot(document.getElementById("root")!).render(
         <MarketingSessionKeepalive />
         <MarketingAlertAcknowledgementEnhancer />
         <LiveAlertDashboardEnhancer />
+        <AlertTimeEnhancer />
         <WindowsNotificationControl />
         <AlertToastHost />
         <CleaningActivityAlertEnhancer />
