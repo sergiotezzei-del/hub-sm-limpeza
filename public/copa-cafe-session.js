@@ -1,6 +1,6 @@
 (() => {
   const SUPABASE_URL = 'https://dtdepfpkyiqtnsjztjit.supabase.co';
-  const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJkdGRlcGZwa3lpcXRuc2p6dGppdCIsInJvbGUiOiJhbm9uIiwiaWF0IjoxNzgzMTg5MjE3LCJleHAiOjIwOTg3NjUyMTd9.kNYAYQTw8gqUaYqRTqdcPtthXO5vbZD6XwxeBvhpRgo';
+  const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR0ZGVwZnBreWlxdG5zanp0aml0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMxODkyMTcsImV4cCI6MjA5ODc2NTIxN30.kNYAYQTw8gqUaYqRTqdcPtthXO5vbZD6XwxeBvhpRgo';
   const SESSION_KEY = 'hub-copa-cafe-session-v1';
 
   function parseStored() {
