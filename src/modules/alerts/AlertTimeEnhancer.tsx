@@ -26,16 +26,6 @@ export function AlertTimeEnhancer() {
     let busy = false;
     let frame = 0;
 
-    const decorate = () => {
-      if (frame) cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => {
-        frame = 0;
-        ensureCreateTimeField(rules, refreshRules);
-        decorateRuleCards(rules, refreshRules);
-        decoratePendingCards(rules);
-      });
-    };
-
     const refreshRules = async () => {
       if (busy) return;
       busy = true;
@@ -47,6 +37,16 @@ export function AlertTimeEnhancer() {
       } finally {
         busy = false;
       }
+    };
+
+    const decorate = () => {
+      if (frame) cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        ensureCreateTimeField(() => rules, refreshRules);
+        decorateRuleCards(rules, refreshRules);
+        decoratePendingCards(rules);
+      });
     };
 
     void refreshRules();
@@ -71,7 +71,7 @@ export function AlertTimeEnhancer() {
 }
 
 function ensureCreateTimeField(
-  rules: AlertRuleTimeRow[],
+  getRules: () => AlertRuleTimeRow[],
   refreshRules: () => Promise<void>,
 ) {
   const form = document.querySelector<HTMLFormElement>(".hub-alert-form");
@@ -95,7 +95,7 @@ function ensureCreateTimeField(
     const selectedTime = normalizeTime(input.value);
     if (!selectedTime) return;
 
-    const beforeIds = new Set(rules.map((rule) => rule.id));
+    const beforeIds = new Set(getRules().map((rule) => rule.id));
     const startedAt = Date.now();
 
     const persistWhenCreated = async () => {
