@@ -169,6 +169,14 @@ export async function saveOrganizationPerson(draft: OrganizationPersonDraft) {
   if (!department) throw new PatrimonyRemoteError(400, "Informe o setor da pessoa.");
 
   const id = draft.id ?? crypto.randomUUID();
+  const current = draft.id
+    ? await requestJson<PersonRow[]>(`organization_people?id=eq.${encodeURIComponent(draft.id)}&select=*`)
+    : [];
+  const existing = current[0];
+  const preservedTeamName = draft.teamName === undefined
+    ? existing?.team_name ?? null
+    : cleanOptional(draft.teamName);
+
   const rows = await requestJson<PersonRow[]>("organization_people?on_conflict=id", {
     method: "POST",
     headers: { Prefer: "resolution=merge-duplicates,return=representation" },
@@ -177,11 +185,12 @@ export async function saveOrganizationPerson(draft: OrganizationPersonDraft) {
       name,
       person_type: draft.personType,
       department: draft.department.trim() || "Não informado",
-      team_name: cleanOptional(draft.teamName),
+      team_name: preservedTeamName,
       job_title: cleanOptional(draft.jobTitle),
       email: cleanOptional(draft.email),
       phone: cleanOptional(draft.phone),
-      active: draft.active ?? true,
+      managed_user_id: existing?.managed_user_id ?? null,
+      active: draft.active ?? existing?.active ?? true,
       notes: cleanOptional(draft.notes),
     }]),
   });
@@ -223,6 +232,9 @@ export async function savePatrimonyItem(draft: PatrimonyItemDraft) {
     throw new PatrimonyRemoteError(400, `A quantidade total não pode ficar abaixo de ${usedQuantity}. Já existem unidades entregues, em manutenção ou perdidas.`);
   }
   const availableQuantity = Math.max(0, quantity - usedQuantity);
+  const preservedEquipmentModelId = draft.equipmentModelId === undefined
+    ? existing?.equipment_model_id ?? null
+    : draft.equipmentModelId || null;
 
   const rows = await requestJson<ItemRow[]>("patrimony_items?on_conflict=id", {
     method: "POST",
@@ -233,7 +245,7 @@ export async function savePatrimonyItem(draft: PatrimonyItemDraft) {
       name,
       category,
       tracking_mode: draft.trackingMode,
-      equipment_model_id: draft.equipmentModelId || null,
+      equipment_model_id: preservedEquipmentModelId,
       brand: cleanOptional(draft.brand),
       model: cleanOptional(draft.model),
       serial_number: cleanOptional(draft.serialNumber),
