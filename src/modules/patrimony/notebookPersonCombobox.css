@@ -1,1 +1,251 @@
-/* placeholder */
+.hub-person-native-select-hidden,
+.notebook-modal [data-hub-person-search='true'] {
+  display: none !important;
+}
+
+.hub-person-combobox {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 46px;
+  width: 100%;
+  margin-top: 8px;
+  border: 1px solid #d5dde8;
+  border-radius: 12px;
+  background: #fff;
+  overflow: visible;
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+
+.hub-person-combobox.open,
+.hub-person-combobox:focus-within {
+  border-color: #d35a09;
+  box-shadow: 0 0 0 3px rgba(211, 90, 9, .11);
+}
+
+.hub-person-combobox-input {
+  width: 100% !important;
+  min-width: 0;
+  height: 48px !important;
+  margin: 0 !important;
+  padding: 0 14px !important;
+  border: 0 !important;
+  border-radius: 12px 0 0 12px !important;
+  outline: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  color: #13243b;
+  font: inherit;
+  font-weight: 600;
+}
+
+.hub-person-combobox-input::placeholder {
+  color: #7d8796;
+  font-weight: 500;
+}
+
+.hub-person-combobox-toggle {
+  height: 48px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-left: 1px solid #e3e8ef;
+  border-radius: 0 12px 12px 0;
+  background: #fff;
+  color: #13243b;
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.hub-person-combobox-toggle:hover {
+  background: #f7f8fa;
+}
+
+.hub-person-combobox-menu {
+  position: absolute;
+  z-index: 10030;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  max-height: 310px;
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid #d9e0e9;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 14px 38px rgba(15, 31, 52, .18);
+}
+
+.hub-person-combobox-menu[hidden] {
+  display: none;
+}
+
+.hub-person-combobox-option,
+.hub-person-combobox-add {
+  display: block;
+  width: 100%;
+  min-height: 40px;
+  margin: 0;
+  padding: 9px 11px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  text-align: left;
+  color: #182b45;
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.hub-person-combobox-option:hover,
+.hub-person-combobox-option.selected {
+  background: #f2f5f8;
+}
+
+.hub-person-combobox-option.selected {
+  font-weight: 700;
+}
+
+.hub-person-combobox-add {
+  position: sticky;
+  bottom: 0;
+  margin-top: 5px;
+  border-top: 1px solid #edf0f4;
+  border-radius: 0 0 8px 8px;
+  background: #fff7f1;
+  color: #c85006;
+  font-weight: 800;
+}
+
+.hub-person-combobox-add:hover {
+  background: #ffeadc;
+}
+
+.hub-person-combobox-empty {
+  padding: 12px 10px;
+  color: #758195;
+  font-size: 13px;
+}
+
+.hub-new-person-overlay {
+  position: fixed;
+  z-index: 12000;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(15, 25, 40, .58);
+}
+
+.hub-new-person-card {
+  width: min(620px, 100%);
+  max-height: min(760px, calc(100vh - 36px));
+  overflow: auto;
+  padding: 22px;
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 24px 70px rgba(10, 22, 38, .28);
+}
+
+.hub-new-person-card header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.hub-new-person-card header h3 {
+  margin: 0 0 4px;
+  color: #13243b;
+  font-size: 20px;
+}
+
+.hub-new-person-card header p {
+  margin: 0;
+  color: #66748a;
+  font-size: 13px;
+}
+
+.hub-new-person-card header > button {
+  width: 38px;
+  height: 38px;
+  border: 1px solid #d9e0e9;
+  border-radius: 10px;
+  background: #fff;
+  font-size: 22px;
+  cursor: pointer;
+}
+
+.hub-new-person-card > label,
+.hub-new-person-grid label {
+  display: grid;
+  gap: 7px;
+  color: #24364d;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.hub-new-person-card input {
+  width: 100%;
+  height: 46px;
+  padding: 0 12px;
+  border: 1px solid #d5dde8;
+  border-radius: 10px;
+  outline: none;
+  font: inherit;
+}
+
+.hub-new-person-card input:focus {
+  border-color: #d35a09;
+  box-shadow: 0 0 0 3px rgba(211, 90, 9, .1);
+}
+
+.hub-new-person-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.hub-new-person-error {
+  min-height: 20px;
+  margin-top: 10px;
+  color: #b42318;
+  font-size: 13px;
+}
+
+.hub-new-person-card footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #e7ebf0;
+}
+
+.hub-new-person-card footer button {
+  min-height: 42px;
+  padding: 0 16px;
+  border: 1px solid #d5dde8;
+  border-radius: 10px;
+  background: #fff;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.hub-new-person-card footer button.primary {
+  border-color: #d35a09;
+  background: #d35a09;
+  color: #fff;
+}
+
+@media (max-width: 640px) {
+  .hub-new-person-card {
+    padding: 18px;
+  }
+
+  .hub-new-person-grid {
+    grid-template-columns: 1fr;
+  }
+}
