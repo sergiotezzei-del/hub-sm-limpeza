@@ -1,23 +1,29 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import {
-  authenticatedSupabaseFetch,
-  SUPABASE_URL,
-} from "../security/services/supabaseClient";
+  getEquipmentModelErrorMessage,
+  loadEquipmentModels,
+  saveEquipmentModel,
+  setEquipmentModelActive,
+} from "./services/equipmentModelService";
 import {
   assignPatrimonyItem,
   getPatrimonyErrorMessage,
   loadPatrimonyDataset,
+  saveOrganizationPerson,
   savePatrimonyItem,
+  setOrganizationPersonActive,
 } from "./services/patrimonyService";
 import type {
-  OrganizationPerson,
+  OrganizationPersonDraft,
   PatrimonyAssignment,
   PatrimonyDataset,
+  PatrimonyEquipmentModel,
   PatrimonyItem,
   PatrimonyPersonType,
 } from "./types/patrimony.types";
 import "./notebookInventory.css";
+import "./notebookInventoryCatalog.css";
 
 const EMPTY_DATASET: PatrimonyDataset = {
   people: [],
@@ -28,9 +34,7 @@ const EMPTY_DATASET: PatrimonyDataset = {
   movements: [],
 };
 
-type InventoryPerson = OrganizationPerson & { teamName?: string };
-type TeamRow = { id: string; team_name: string | null };
-type ModalMode = "person" | "notebook" | "assign" | null;
+type ModalMode = "people" | "person-new" | "models" | "model-new" | "notebook" | "assign" | null;
 
 type PersonDraft = {
   name: string;
@@ -40,16 +44,16 @@ type PersonDraft = {
   jobTitle: string;
 };
 
+type ModelDraft = {
+  name: string;
+  description: string;
+};
+
 type NotebookDraft = {
-  code: string;
-  brand: string;
-  model: string;
+  modelId: string;
   serialNumber: string;
-  processor: string;
-  ram: string;
-  storage: string;
-  notes: string;
   personId: string;
+  notes: string;
 };
 
 const emptyPerson = (): PersonDraft => ({
@@ -60,17 +64,8 @@ const emptyPerson = (): PersonDraft => ({
   jobTitle: "",
 });
 
-const emptyNotebook = (): NotebookDraft => ({
-  code: "",
-  brand: "",
-  model: "",
-  serialNumber: "",
-  processor: "",
-  ram: "",
-  storage: "",
-  notes: "",
-  personId: "",
-});
+const emptyModel = (): ModelDraft => ({ name: "", description: "" });
+const emptyNotebook = (): NotebookDraft => ({ modelId: "", serialNumber: "", personId: "", notes: "" });
 
 function normalize(value: string) {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
@@ -99,52 +94,8 @@ function notebookDescription(item: PatrimonyItem) {
   return [item.brand, item.model].filter(Boolean).join(" ") || item.name;
 }
 
-function inventoryNotes(draft: NotebookDraft) {
-  const details = [
-    draft.processor && `Processador: ${draft.processor.trim()}`,
-    draft.ram && `RAM: ${draft.ram.trim()}`,
-    draft.storage && `Armazenamento: ${draft.storage.trim()}`,
-    draft.notes.trim(),
-  ].filter(Boolean);
-  return details.join(" | ");
-}
-
-async function loadTeamMap() {
-  const response = await authenticatedSupabaseFetch(
-    `${SUPABASE_URL}/rest/v1/organization_people?select=id,team_name`,
-    { headers: { "Content-Type": "application/json" } },
-  );
-  if (!response.ok) throw new Error("Não foi possível carregar as equipes do inventário.");
-  const rows = await response.json() as TeamRow[];
-  return new Map(rows.map((row) => [row.id, row.team_name ?? ""]));
-}
-
-async function saveInventoryPerson(draft: PersonDraft) {
-  const id = crypto.randomUUID();
-  const response = await authenticatedSupabaseFetch(
-    `${SUPABASE_URL}/rest/v1/organization_people?on_conflict=id`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Prefer: "resolution=merge-duplicates,return=representation",
-      },
-      body: JSON.stringify([{
-        id,
-        name: draft.name.trim(),
-        person_type: draft.personType,
-        department: draft.department.trim(),
-        team_name: draft.teamName.trim() || null,
-        job_title: draft.jobTitle.trim() || null,
-        active: true,
-      }]),
-    },
-  );
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(text || "Não foi possível cadastrar a pessoa.");
-  }
-  return id;
+function personLabel(person: { name: string; department: string; teamName?: string }) {
+  return `${person.name} · ${person.department}${person.teamName ? ` · ${person.teamName}` : ""}`;
 }
 
 export function NotebookInventoryFeature() {
@@ -154,15 +105,17 @@ export function NotebookInventoryFeature() {
   const [host, setHost] = useState<HTMLElement | null>(null);
   const [active, setActive] = useState(false);
   const [dataset, setDataset] = useState<PatrimonyDataset>(EMPTY_DATASET);
-  const [people, setPeople] = useState<InventoryPerson[]>([]);
+  const [models, setModels] = useState<PatrimonyEquipmentModel[]>([]);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [search, setSearch] = useState("");
   const [departmentFilter, setDepartmentFilter] = useState("all");
   const [teamFilter, setTeamFilter] = useState("all");
+  const [directorySearch, setDirectorySearch] = useState("");
   const [modal, setModal] = useState<ModalMode>(null);
   const [personDraft, setPersonDraft] = useState<PersonDraft>(emptyPerson);
+  const [modelDraft, setModelDraft] = useState<ModelDraft>(emptyModel);
   const [notebookDraft, setNotebookDraft] = useState<NotebookDraft>(emptyNotebook);
   const [assignItemId, setAssignItemId] = useState("");
   const [assignPersonId, setAssignPersonId] = useState("");
@@ -232,6 +185,15 @@ export function NotebookInventoryFeature() {
     if (active) void refresh();
   }, [active]);
 
+  const people = useMemo(
+    () => dataset.people.filter((person) => person.active).sort((a, b) => a.name.localeCompare(b.name, "pt-BR")),
+    [dataset.people],
+  );
+  const activeModels = useMemo(
+    () => models.filter((model) => model.active && normalize(model.category) === "notebook"),
+    [models],
+  );
+  const modelById = useMemo(() => new Map(models.map((model) => [model.id, model])), [models]);
   const notebookItems = useMemo(
     () => dataset.items.filter((item) => item.active && item.trackingMode === "individual" && isNotebook(item)),
     [dataset.items],
@@ -244,15 +206,15 @@ export function NotebookInventoryFeature() {
     const ids = new Set(notebookItems.map((item) => item.id));
     return new Map(activeAssignments.filter((assignment) => ids.has(assignment.itemId)).map((assignment) => [assignment.itemId, assignment]));
   }, [activeAssignments, notebookItems]);
-  const personById = useMemo(() => new Map(people.map((person) => [person.id, person])), [people]);
+  const personById = useMemo(() => new Map(dataset.people.map((person) => [person.id, person])), [dataset.people]);
   const itemById = useMemo(() => new Map(notebookItems.map((item) => [item.id, item])), [notebookItems]);
 
   const departments = useMemo(
-    () => Array.from(new Set(people.filter((person) => person.active).map((person) => person.department).filter(Boolean))).sort((a, b) => a.localeCompare(b, "pt-BR")),
+    () => Array.from(new Set(people.map((person) => person.department).filter(Boolean))).sort((a, b) => a.localeCompare(b, "pt-BR")),
     [people],
   );
   const teams = useMemo(
-    () => Array.from(new Set(people.filter((person) => person.active).map((person) => person.teamName ?? "").filter(Boolean))).sort((a, b) => a.localeCompare(b, "pt-BR")),
+    () => Array.from(new Set(people.map((person) => person.teamName ?? "").filter(Boolean))).sort((a, b) => a.localeCompare(b, "pt-BR")),
     [people],
   );
 
@@ -261,23 +223,30 @@ export function NotebookInventoryFeature() {
     return notebookItems.filter((item) => {
       const assignment = notebookAssignmentByItem.get(item.id);
       const person = assignment ? personById.get(assignment.personId) : undefined;
+      const model = item.equipmentModelId ? modelById.get(item.equipmentModelId) : undefined;
       const matchesDepartment = departmentFilter === "all" || person?.department === departmentFilter;
       const matchesTeam = teamFilter === "all" || person?.teamName === teamFilter;
-      const haystack = normalize(`${item.code} ${item.brand ?? ""} ${item.model ?? ""} ${item.serialNumber ?? ""} ${person?.name ?? ""} ${person?.department ?? ""} ${person?.teamName ?? ""}`);
+      const haystack = normalize(`${item.code} ${item.brand ?? ""} ${item.model ?? ""} ${item.serialNumber ?? ""} ${item.notes ?? ""} ${model?.name ?? ""} ${model?.description ?? ""} ${person?.name ?? ""} ${person?.department ?? ""} ${person?.teamName ?? ""}`);
       return matchesDepartment && matchesTeam && (!term || haystack.includes(term));
     }).sort((a, b) => a.code.localeCompare(b.code, "pt-BR", { numeric: true }));
-  }, [departmentFilter, notebookAssignmentByItem, notebookItems, personById, search, teamFilter]);
+  }, [departmentFilter, modelById, notebookAssignmentByItem, notebookItems, personById, search, teamFilter]);
 
   const peopleWithNotebook = useMemo(
     () => new Set(Array.from(notebookAssignmentByItem.values()).map((assignment) => assignment.personId)),
     [notebookAssignmentByItem],
   );
   const peopleWithoutNotebook = useMemo(
-    () => people.filter((person) => person.active && !peopleWithNotebook.has(person.id)).sort((a, b) => a.name.localeCompare(b.name, "pt-BR")),
+    () => people.filter((person) => !peopleWithNotebook.has(person.id)),
     [people, peopleWithNotebook],
   );
-
-  const modelCount = useMemo(() => new Set(notebookItems.map((item) => normalize(`${item.brand ?? ""} ${item.model ?? ""}`)).filter(Boolean)).size, [notebookItems]);
+  const directoryPeople = useMemo(() => {
+    const term = normalize(directorySearch);
+    return people.filter((person) => !term || normalize(`${person.name} ${person.department} ${person.teamName ?? ""} ${person.jobTitle ?? ""}`).includes(term));
+  }, [directorySearch, people]);
+  const modelCount = useMemo(
+    () => new Set(notebookItems.map((item) => item.equipmentModelId || normalize(`${item.brand ?? ""} ${item.model ?? ""}`)).filter(Boolean)).size,
+    [notebookItems],
+  );
 
   const teamSummary = useMemo(() => {
     const counts = new Map<string, number>();
@@ -292,11 +261,10 @@ export function NotebookInventoryFeature() {
 
   async function refresh() {
     setLoading(true);
-    setNotice("");
     try {
-      const [nextDataset, teamMap] = await Promise.all([loadPatrimonyDataset(), loadTeamMap()]);
+      const [nextDataset, nextModels] = await Promise.all([loadPatrimonyDataset(), loadEquipmentModels()]);
       setDataset(nextDataset);
-      setPeople(nextDataset.people.map((person) => ({ ...person, teamName: teamMap.get(person.id) || undefined })));
+      setModels(nextModels);
     } catch (error) {
       setNotice(getPatrimonyErrorMessage(error));
     } finally {
@@ -320,11 +288,13 @@ export function NotebookInventoryFeature() {
   }
 
   function openNotebook() {
-    setNotebookDraft({ ...emptyNotebook(), code: nextNotebookCode() });
+    setNotice("");
+    setNotebookDraft({ ...emptyNotebook(), modelId: activeModels[0]?.id ?? "" });
     setModal("notebook");
   }
 
   function openAssign(itemId: string) {
+    setNotice("");
     setAssignItemId(itemId);
     setAssignPersonId("");
     setModal("assign");
@@ -336,10 +306,18 @@ export function NotebookInventoryFeature() {
     setBusy(true);
     setNotice("");
     try {
-      await saveInventoryPerson(personDraft);
+      const draft: OrganizationPersonDraft = {
+        name: personDraft.name,
+        personType: personDraft.personType,
+        department: personDraft.department,
+        teamName: personDraft.teamName,
+        jobTitle: personDraft.jobTitle,
+        active: true,
+      };
+      await saveOrganizationPerson(draft);
       setPersonDraft(emptyPerson());
-      setModal(null);
-      setNotice("Pessoa cadastrada para o inventário.");
+      setModal("people");
+      setNotice("Usuário adicionado ao diretório da empresa.");
       await refresh();
     } catch (error) {
       setNotice(getPatrimonyErrorMessage(error));
@@ -348,23 +326,91 @@ export function NotebookInventoryFeature() {
     }
   }
 
-  async function handleSaveNotebook(event: FormEvent) {
-    event.preventDefault();
-    if (busy || !notebookDraft.code.trim() || !notebookDraft.brand.trim() || !notebookDraft.model.trim()) return;
+  async function handleDeactivatePerson(personId: string) {
+    if (busy) return;
+    if (peopleWithNotebook.has(personId)) {
+      setNotice("Este usuário está com notebook vinculado. Transfira ou devolva o equipamento antes de excluir.");
+      return;
+    }
     setBusy(true);
     setNotice("");
     try {
+      await setOrganizationPersonActive(personId, false);
+      setNotice("Usuário removido da lista ativa. O histórico foi preservado.");
+      await refresh();
+    } catch (error) {
+      setNotice(getPatrimonyErrorMessage(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleSaveModel(event: FormEvent) {
+    event.preventDefault();
+    if (busy || !modelDraft.name.trim() || !modelDraft.description.trim()) return;
+    setBusy(true);
+    setNotice("");
+    try {
+      await saveEquipmentModel({
+        name: modelDraft.name,
+        description: modelDraft.description,
+        category: "Notebook",
+        active: true,
+      });
+      setModelDraft(emptyModel());
+      setModal("models");
+      setNotice("Modelo salvo. A partir de agora ele fica disponível para selecionar nos próximos notebooks.");
+      await refresh();
+    } catch (error) {
+      setNotice(getEquipmentModelErrorMessage(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleDeactivateModel(modelId: string) {
+    if (busy) return;
+    setBusy(true);
+    setNotice("");
+    try {
+      await setEquipmentModelActive(modelId, false);
+      setNotice("Modelo removido das novas seleções. Notebooks já cadastrados continuam preservados.");
+      await refresh();
+    } catch (error) {
+      setNotice(getEquipmentModelErrorMessage(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleSaveNotebook(event: FormEvent) {
+    event.preventDefault();
+    if (busy || !notebookDraft.modelId) return;
+    const selectedModel = modelById.get(notebookDraft.modelId);
+    if (!selectedModel) {
+      setNotice("Selecione um modelo de notebook.");
+      return;
+    }
+    setBusy(true);
+    setNotice("");
+    try {
+      const noteSnapshot = [
+        selectedModel.description,
+        notebookDraft.notes.trim() ? `Observação: ${notebookDraft.notes.trim()}` : "",
+      ].filter(Boolean).join(" · ");
+      const code = nextNotebookCode();
       const saved = await savePatrimonyItem({
-        code: notebookDraft.code,
-        name: "Notebook",
+        code,
+        name: selectedModel.name,
         category: "Notebook",
         trackingMode: "individual",
-        brand: notebookDraft.brand,
-        model: notebookDraft.model,
+        equipmentModelId: selectedModel.id,
+        brand: selectedModel.brand,
+        model: selectedModel.model || selectedModel.name,
         serialNumber: notebookDraft.serialNumber,
         unit: "Unidade",
         totalQuantity: 1,
-        notes: inventoryNotes(notebookDraft),
+        notes: noteSnapshot,
         active: true,
       });
       if (notebookDraft.personId) {
@@ -378,7 +424,7 @@ export function NotebookInventoryFeature() {
       }
       setNotebookDraft(emptyNotebook());
       setModal(null);
-      setNotice(`${saved.code} inventariado${notebookDraft.personId ? " e vinculado ao responsável" : " como disponível"}.`);
+      setNotice(`${saved.code} cadastrado${notebookDraft.personId ? " e vinculado ao usuário" : " como reserva"}.`);
       await refresh();
     } catch (error) {
       setNotice(getPatrimonyErrorMessage(error));
@@ -403,7 +449,7 @@ export function NotebookInventoryFeature() {
       const item = itemById.get(assignItemId);
       const person = personById.get(assignPersonId);
       setModal(null);
-      setNotice(`${item?.code ?? "Notebook"} vinculado a ${person?.name ?? "responsável"}.`);
+      setNotice(`${item?.code ?? "Notebook"} vinculado a ${person?.name ?? "usuário"}.`);
       await refresh();
     } catch (error) {
       setNotice(getPatrimonyErrorMessage(error));
@@ -434,10 +480,11 @@ export function NotebookInventoryFeature() {
         <div>
           <p>PATRIMÔNIO · TI</p>
           <h2>Inventário de Notebooks</h2>
-          <span>Quantidade exata por equipamento, responsável, setor, equipe e modelo.</span>
+          <span>Selecione o modelo e o usuário. O restante fica salvo no cadastro do modelo.</span>
         </div>
         <div className="notebook-inventory-actions">
-          <button type="button" onClick={() => { setPersonDraft(emptyPerson()); setModal("person"); }}>+ Pessoa</button>
+          <button type="button" onClick={() => { setNotice(""); setDirectorySearch(""); setModal("people"); }}>Usuários</button>
+          <button type="button" onClick={() => { setNotice(""); setModal("models"); }}>Modelos</button>
           <button className="primary" type="button" onClick={openNotebook}>+ Inventariar notebook</button>
         </div>
       </header>
@@ -446,15 +493,15 @@ export function NotebookInventoryFeature() {
 
       <div className="notebook-inventory-stats">
         <article><strong>{notebookItems.length}</strong><span>Notebooks inventariados</span></article>
-        <article><strong>{notebookAssignmentByItem.size}</strong><span>Com responsável</span></article>
-        <article><strong>{notebookItems.length - notebookAssignmentByItem.size}</strong><span>Sem responsável / reserva</span></article>
-        <article><strong>{modelCount}</strong><span>Modelos diferentes</span></article>
+        <article><strong>{notebookAssignmentByItem.size}</strong><span>Com usuário</span></article>
+        <article><strong>{notebookItems.length - notebookAssignmentByItem.size}</strong><span>Reserva / sem usuário</span></article>
+        <article><strong>{modelCount}</strong><span>Modelos em uso</span></article>
       </div>
 
       <div className="notebook-inventory-toolbar">
         <label className="grow">
           <span>Buscar</span>
-          <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Patrimônio, modelo, série, pessoa ou equipe" />
+          <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Patrimônio, modelo, série, usuário ou equipe" />
         </label>
         <label>
           <span>Setor</span>
@@ -492,18 +539,20 @@ export function NotebookInventoryFeature() {
           {filteredNotebooks.map((item) => {
             const assignment = notebookAssignmentByItem.get(item.id);
             const person = assignment ? personById.get(assignment.personId) : undefined;
+            const model = item.equipmentModelId ? modelById.get(item.equipmentModelId) : undefined;
             return (
               <article className="notebook-card" key={item.id}>
                 <div className="notebook-card-main">
                   <span className="notebook-code">{item.code}</span>
                   <div>
-                    <h4>{notebookDescription(item)}</h4>
+                    <h4>{model?.name || notebookDescription(item)}</h4>
+                    <p>{model?.description || item.notes || "Descrição não informada"}</p>
                     <p>Série: {item.serialNumber || "não informada"}</p>
                   </div>
                 </div>
                 <div className="notebook-card-owner">
-                  <small>Responsável</small>
-                  <strong>{person?.name || "Sem responsável"}</strong>
+                  <small>Usuário</small>
+                  <strong>{person?.name || "Sem usuário"}</strong>
                   <span>{person ? `${person.department}${person.teamName ? ` · ${person.teamName}` : ""}` : "Disponível / reserva"}</span>
                 </div>
                 <div className="notebook-card-status">
@@ -518,14 +567,14 @@ export function NotebookInventoryFeature() {
 
       <section className="notebook-without-owner-section">
         <div className="notebook-section-title">
-          <h3>Pessoas cadastradas sem notebook</h3>
+          <h3>Usuários sem notebook</h3>
           <small>{peopleWithoutNotebook.length}</small>
         </div>
         <div className="notebook-people-chips">
-          {peopleWithoutNotebook.slice(0, 60).map((person) => (
+          {peopleWithoutNotebook.slice(0, 80).map((person) => (
             <span key={person.id}>{person.name}<small>{person.department}{person.teamName ? ` · ${person.teamName}` : ""}</small></span>
           ))}
-          {peopleWithoutNotebook.length === 0 && <p>Nenhuma pessoa pendente.</p>}
+          {peopleWithoutNotebook.length === 0 && <p>Nenhum usuário pendente.</p>}
         </div>
       </section>
     </section>,
@@ -535,41 +584,89 @@ export function NotebookInventoryFeature() {
   const modalPortal = modal ? createPortal(
     <div className="notebook-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) setModal(null); }}>
       <div className="notebook-modal" role="dialog" aria-modal="true">
-        {modal === "person" && (
+        {modal === "people" && (
+          <div className="notebook-directory-panel">
+            <header><div><h3>Usuários da empresa</h3><p>Este é o diretório central usado pelo inventário.</p></div><button type="button" onClick={() => setModal(null)} disabled={busy}>×</button></header>
+            {notice && <div className="notebook-inventory-notice" role="status">{notice}</div>}
+            <div className="notebook-directory-toolbar">
+              <input value={directorySearch} onChange={(event) => setDirectorySearch(event.target.value)} placeholder="Buscar nome, setor ou equipe" />
+              <button className="primary" type="button" onClick={() => { setPersonDraft(emptyPerson()); setNotice(""); setModal("person-new"); }}>+ Novo usuário</button>
+            </div>
+            <div className="notebook-directory-list">
+              {directoryPeople.map((person) => (
+                <article key={person.id}>
+                  <div><strong>{person.name}</strong><span>{person.department}{person.teamName ? ` · ${person.teamName}` : ""}{person.jobTitle ? ` · ${person.jobTitle}` : ""}</span></div>
+                  <button type="button" className="danger-link" onClick={() => { void handleDeactivatePerson(person.id); }} disabled={busy}>Excluir</button>
+                </article>
+              ))}
+              {directoryPeople.length === 0 && <p className="notebook-inventory-empty">Nenhum usuário encontrado.</p>}
+            </div>
+          </div>
+        )}
+
+        {modal === "person-new" && (
           <form onSubmit={handleSavePerson}>
-            <header><h3>Cadastrar pessoa</h3><button type="button" onClick={() => setModal(null)} disabled={busy}>×</button></header>
+            <header><div><h3>Novo usuário</h3><p>Cadastre somente se o nome ainda não estiver na lista.</p></div><button type="button" onClick={() => setModal("people")} disabled={busy}>×</button></header>
+            {notice && <div className="notebook-inventory-notice" role="status">{notice}</div>}
             <label>Nome<input required value={personDraft.name} onChange={(event) => setPersonDraft({ ...personDraft, name: event.target.value })} /></label>
-            <label>Tipo<select value={personDraft.personType} onChange={(event) => setPersonDraft({ ...personDraft, personType: event.target.value as PatrimonyPersonType })}><option value="funcionario">Funcionário</option><option value="corretor_terceirizado">Corretor</option><option value="consultor_terceirizado">Consultor</option><option value="outro">Outro</option></select></label>
-            <label>Setor<input required value={personDraft.department} onChange={(event) => setPersonDraft({ ...personDraft, department: event.target.value })} placeholder="Ex.: Vendas, Locação, Contratos" /></label>
-            <label>Equipe<input value={personDraft.teamName} onChange={(event) => setPersonDraft({ ...personDraft, teamName: event.target.value })} placeholder="Ex.: Equipe Fernando" /></label>
-            <label>Função<input value={personDraft.jobTitle} onChange={(event) => setPersonDraft({ ...personDraft, jobTitle: event.target.value })} placeholder="Ex.: Corretor de vendas" /></label>
-            <footer><button type="button" onClick={() => setModal(null)} disabled={busy}>Cancelar</button><button className="primary" type="submit" disabled={busy}>{busy ? "Salvando..." : "Salvar pessoa"}</button></footer>
+            <div className="notebook-modal-grid">
+              <label>Setor<input required value={personDraft.department} onChange={(event) => setPersonDraft({ ...personDraft, department: event.target.value })} placeholder="Ex.: Vendas, Locação, Financeiro" /></label>
+              <label>Equipe<input value={personDraft.teamName} onChange={(event) => setPersonDraft({ ...personDraft, teamName: event.target.value })} placeholder="Ex.: Equipe Fernando" /></label>
+              <label>Função<input value={personDraft.jobTitle} onChange={(event) => setPersonDraft({ ...personDraft, jobTitle: event.target.value })} placeholder="Ex.: Corretor de vendas" /></label>
+              <label>Tipo<select value={personDraft.personType} onChange={(event) => setPersonDraft({ ...personDraft, personType: event.target.value as PatrimonyPersonType })}><option value="funcionario">Funcionário</option><option value="corretor_terceirizado">Corretor</option><option value="consultor_terceirizado">Consultor</option><option value="prestador">Prestador</option><option value="outro">Outro</option></select></label>
+            </div>
+            <footer><button type="button" onClick={() => setModal("people")} disabled={busy}>Voltar</button><button className="primary" type="submit" disabled={busy}>{busy ? "Salvando..." : "Salvar usuário"}</button></footer>
+          </form>
+        )}
+
+        {modal === "models" && (
+          <div className="notebook-directory-panel">
+            <header><div><h3>Modelos de notebook</h3><p>Cadastre uma vez e selecione nas próximas máquinas.</p></div><button type="button" onClick={() => setModal(null)} disabled={busy}>×</button></header>
+            {notice && <div className="notebook-inventory-notice" role="status">{notice}</div>}
+            <div className="notebook-directory-toolbar models-toolbar"><span>{activeModels.length} modelo(s) disponível(is)</span><button className="primary" type="button" onClick={() => { setModelDraft(emptyModel()); setNotice(""); setModal("model-new"); }}>+ Novo modelo</button></div>
+            <div className="notebook-model-list">
+              {activeModels.map((model) => (
+                <article key={model.id}>
+                  <div><strong>{model.name}</strong><span>{model.description}</span></div>
+                  <button type="button" className="danger-link" onClick={() => { void handleDeactivateModel(model.id); }} disabled={busy}>Excluir</button>
+                </article>
+              ))}
+              {activeModels.length === 0 && <p className="notebook-inventory-empty">Nenhum modelo ativo.</p>}
+            </div>
+          </div>
+        )}
+
+        {modal === "model-new" && (
+          <form onSubmit={handleSaveModel}>
+            <header><div><h3>Novo modelo</h3><p>As especificações ficam todas juntas na descrição.</p></div><button type="button" onClick={() => setModal("models")} disabled={busy}>×</button></header>
+            {notice && <div className="notebook-inventory-notice" role="status">{notice}</div>}
+            <label>Nome do modelo<input required value={modelDraft.name} onChange={(event) => setModelDraft({ ...modelDraft, name: event.target.value })} placeholder="Ex.: Dell Latitude 5420" /></label>
+            <label>Descrição completa<textarea required value={modelDraft.description} onChange={(event) => setModelDraft({ ...modelDraft, description: event.target.value })} placeholder="Ex.: Intel Core i5 11ª geração · 8 GB RAM · SSD 256 GB" /></label>
+            <footer><button type="button" onClick={() => setModal("models")} disabled={busy}>Voltar</button><button className="primary" type="submit" disabled={busy}>{busy ? "Salvando..." : "Salvar modelo"}</button></footer>
           </form>
         )}
 
         {modal === "notebook" && (
           <form onSubmit={handleSaveNotebook}>
-            <header><h3>Inventariar notebook</h3><button type="button" onClick={() => setModal(null)} disabled={busy}>×</button></header>
-            <div className="notebook-modal-grid">
-              <label>Código patrimonial<input required value={notebookDraft.code} onChange={(event) => setNotebookDraft({ ...notebookDraft, code: event.target.value })} /></label>
-              <label>Marca<input required value={notebookDraft.brand} onChange={(event) => setNotebookDraft({ ...notebookDraft, brand: event.target.value })} placeholder="Dell, Lenovo, HP..." /></label>
-              <label>Modelo<input required value={notebookDraft.model} onChange={(event) => setNotebookDraft({ ...notebookDraft, model: event.target.value })} /></label>
-              <label>Número de série<input value={notebookDraft.serialNumber} onChange={(event) => setNotebookDraft({ ...notebookDraft, serialNumber: event.target.value })} /></label>
-              <label>Processador<input value={notebookDraft.processor} onChange={(event) => setNotebookDraft({ ...notebookDraft, processor: event.target.value })} placeholder="Opcional" /></label>
-              <label>Memória RAM<input value={notebookDraft.ram} onChange={(event) => setNotebookDraft({ ...notebookDraft, ram: event.target.value })} placeholder="Ex.: 8 GB" /></label>
-              <label>Armazenamento<input value={notebookDraft.storage} onChange={(event) => setNotebookDraft({ ...notebookDraft, storage: event.target.value })} placeholder="Ex.: SSD 256 GB" /></label>
-              <label>Responsável<select value={notebookDraft.personId} onChange={(event) => setNotebookDraft({ ...notebookDraft, personId: event.target.value })}><option value="">Sem responsável / reserva</option>{people.filter((person) => person.active).map((person) => <option key={person.id} value={person.id}>{person.name} · {person.department}{person.teamName ? ` · ${person.teamName}` : ""}</option>)}</select></label>
+            <header><div><h3>Inventariar notebook</h3><p>O código patrimonial será gerado automaticamente.</p></div><button type="button" onClick={() => setModal(null)} disabled={busy}>×</button></header>
+            {notice && <div className="notebook-inventory-notice" role="status">{notice}</div>}
+            <label>Modelo<select required value={notebookDraft.modelId} onChange={(event) => setNotebookDraft({ ...notebookDraft, modelId: event.target.value })}><option value="">Selecione</option>{activeModels.map((model) => <option key={model.id} value={model.id}>{model.name} — {model.description}</option>)}</select></label>
+            {notebookDraft.modelId && modelById.get(notebookDraft.modelId) && <div className="notebook-selected-model"><strong>{modelById.get(notebookDraft.modelId)?.name}</strong><span>{modelById.get(notebookDraft.modelId)?.description}</span></div>}
+            <label>Usuário<select value={notebookDraft.personId} onChange={(event) => setNotebookDraft({ ...notebookDraft, personId: event.target.value })}><option value="">Sem usuário / reserva</option>{people.map((person) => <option key={person.id} value={person.id}>{personLabel(person)}</option>)}</select></label>
+            <div className="notebook-modal-grid compact-grid">
+              <label>Número de série <small>(opcional)</small><input value={notebookDraft.serialNumber} onChange={(event) => setNotebookDraft({ ...notebookDraft, serialNumber: event.target.value })} /></label>
+              <label>Observação <small>(opcional)</small><input value={notebookDraft.notes} onChange={(event) => setNotebookDraft({ ...notebookDraft, notes: event.target.value })} placeholder="Ex.: marca na tampa" /></label>
             </div>
-            <label>Observação<textarea value={notebookDraft.notes} onChange={(event) => setNotebookDraft({ ...notebookDraft, notes: event.target.value })} /></label>
-            <footer><button type="button" onClick={() => setModal(null)} disabled={busy}>Cancelar</button><button className="primary" type="submit" disabled={busy}>{busy ? "Salvando..." : "Registrar notebook"}</button></footer>
+            <footer><button type="button" onClick={() => setModal(null)} disabled={busy}>Cancelar</button><button className="primary" type="submit" disabled={busy || !notebookDraft.modelId}>{busy ? "Salvando..." : "Registrar notebook"}</button></footer>
           </form>
         )}
 
         {modal === "assign" && (
           <form onSubmit={handleAssign}>
             <header><h3>Vincular notebook</h3><button type="button" onClick={() => setModal(null)} disabled={busy}>×</button></header>
+            {notice && <div className="notebook-inventory-notice" role="status">{notice}</div>}
             <p className="notebook-modal-info">{itemById.get(assignItemId)?.code} · {notebookDescription(itemById.get(assignItemId) ?? ({ name: "Notebook" } as PatrimonyItem))}</p>
-            <label>Responsável<select required value={assignPersonId} onChange={(event) => setAssignPersonId(event.target.value)}><option value="">Selecione</option>{people.filter((person) => person.active).map((person) => <option key={person.id} value={person.id}>{person.name} · {person.department}{person.teamName ? ` · ${person.teamName}` : ""}</option>)}</select></label>
+            <label>Usuário<select required value={assignPersonId} onChange={(event) => setAssignPersonId(event.target.value)}><option value="">Selecione</option>{people.map((person) => <option key={person.id} value={person.id}>{personLabel(person)}</option>)}</select></label>
             <footer><button type="button" onClick={() => setModal(null)} disabled={busy}>Cancelar</button><button className="primary" type="submit" disabled={busy || !assignPersonId}>{busy ? "Vinculando..." : "Confirmar vínculo"}</button></footer>
           </form>
         )}
