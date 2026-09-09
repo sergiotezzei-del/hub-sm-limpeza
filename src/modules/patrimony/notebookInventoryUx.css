@@ -1,0 +1,101 @@
+.notebook-selected-model {
+  display: none !important;
+}
+
+.hub-directory-person-search {
+  width: 100%;
+  margin: 6px 0 8px;
+  min-height: 40px;
+  border: 1px solid #cfd8e3;
+  border-radius: 10px;
+  padding: 0 12px;
+  font: inherit;
+  background: #fff;
+  color: #0f2746;
+}
+
+.hub-directory-person-search:focus {
+  outline: 2px solid rgba(207, 91, 9, 0.2);
+  border-color: #cf5b09;
+}
+
+.notebook-report-button {
+  white-space: nowrap;
+}
+
+.hub-save-success-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 12000;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(15, 39, 70, 0.48);
+}
+
+.hub-save-success-modal {
+  width: min(470px, 100%);
+  border-radius: 20px;
+  background: #fff;
+  box-shadow: 0 24px 70px rgba(15, 39, 70, 0.25);
+  padding: 30px;
+  text-align: center;
+  color: #0f2746;
+}
+
+.hub-save-success-icon {
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 14px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: #edf8ef;
+  color: #26763b;
+  font-size: 30px;
+  font-weight: 800;
+}
+
+.hub-save-success-modal h3 {
+  margin: 0;
+  font-size: 22px;
+}
+
+.hub-save-success-modal p {
+  margin: 8px 0 24px;
+  color: #617089;
+}
+
+.hub-save-success-actions {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.hub-save-success-actions button {
+  min-height: 42px;
+  border-radius: 10px;
+  border: 1px solid #cfd8e3;
+  padding: 0 16px;
+  background: #fff;
+  color: #0f2746;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.hub-save-success-actions button.primary {
+  border-color: #cf5b09;
+  background: #cf5b09;
+  color: #fff;
+}
+
+@media (max-width: 720px) {
+  .hub-save-success-actions {
+    flex-direction: column;
+  }
+
+  .hub-save-success-actions button {
+    width: 100%;
+  }
+}

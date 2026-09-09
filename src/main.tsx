@@ -26,6 +26,7 @@ import { MarketingAlertAcknowledgementEnhancer } from "./modules/marketing/Marke
 import { MarketingSessionKeepalive } from "./modules/marketing/MarketingSessionKeepalive";
 import { AirConditioningMapFeature } from "./modules/patrimony/AirConditioningMapFeature";
 import { NotebookInventoryFeatureV3 } from "./modules/patrimony/NotebookInventoryFeatureV3";
+import { NotebookInventoryUXEnhancer } from "./modules/patrimony/NotebookInventoryUXEnhancer";
 import { PatrimonyPeopleEquipmentFeature } from "./modules/patrimony/PatrimonyPeopleEquipmentFeature";
 import { PatrimonySpaceMapsFeature } from "./modules/patrimony/PatrimonySpaceMapsFeature";
 import { MarketingPushAttentionHost } from "./modules/marketing/MarketingPushAttentionHost";
@@ -42,6 +43,7 @@ import { RadioTestPage } from "./modules/radio/RadioTestPage";
 import { HubAuthSessionGuard } from "./modules/security/HubAuthSessionGuard";
 import { PublicServiceRequestPage } from "./modules/service-requests/PublicServiceRequestPage";
 import { isPwaStandalone } from "./pwaInstall";
+import { HubSaveSuccessHost } from "./shared/ui/HubSaveSuccessHost";
 import "./styles.css";
 import "./modules/alerts/alertsExtensions.css";
 import "./modules/alerts/dashboardAlignment.css";
@@ -116,6 +118,7 @@ createRoot(document.getElementById("root")!).render(
     ) : (
       <>
         <App />
+        <HubSaveSuccessHost />
         <HubAuthSessionGuard />
         <MarketingSessionKeepalive />
         <MarketingAlertAcknowledgementEnhancer />
@@ -136,6 +139,7 @@ createRoot(document.getElementById("root")!).render(
         <NeiaHistoryEnhancer />
         <AirConditioningMapFeature />
         <NotebookInventoryFeatureV3 />
+        <NotebookInventoryUXEnhancer />
         <PatrimonyPeopleEquipmentFeature />
         <PatrimonySpaceMapsFeature />
         <MarketingPushAttentionHost />
