@@ -25,7 +25,7 @@ import { NeiaHistoryEnhancer } from "./modules/cleaning/components/NeiaHistoryEn
 import { MarketingAlertAcknowledgementEnhancer } from "./modules/marketing/MarketingAlertAcknowledgementEnhancer";
 import { MarketingSessionKeepalive } from "./modules/marketing/MarketingSessionKeepalive";
 import { AirConditioningMapFeature } from "./modules/patrimony/AirConditioningMapFeature";
-import { NotebookInventoryFeatureV2 } from "./modules/patrimony/NotebookInventoryFeatureV2";
+import { NotebookInventoryFeatureV3 } from "./modules/patrimony/NotebookInventoryFeatureV3";
 import { PatrimonyPeopleEquipmentFeature } from "./modules/patrimony/PatrimonyPeopleEquipmentFeature";
 import { PatrimonySpaceMapsFeature } from "./modules/patrimony/PatrimonySpaceMapsFeature";
 import { MarketingPushAttentionHost } from "./modules/marketing/MarketingPushAttentionHost";
@@ -135,7 +135,7 @@ createRoot(document.getElementById("root")!).render(
         <NeiaDeliveryShortcutFeature />
         <NeiaHistoryEnhancer />
         <AirConditioningMapFeature />
-        <NotebookInventoryFeatureV2 />
+        <NotebookInventoryFeatureV3 />
         <PatrimonyPeopleEquipmentFeature />
         <PatrimonySpaceMapsFeature />
         <MarketingPushAttentionHost />
