@@ -19,6 +19,24 @@
   border-color: #cf5b09;
 }
 
+.notebook-offsite-field {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+}
+
+.notebook-offsite-field select {
+  width: 100%;
+  min-height: 40px;
+}
+
+.notebook-offsite-field small {
+  min-height: 15px;
+  color: #64748b;
+  font-size: 0.72rem;
+  font-weight: 500;
+}
+
 .notebook-report-button {
   white-space: nowrap;
 }

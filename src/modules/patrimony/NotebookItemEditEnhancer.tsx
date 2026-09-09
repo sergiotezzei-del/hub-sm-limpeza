@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { loadEquipmentModels } from "./services/equipmentModelService";
 import { loadPatrimonyDataset } from "./services/patrimonyService";
+import { loadPersonNotebookUsage } from "./services/personNotebookUsageService";
 import {
   getNotebookItemEditErrorMessage,
   loadNotebookItemAudit,
@@ -43,12 +44,19 @@ function formatDate(value: string) {
   }
 }
 
+function openQuantity(quantity: number, returnedQuantity: number) {
+  return Math.max(0, quantity - returnedQuantity);
+}
+
 export function NotebookItemEditEnhancer() {
   const [item, setItem] = useState<PatrimonyItem | null>(null);
   const [models, setModels] = useState<PatrimonyEquipmentModel[]>([]);
   const [modelId, setModelId] = useState("");
   const [serialNumber, setSerialNumber] = useState("");
   const [observation, setObservation] = useState("");
+  const [personId, setPersonId] = useState("");
+  const [personName, setPersonName] = useState("");
+  const [offsiteUse, setOffsiteUse] = useState(false);
   const [reason, setReason] = useState("");
   const [history, setHistory] = useState<NotebookItemAuditEntry[]>([]);
   const [busy, setBusy] = useState(false);
@@ -93,7 +101,11 @@ export function NotebookItemEditEnhancer() {
     setError("");
     setMessage("");
     try {
-      const [dataset, nextModels] = await Promise.all([loadPatrimonyDataset(), loadEquipmentModels()]);
+      const [dataset, nextModels, usageByPersonId] = await Promise.all([
+        loadPatrimonyDataset(),
+        loadEquipmentModels(),
+        loadPersonNotebookUsage(),
+      ]);
       const notebook = dataset.items.find((entry) => entry.active && entry.code === code);
       if (!notebook) {
         setError(`Não encontrei o notebook ${code}. Atualize a tela e tente novamente.`);
@@ -102,11 +114,18 @@ export function NotebookItemEditEnhancer() {
       const currentModel = notebook.equipmentModelId
         ? nextModels.find((model) => model.id === notebook.equipmentModelId)
         : nextModels.find((model) => normalize(model.name) === normalize(notebook.name));
+      const assignment = dataset.assignments.find(
+        (entry) => entry.itemId === notebook.id && openQuantity(entry.quantity, entry.returnedQuantity) > 0,
+      );
+      const owner = assignment ? dataset.people.find((entry) => entry.id === assignment.personId) : undefined;
       setItem(notebook);
       setModels(nextModels);
       setModelId(currentModel?.id ?? notebook.equipmentModelId ?? "");
       setSerialNumber(notebook.serialNumber ?? "");
       setObservation(extractObservation(notebook, currentModel));
+      setPersonId(owner?.id ?? "");
+      setPersonName(owner?.name ?? "");
+      setOffsiteUse(owner ? Boolean(usageByPersonId.get(owner.id)) : false);
       setReason("");
       setHistory([]);
       void loadNotebookItemAudit(notebook.id).then(setHistory).catch(() => setHistory([]));
@@ -132,15 +151,22 @@ export function NotebookItemEditEnhancer() {
         equipmentModelId: modelId,
         serialNumber,
         observation,
+        offsiteUse: personId ? offsiteUse : false,
         actorName: getActorName(),
         reason,
       });
-      const [dataset, nextHistory] = await Promise.all([loadPatrimonyDataset(), loadNotebookItemAudit(item.id)]);
+      const [dataset, nextHistory, usageByPersonId] = await Promise.all([
+        loadPatrimonyDataset(),
+        loadNotebookItemAudit(item.id),
+        loadPersonNotebookUsage(),
+      ]);
       const updated = dataset.items.find((entry) => entry.id === item.id);
       if (updated) setItem(updated);
+      if (personId) setOffsiteUse(Boolean(usageByPersonId.get(personId)));
       setHistory(nextHistory);
       setReason("");
       setMessage("Notebook atualizado e alteração registrada no histórico.");
+      window.dispatchEvent(new CustomEvent("hub:organization-directory-updated"));
       const refreshButton = Array.from(document.querySelectorAll<HTMLButtonElement>(".notebook-inventory-toolbar button"))
         .find((button) => normalize(button.textContent ?? "").includes("atualizar"));
       refreshButton?.click();
@@ -172,7 +198,7 @@ export function NotebookItemEditEnhancer() {
         </header>
 
         <div className="notebook-item-edit-rule">
-          Aqui você corrige o equipamento cadastrado. A pessoa que está usando o notebook não será alterada.
+          Aqui você corrige o equipamento e informa se a pessoa utiliza o notebook fora do prédio. Toda alteração fica registrada.
         </div>
 
         {error && <div className="notebook-item-edit-error" role="alert">{error}</div>}
@@ -204,6 +230,14 @@ export function NotebookItemEditEnhancer() {
             Observação <small>(opcional)</small>
             <input value={observation} onChange={(event) => setObservation(event.target.value)} placeholder="Ex.: marca na tampa" disabled={busy} />
           </label>
+          <label>
+            Uso fora do prédio
+            <select value={offsiteUse ? "sim" : "nao"} onChange={(event) => setOffsiteUse(event.target.value === "sim")} disabled={busy || !personId}>
+              <option value="nao">Não</option>
+              <option value="sim">Sim</option>
+            </select>
+            <small>{personId ? `Pessoa: ${personName}` : "Notebook sem pessoa vinculada"}</small>
+          </label>
         </div>
 
         <label className="notebook-item-edit-reason">
@@ -212,7 +246,7 @@ export function NotebookItemEditEnhancer() {
             rows={3}
             value={reason}
             onChange={(event) => setReason(event.target.value)}
-            placeholder="Ex.: modelo cadastrado incorretamente"
+            placeholder="Ex.: pessoa passou a utilizar o notebook fora do prédio"
             disabled={busy}
           />
         </label>

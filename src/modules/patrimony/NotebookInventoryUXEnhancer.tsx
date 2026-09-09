@@ -3,9 +3,21 @@ import { loadOrganizationDirectory } from "../../shared/organization/organizatio
 import { showHubSaveSuccess } from "../../shared/ui/HubSaveSuccessHost";
 import { NotebookItemEditEnhancer } from "./NotebookItemEditEnhancer";
 import { downloadNotebookInventoryPdf } from "./services/notebookInventoryPdf";
+import {
+  loadPersonNotebookUsage,
+  setPersonNotebookOffsiteUse,
+} from "./services/personNotebookUsageService";
 import "./notebookInventoryUx.css";
 
 const COMBINED_LEASING_TEAM = "Equipe Ramzy/Adriana";
+const IHOME_INSURANCE_TEAM = "Equipe iHome Seguros";
+const IHOME_INSURANCE_DEPARTMENT = "iHome Seguros";
+
+type PendingOffsiteSave = {
+  personId: string;
+  offsiteUse: boolean;
+  submittedAt: number;
+};
 
 function normalize(value: string) {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
@@ -49,12 +61,20 @@ function ensurePersonSearch(label: HTMLLabelElement) {
   label.insertBefore(input, select);
 }
 
-function ensureCombinedLeasingTeam(select: HTMLSelectElement) {
-  if (Array.from(select.options).some((option) => option.value === COMBINED_LEASING_TEAM)) return;
+function ensureOption(select: HTMLSelectElement, value: string, text: string) {
+  if (Array.from(select.options).some((option) => option.value === value)) return;
   const option = document.createElement("option");
-  option.value = COMBINED_LEASING_TEAM;
-  option.textContent = "Ramzy/Adriana";
+  option.value = value;
+  option.textContent = text;
   select.appendChild(option);
+}
+
+function ensureCombinedLeasingTeam(select: HTMLSelectElement) {
+  ensureOption(select, COMBINED_LEASING_TEAM, "Ramzy/Adriana");
+}
+
+function ensureIHomeInsuranceTeam(select: HTMLSelectElement) {
+  ensureOption(select, IHOME_INSURANCE_TEAM, "iHome Seguros");
 }
 
 function selectedPersonIdInside(container: Element | null) {
@@ -71,6 +91,7 @@ function enhanceTeamSelects(root: ParentNode, teamByPersonId: Map<string, string
     const select = label.querySelector<HTMLSelectElement>("select");
     if (!select) return;
     ensureCombinedLeasingTeam(select);
+    ensureIHomeInsuranceTeam(select);
     Array.from(select.options).forEach((option) => {
       if (option.value === "Equipe Ramzy" || option.value === "Equipe Adriana") {
         option.hidden = true;
@@ -80,9 +101,97 @@ function enhanceTeamSelects(root: ParentNode, teamByPersonId: Map<string, string
 
     const modal = label.closest(".notebook-modal");
     const personId = selectedPersonIdInside(modal);
-    if (personId && teamByPersonId.get(personId) === COMBINED_LEASING_TEAM) {
-      select.value = COMBINED_LEASING_TEAM;
+    const savedTeam = personId ? teamByPersonId.get(personId) : "";
+    if (savedTeam === COMBINED_LEASING_TEAM || savedTeam === IHOME_INSURANCE_TEAM) {
+      select.value = savedTeam;
     }
+  });
+}
+
+function enhanceDepartmentSelects(root: ParentNode) {
+  root.querySelectorAll<HTMLLabelElement>("label").forEach((label) => {
+    const labelText = normalize(directText(label));
+    if (labelText !== "setor") return;
+    const select = label.querySelector<HTMLSelectElement>("select");
+    if (!select) return;
+    ensureOption(select, IHOME_INSURANCE_DEPARTMENT, IHOME_INSURANCE_DEPARTMENT);
+  });
+}
+
+function ensureNotebookOffsiteField(modal: HTMLElement, usageByPersonId: Map<string, boolean>) {
+  const title = normalize(modal.querySelector("h3")?.textContent ?? "");
+  if (!(title.includes("inventariar notebook") || title.includes("vincular notebook"))) return;
+
+  const personLabel = Array.from(modal.querySelectorAll<HTMLLabelElement>("label"))
+    .find((label) => normalize(directText(label)).includes("nome da pessoa"));
+  const personSelect = personLabel?.querySelector<HTMLSelectElement>("select");
+  if (!personSelect) return;
+
+  let field = modal.querySelector<HTMLLabelElement>("[data-notebook-offsite-field='true']");
+  if (!field) {
+    field = document.createElement("label");
+    field.dataset.notebookOffsiteField = "true";
+    field.className = "notebook-offsite-field";
+    field.append("Uso do notebook fora do prédio");
+
+    const select = document.createElement("select");
+    select.dataset.notebookOffsiteSelect = "true";
+    select.innerHTML = '<option value="nao">Não</option><option value="sim">Sim</option>';
+    field.appendChild(select);
+
+    const status = document.createElement("small");
+    status.dataset.notebookOffsiteStatus = "true";
+    field.appendChild(status);
+
+    const compactGrid = modal.querySelector<HTMLElement>(".notebook-modal-grid.compact-grid");
+    const footer = modal.querySelector("footer");
+    if (compactGrid) compactGrid.appendChild(field);
+    else if (footer) footer.insertAdjacentElement("beforebegin", field);
+    else modal.appendChild(field);
+  }
+
+  const offsiteSelect = field.querySelector<HTMLSelectElement>("[data-notebook-offsite-select='true']");
+  const status = field.querySelector<HTMLElement>("[data-notebook-offsite-status='true']");
+  if (!offsiteSelect) return;
+
+  const sync = () => {
+    const personId = personSelect.value;
+    offsiteSelect.disabled = !personId;
+    offsiteSelect.value = personId && usageByPersonId.get(personId) ? "sim" : "nao";
+    if (status) {
+      status.textContent = personId
+        ? "Será salvo junto com o cadastro."
+        : "Selecione uma pessoa para definir.";
+    }
+  };
+
+  if (!personSelect.dataset.notebookOffsiteBound) {
+    personSelect.dataset.notebookOffsiteBound = "true";
+    personSelect.addEventListener("change", () => window.setTimeout(sync, 0));
+  }
+
+  const form = modal.querySelector<HTMLFormElement>("form");
+  if (form && !form.dataset.notebookOffsiteSubmitBound) {
+    form.dataset.notebookOffsiteSubmitBound = "true";
+    form.addEventListener("submit", () => {
+      const personId = personSelect.value;
+      if (!personId) return;
+      window.dispatchEvent(new CustomEvent<PendingOffsiteSave>("hub:notebook-offsite-submit", {
+        detail: {
+          personId,
+          offsiteUse: offsiteSelect.value === "sim",
+          submittedAt: Date.now(),
+        },
+      }));
+    });
+  }
+
+  sync();
+}
+
+function enhanceNotebookOffsiteFields(root: ParentNode, usageByPersonId: Map<string, boolean>) {
+  root.querySelectorAll<HTMLElement>(".notebook-modal").forEach((modal) => {
+    ensureNotebookOffsiteField(modal, usageByPersonId);
   });
 }
 
@@ -93,6 +202,10 @@ function removeDeveloperCreditFromDialogs(root: ParentNode) {
       if (/desenvolvido\s+por/i.test(element.textContent ?? "")) element.remove();
     });
   });
+}
+
+function removeRedundantSelectedModelCard(root: ParentNode) {
+  root.querySelectorAll<HTMLElement>(".notebook-selected-model").forEach((card) => card.remove());
 }
 
 function findButtonByText(selector: string, text: string) {
@@ -129,36 +242,64 @@ export function NotebookInventoryUXEnhancer() {
   const handledNoticeRef = useRef("");
   const handledPatrimonyNoticeRef = useRef("");
   const teamByPersonIdRef = useRef(new Map<string, string>());
+  const offsiteByPersonIdRef = useRef(new Map<string, boolean>());
+  const pendingOffsiteSaveRef = useRef<PendingOffsiteSave | null>(null);
   const [directoryVersion, setDirectoryVersion] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
 
     const refreshDirectory = () => {
-      void loadOrganizationDirectory(true)
-        .then((people) => {
+      void Promise.all([loadOrganizationDirectory(true), loadPersonNotebookUsage()])
+        .then(([people, offsite]) => {
           if (cancelled) return;
           teamByPersonIdRef.current = new Map(people.map((person) => [person.id, person.teamName ?? ""]));
+          offsiteByPersonIdRef.current = offsite;
           setDirectoryVersion((current) => current + 1);
         })
         .catch((error) => console.warn("Diretório central indisponível para complemento visual:", error));
     };
 
+    const handleOffsiteSubmit = (event: Event) => {
+      const detail = (event as CustomEvent<PendingOffsiteSave>).detail;
+      if (detail?.personId) pendingOffsiteSaveRef.current = detail;
+    };
+
     refreshDirectory();
     const handleDirectoryChange = () => refreshDirectory();
     window.addEventListener("hub:organization-directory-updated", handleDirectoryChange);
+    window.addEventListener("hub:notebook-offsite-submit", handleOffsiteSubmit);
     return () => {
       cancelled = true;
       window.removeEventListener("hub:organization-directory-updated", handleDirectoryChange);
+      window.removeEventListener("hub:notebook-offsite-submit", handleOffsiteSubmit);
     };
   }, []);
 
   useEffect(() => {
+    const persistPendingOffsite = (notebookMessage: string) => {
+      if (!(/^NB-\d+\s+cadastrado/i.test(notebookMessage) || /^NB-\d+.*vinculado\s+a/i.test(notebookMessage))) return;
+      const pending = pendingOffsiteSaveRef.current;
+      if (!pending) return;
+      pendingOffsiteSaveRef.current = null;
+      if (Date.now() - pending.submittedAt > 30000) return;
+
+      void setPersonNotebookOffsiteUse(pending.personId, pending.offsiteUse)
+        .then(() => {
+          offsiteByPersonIdRef.current.set(pending.personId, pending.offsiteUse);
+          window.dispatchEvent(new CustomEvent("hub:organization-directory-updated"));
+        })
+        .catch((error) => console.error("Falha ao salvar uso externo do notebook após o cadastro:", error));
+    };
+
     const enhance = () => {
       document.querySelectorAll<HTMLLabelElement>(".notebook-modal label, .patrimony-screen label")
         .forEach(ensurePersonSearch);
       enhanceTeamSelects(document, teamByPersonIdRef.current);
+      enhanceDepartmentSelects(document);
+      enhanceNotebookOffsiteFields(document, offsiteByPersonIdRef.current);
       removeDeveloperCreditFromDialogs(document);
+      removeRedundantSelectedModelCard(document);
 
       const actions = document.querySelector<HTMLElement>(".notebook-inventory-actions");
       if (actions && !actions.querySelector("[data-notebook-report-button='true']")) {
@@ -199,6 +340,7 @@ export function NotebookInventoryUXEnhancer() {
         handledNoticeRef.current = "";
       } else if (notebookMessage !== handledNoticeRef.current) {
         handledNoticeRef.current = notebookMessage;
+        persistPendingOffsite(notebookMessage);
         if (/^NB-\d+\s+cadastrado/i.test(notebookMessage)) {
           showHubSaveSuccess({
             title: "Notebook cadastrado com sucesso",

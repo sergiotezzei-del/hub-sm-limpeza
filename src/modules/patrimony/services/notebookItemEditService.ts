@@ -34,11 +34,12 @@ export async function updateInventoryNotebookWithAudit(input: {
   equipmentModelId: string;
   serialNumber?: string;
   observation?: string;
+  offsiteUse: boolean;
   actorName: string;
   reason: string;
 }) {
   return requestJson<Array<{ item_id: string; audit_id: string }>>(
-    "rpc/update_inventory_notebook_with_audit",
+    "rpc/update_inventory_notebook_with_audit_v2",
     {
       method: "POST",
       body: JSON.stringify({
@@ -46,6 +47,7 @@ export async function updateInventoryNotebookWithAudit(input: {
         p_equipment_model_id: input.equipmentModelId,
         p_serial_number: input.serialNumber?.trim() || null,
         p_observation: input.observation?.trim() || null,
+        p_offsite_use: input.offsiteUse,
         p_actor_name: input.actorName.trim(),
         p_reason: input.reason.trim(),
       }),
@@ -72,6 +74,7 @@ export function getNotebookItemEditErrorMessage(error: unknown) {
   if (normalized.includes("SEM PERMISSAO")) return "A sessão de administrador não está válida. Entre novamente.";
   if (normalized.includes("MOTIVO")) return "Informe o motivo da alteração.";
   if (normalized.includes("NENHUMA ALTERACAO")) return "Nenhuma alteração foi feita no notebook.";
+  if (normalized.includes("SEM PESSOA VINCULADA")) return "Vincule o notebook a uma pessoa antes de marcar uso fora do prédio.";
   if (normalized.includes("MODELO") && normalized.includes("NAO ENCONTRADO")) return "O modelo selecionado não está mais disponível.";
   if (normalized.includes("DUPLICATE") || normalized.includes("UNIQUE")) return "Este número de série já está cadastrado em outro equipamento.";
   return message || "Não foi possível concluir a alteração.";
