@@ -1,11 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { loadOrganizationDirectory } from "../../shared/organization/organizationDirectory";
+import { showHubSaveSuccess } from "../../shared/ui/HubSaveSuccessHost";
 import { downloadNotebookInventoryPdf } from "./services/notebookInventoryPdf";
 import "./notebookInventoryUx.css";
-
-type SuccessKind = "notebook" | "person";
-type SuccessState = { kind: SuccessKind; title: string } | null;
 
 const COMBINED_LEASING_TEAM = "Equipe Ramzy/Adriana";
 
@@ -103,20 +100,42 @@ function findButtonByText(selector: string, text: string) {
     .find((button) => normalize(button.textContent ?? "").includes(needle));
 }
 
+function openNewNotebook() {
+  findButtonByText(".notebook-inventory-actions button", "Inventariar notebook")?.click();
+}
+
+function openNewPerson() {
+  findButtonByText(".notebook-inventory-actions button", "Pessoas")?.click();
+  window.setTimeout(() => {
+    findButtonByText(".notebook-directory-toolbar button", "Nova pessoa")?.click();
+  }, 80);
+}
+
 export function NotebookInventoryUXEnhancer() {
-  const [success, setSuccess] = useState<SuccessState>(null);
   const handledNoticeRef = useRef("");
   const teamByPersonIdRef = useRef(new Map<string, string>());
+  const [directoryVersion, setDirectoryVersion] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
-    void loadOrganizationDirectory(true)
-      .then((people) => {
-        if (cancelled) return;
-        teamByPersonIdRef.current = new Map(people.map((person) => [person.id, person.teamName ?? ""]));
-      })
-      .catch((error) => console.warn("Diretório central indisponível para complemento visual:", error));
-    return () => { cancelled = true; };
+
+    const refreshDirectory = () => {
+      void loadOrganizationDirectory(true)
+        .then((people) => {
+          if (cancelled) return;
+          teamByPersonIdRef.current = new Map(people.map((person) => [person.id, person.teamName ?? ""]));
+          setDirectoryVersion((current) => current + 1);
+        })
+        .catch((error) => console.warn("Diretório central indisponível para complemento visual:", error));
+    };
+
+    refreshDirectory();
+    const handleDirectoryChange = () => refreshDirectory();
+    window.addEventListener("hub:organization-directory-updated", handleDirectoryChange);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("hub:organization-directory-updated", handleDirectoryChange);
+    };
   }, []);
 
   useEffect(() => {
@@ -169,9 +188,17 @@ export function NotebookInventoryUXEnhancer() {
       handledNoticeRef.current = message;
 
       if (/^NB-\d+\s+cadastrado/i.test(message)) {
-        setSuccess({ kind: "notebook", title: "Notebook cadastrado com sucesso" });
+        showHubSaveSuccess({
+          title: "Notebook cadastrado com sucesso",
+          newLabel: "Cadastrar novo notebook",
+          onNew: openNewNotebook,
+        });
       } else if (/pessoa adicionada ao diret[oó]rio/i.test(message) || /^pessoa salva:/i.test(message)) {
-        setSuccess({ kind: "person", title: "Pessoa cadastrada com sucesso" });
+        showHubSaveSuccess({
+          title: "Pessoa cadastrada com sucesso",
+          newLabel: "Cadastrar nova pessoa",
+          onNew: openNewPerson,
+        });
       }
     };
 
@@ -179,41 +206,7 @@ export function NotebookInventoryUXEnhancer() {
     const observer = new MutationObserver(enhance);
     observer.observe(document.body, { childList: true, subtree: true, characterData: true });
     return () => observer.disconnect();
-  }, []);
+  }, [directoryVersion]);
 
-  function handleNew() {
-    const kind = success?.kind;
-    setSuccess(null);
-    window.setTimeout(() => {
-      if (kind === "notebook") {
-        findButtonByText(".notebook-inventory-actions button", "Inventariar notebook")?.click();
-        return;
-      }
-      if (kind === "person") {
-        findButtonByText(".notebook-inventory-actions button", "Pessoas")?.click();
-        window.setTimeout(() => {
-          findButtonByText(".notebook-directory-toolbar button", "Nova pessoa")?.click();
-        }, 80);
-      }
-    }, 30);
-  }
-
-  if (!success) return null;
-
-  return createPortal(
-    <div className="hub-save-success-backdrop" role="presentation">
-      <section className="hub-save-success-modal" role="dialog" aria-modal="true" aria-label={success.title}>
-        <div className="hub-save-success-icon">✓</div>
-        <h3>{success.title}</h3>
-        <p>As informações foram salvas no HUB.</p>
-        <div className="hub-save-success-actions">
-          <button type="button" onClick={() => setSuccess(null)}>Sair</button>
-          <button className="primary" type="button" onClick={handleNew}>
-            {success.kind === "notebook" ? "Cadastrar novo notebook" : "Cadastrar nova pessoa"}
-          </button>
-        </div>
-      </section>
-    </div>,
-    document.body,
-  );
+  return null;
 }
