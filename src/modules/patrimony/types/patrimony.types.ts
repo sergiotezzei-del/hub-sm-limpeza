@@ -121,7 +121,6 @@ export type PatrimonyAssignment = {
   lastReturnCondition?: PatrimonyReturnCondition;
   assignedByName: string;
   returnedByName?: string;
-  offsiteUse?: boolean;
   notes?: string;
   returnNotes?: string;
   createdAt: string;
