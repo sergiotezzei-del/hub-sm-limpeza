@@ -43,6 +43,7 @@ import { RadioTestPage } from "./modules/radio/RadioTestPage";
 import { HubAuthSessionGuard } from "./modules/security/HubAuthSessionGuard";
 import { PublicServiceRequestPage } from "./modules/service-requests/PublicServiceRequestPage";
 import { isPwaStandalone } from "./pwaInstall";
+import { HubSaveSuccessHost } from "./shared/ui/HubSaveSuccessHost";
 import "./styles.css";
 import "./modules/alerts/alertsExtensions.css";
 import "./modules/alerts/dashboardAlignment.css";
@@ -117,6 +118,7 @@ createRoot(document.getElementById("root")!).render(
     ) : (
       <>
         <App />
+        <HubSaveSuccessHost />
         <HubAuthSessionGuard />
         <MarketingSessionKeepalive />
         <MarketingAlertAcknowledgementEnhancer />
