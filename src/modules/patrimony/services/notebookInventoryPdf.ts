@@ -11,11 +11,34 @@ const BOTTOM = 42;
 const ORANGE: PdfColor = [0.81, 0.28, 0.04];
 const NAVY: PdfColor = [0.06, 0.15, 0.27];
 const GRAY: PdfColor = [0.36, 0.43, 0.53];
+const WHITE: PdfColor = [1, 1, 1];
+const ROW_ALT: PdfColor = [0.965, 0.974, 0.984];
+const BORDER: PdfColor = [0.83, 0.86, 0.9];
+const ORANGE_SOFT: PdfColor = [0.992, 0.944, 0.905];
+const STATUS_SOFT: PdfColor = [0.94, 0.955, 0.965];
+const STATUS_OK: PdfColor = [0.10, 0.47, 0.28];
 
 type FontKey = "F1" | "F2" | "F3" | "F4";
 type PdfColor = [number, number, number];
 type PdfRun = { x: number; y: number; size: number; font: FontKey; text: string; color?: PdfColor };
-type PdfPage = { runs: PdfRun[] };
+type PdfRect = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  fill?: PdfColor;
+  stroke?: PdfColor;
+  lineWidth?: number;
+};
+type PdfLine = {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  color: PdfColor;
+  lineWidth?: number;
+};
+type PdfPage = { runs: PdfRun[]; rects: PdfRect[]; lines: PdfLine[] };
 type PdfLogo = { bytes: Uint8Array; width: number; height: number };
 type InventoryRow = {
   code: string;
@@ -25,6 +48,22 @@ type InventoryRow = {
   team: string;
   offsiteUse: boolean;
 };
+
+type TableColumn = {
+  label: string;
+  width: number;
+};
+
+const TABLE_COLUMNS: TableColumn[] = [
+  { label: "Patrimônio", width: 56 },
+  { label: "Modelo", width: 118 },
+  { label: "Pessoa", width: 122 },
+  { label: "Setor", width: 88 },
+  { label: "Equipe", width: 91 },
+  { label: "Uso externo", width: 52 },
+];
+const TABLE_HEADER_HEIGHT = 24;
+const TABLE_ROW_HEIGHT = 20;
 
 function normalize(value: string) {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
@@ -57,11 +96,39 @@ function fit(value: string, width: number) {
   return `${clean.slice(0, width - 1)}…`;
 }
 
+function estimateTextWidth(value: string, size: number, font: FontKey = "F1") {
+  let units = 0;
+  for (const character of value) {
+    if (/\s/.test(character)) units += 0.28;
+    else if (/[ilI1.,'`]/.test(character)) units += 0.28;
+    else if (/[MW@%&]/.test(character)) units += 0.82;
+    else if (/[A-ZÁÀÃÂÉÊÍÓÔÕÚÇ]/.test(character)) units += 0.61;
+    else units += 0.52;
+  }
+  if (font === "F2" || font === "F4") units *= 1.035;
+  return units * size;
+}
+
+function fitToWidth(value: string, maxWidth: number, size: number, font: FontKey = "F1") {
+  const clean = value.replace(/\s+/g, " ").trim();
+  if (estimateTextWidth(clean, size, font) <= maxWidth) return clean;
+  const suffix = "...";
+  let output = clean;
+  while (output.length > 1 && estimateTextWidth(`${output}${suffix}`, size, font) > maxWidth) {
+    output = output.slice(0, -1);
+  }
+  return `${output.trimEnd()}${suffix}`;
+}
+
 function formatDateTime(date = new Date()) {
   return new Intl.DateTimeFormat("pt-BR", {
     dateStyle: "short",
     timeStyle: "short",
   }).format(date);
+}
+
+function createPdfPage(): PdfPage {
+  return { runs: [], rects: [], lines: [] };
 }
 
 export async function downloadNotebookInventoryPdf() {
@@ -98,13 +165,13 @@ export async function downloadNotebookInventoryPdf() {
       };
     });
 
-  const pages: PdfPage[] = [{ runs: [] }];
+  const pages: PdfPage[] = [createPdfPage()];
   let pageIndex = 0;
   let y = TOP;
 
   const currentPage = () => pages[pageIndex];
   const newPage = () => {
-    pages.push({ runs: [] });
+    pages.push(createPdfPage());
     pageIndex += 1;
     y = TOP;
   };
@@ -125,10 +192,6 @@ export async function downloadNotebookInventoryPdf() {
     });
     y -= gap;
   };
-  const addSection = (title: string) => {
-    y -= 6;
-    add(title, { size: 11, font: "F2", gap: 16, color: NAVY });
-  };
 
   add("SANTA MARIA", { size: 15, font: "F2", gap: 17, color: ORANGE });
   add("IMOBILIÁRIA", { size: 8, font: "F2", gap: 16, color: GRAY });
@@ -144,39 +207,129 @@ export async function downloadNotebookInventoryPdf() {
   );
   y -= 24 + summaryRows * 12;
 
-  ensureSpace(75);
-  addSection("Levantamento completo");
-  const header = [
-    fit("Patrim.", 8),
-    fit("Modelo", 20),
-    fit("Pessoa", 23),
-    fit("Setor", 15),
-    fit("Equipe", 18),
-    fit("Fora prédio", 12),
-  ].join(" | ");
-  const divider = "-".repeat(header.length);
-
-  const addTableHeader = () => {
-    add(header, { size: 6.4, font: "F4", gap: 10, color: NAVY });
-    add(divider, { size: 6.4, font: "F3", gap: 9, color: GRAY });
+  const addTableTitle = (continuation = false) => {
+    ensureSpace(52);
+    y -= 7;
+    const title = continuation ? "Levantamento completo · continuação" : "Levantamento completo";
+    currentPage().runs.push({ x: LEFT, y, size: continuation ? 10.5 : 12, font: "F2", text: title, color: NAVY });
+    if (!continuation) {
+      const countText = `${rows.length} registros`;
+      currentPage().runs.push({
+        x: PAGE_WIDTH - LEFT - estimateTextWidth(countText, 7.3, "F2"),
+        y: y + 1,
+        size: 7.3,
+        font: "F2",
+        text: countText,
+        color: GRAY,
+      });
+    }
+    currentPage().lines.push({ x1: LEFT, y1: y - 8, x2: PAGE_WIDTH - LEFT, y2: y - 8, color: ORANGE, lineWidth: 1.8 });
+    y -= 23;
   };
 
+  const columnStarts = () => {
+    const starts: number[] = [];
+    let x = LEFT;
+    TABLE_COLUMNS.forEach((column) => {
+      starts.push(x);
+      x += column.width;
+    });
+    return starts;
+  };
+
+  const addTableHeader = () => {
+    const page = currentPage();
+    const starts = columnStarts();
+    const top = y;
+    const bottom = top - TABLE_HEADER_HEIGHT;
+    page.rects.push({ x: LEFT, y: bottom, width: PAGE_WIDTH - LEFT * 2, height: TABLE_HEADER_HEIGHT, fill: NAVY });
+    TABLE_COLUMNS.forEach((column, index) => {
+      const x = starts[index];
+      page.runs.push({
+        x: x + 6,
+        y: bottom + 8,
+        size: 7.05,
+        font: "F2",
+        text: fitToWidth(column.label, column.width - 12, 7.05, "F2"),
+        color: WHITE,
+      });
+      if (index > 0) {
+        page.lines.push({ x1: x, y1: bottom + 5, x2: x, y2: top - 5, color: [0.35, 0.44, 0.55], lineWidth: 0.35 });
+      }
+    });
+    y = bottom;
+  };
+
+  const addTableRow = (row: InventoryRow, rowIndex: number) => {
+    const page = currentPage();
+    const starts = columnStarts();
+    const top = y;
+    const bottom = top - TABLE_ROW_HEIGHT;
+
+    if (rowIndex % 2 === 1) {
+      page.rects.push({ x: LEFT, y: bottom, width: PAGE_WIDTH - LEFT * 2, height: TABLE_ROW_HEIGHT, fill: ROW_ALT });
+    }
+    page.lines.push({ x1: LEFT, y1: bottom, x2: PAGE_WIDTH - LEFT, y2: bottom, color: BORDER, lineWidth: 0.45 });
+
+    const codeBadgeWidth = 43;
+    const codeBadgeHeight = 12;
+    const codeBadgeY = bottom + (TABLE_ROW_HEIGHT - codeBadgeHeight) / 2;
+    page.rects.push({ x: starts[0] + 6, y: codeBadgeY, width: codeBadgeWidth, height: codeBadgeHeight, fill: ORANGE_SOFT });
+    page.runs.push({
+      x: starts[0] + 9,
+      y: bottom + 7,
+      size: 6.8,
+      font: "F2",
+      text: fitToWidth(row.code, codeBadgeWidth - 6, 6.8, "F2"),
+      color: ORANGE,
+    });
+
+    const values = [row.model, row.person, row.department, row.team];
+    values.forEach((value, valueIndex) => {
+      const columnIndex = valueIndex + 1;
+      const font: FontKey = columnIndex === 2 ? "F2" : "F1";
+      const size = columnIndex === 2 ? 6.75 : 6.65;
+      page.runs.push({
+        x: starts[columnIndex] + 6,
+        y: bottom + 7,
+        size,
+        font,
+        text: fitToWidth(value, TABLE_COLUMNS[columnIndex].width - 12, size, font),
+        color: NAVY,
+      });
+    });
+
+    const statusColumnX = starts[5];
+    const statusText = row.offsiteUse ? "SIM" : "NÃO";
+    const statusWidth = row.offsiteUse ? 28 : 30;
+    const statusHeight = 12;
+    const statusX = statusColumnX + (TABLE_COLUMNS[5].width - statusWidth) / 2;
+    const statusY = bottom + (TABLE_ROW_HEIGHT - statusHeight) / 2;
+    const statusFill = row.offsiteUse ? ORANGE_SOFT : STATUS_SOFT;
+    const statusColor = row.offsiteUse ? ORANGE : STATUS_OK;
+    page.rects.push({ x: statusX, y: statusY, width: statusWidth, height: statusHeight, fill: statusFill });
+    page.runs.push({
+      x: statusX + (statusWidth - estimateTextWidth(statusText, 6.45, "F2")) / 2,
+      y: bottom + 7,
+      size: 6.45,
+      font: "F2",
+      text: statusText,
+      color: statusColor,
+    });
+
+    y = bottom;
+  };
+
+  addTableTitle(false);
   addTableHeader();
-  rows.forEach((row) => {
-    if (y - 12 < BOTTOM) {
+
+  rows.forEach((row, rowIndex) => {
+    if (y - TABLE_ROW_HEIGHT < BOTTOM + 8) {
       newPage();
-      add("RELATÓRIO DO INVENTÁRIO DE NOTEBOOKS - continuação", { size: 9, font: "F2", gap: 15, color: NAVY });
+      addTableTitle(true);
       addTableHeader();
     }
-    const line = [
-      fit(row.code, 8),
-      fit(row.model, 20),
-      fit(row.person, 23),
-      fit(row.department, 15),
-      fit(row.team, 18),
-      fit(row.offsiteUse ? "Sim" : "Não", 12),
-    ].join(" | ");
-    add(line, { size: 6.4, font: "F3", gap: 10, color: NAVY });
+    addTableRow(row, rowIndex);
   });
 
   pages.forEach((page, index) => {
@@ -301,6 +454,8 @@ function buildPdf(pages: PdfPage[], logo?: PdfLogo) {
       stream += `q ${drawWidth.toFixed(2)} 0 0 ${drawHeight.toFixed(2)} ${x.toFixed(2)} ${y.toFixed(2)} cm /Logo Do Q\n`;
     }
 
+    stream += page.rects.map(rectToPdf).join("");
+    stream += page.lines.map(lineToPdf).join("");
     stream += page.runs.map((run) => {
       const color = run.color ?? NAVY;
       return `BT ${color[0].toFixed(3)} ${color[1].toFixed(3)} ${color[2].toFixed(3)} rg /${run.font} ${run.size.toFixed(2)} Tf 1 0 0 1 ${run.x.toFixed(2)} ${run.y.toFixed(2)} Tm <${toWinAnsiHex(run.text)}> Tj ET\n`;
@@ -332,6 +487,21 @@ function buildPdf(pages: PdfPage[], logo?: PdfLogo) {
   }
   pdf += `trailer\n<< /Size ${maxId + 1} /Root ${catalogId} 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
   return new Blob([pdf], { type: "application/pdf" });
+}
+
+function rectToPdf(rect: PdfRect) {
+  const commands = ["q"];
+  if (rect.fill) commands.push(`${rect.fill[0].toFixed(3)} ${rect.fill[1].toFixed(3)} ${rect.fill[2].toFixed(3)} rg`);
+  if (rect.stroke) commands.push(`${rect.stroke[0].toFixed(3)} ${rect.stroke[1].toFixed(3)} ${rect.stroke[2].toFixed(3)} RG`);
+  commands.push(`${(rect.lineWidth ?? 0.5).toFixed(2)} w`);
+  commands.push(`${rect.x.toFixed(2)} ${rect.y.toFixed(2)} ${rect.width.toFixed(2)} ${rect.height.toFixed(2)} re`);
+  commands.push(rect.fill && rect.stroke ? "B" : rect.stroke ? "S" : "f");
+  commands.push("Q");
+  return `${commands.join(" ")}\n`;
+}
+
+function lineToPdf(line: PdfLine) {
+  return `q ${line.color[0].toFixed(3)} ${line.color[1].toFixed(3)} ${line.color[2].toFixed(3)} RG ${(line.lineWidth ?? 0.5).toFixed(2)} w ${line.x1.toFixed(2)} ${line.y1.toFixed(2)} m ${line.x2.toFixed(2)} ${line.y2.toFixed(2)} l S Q\n`;
 }
 
 function bytesToHex(bytes: Uint8Array) {
