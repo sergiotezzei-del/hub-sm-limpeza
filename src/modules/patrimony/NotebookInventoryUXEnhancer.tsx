@@ -111,8 +111,22 @@ function openNewPerson() {
   }, 80);
 }
 
+function openNativePatrimonyRecord(recordLabel: "Pessoas" | "Itens") {
+  findButtonByText(".patrimony-tabs button", "Cadastros e histórico")?.click();
+  window.setTimeout(() => {
+    const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>(".patrimony-screen button"));
+    const target = buttons.find((button) => normalize(button.textContent ?? "") === normalize(recordLabel));
+    target?.click();
+  }, 50);
+}
+
+function openLockerArea() {
+  findButtonByText(".patrimony-tabs button", "Mesas e lockers")?.click();
+}
+
 export function NotebookInventoryUXEnhancer() {
   const handledNoticeRef = useRef("");
+  const handledPatrimonyNoticeRef = useRef("");
   const teamByPersonIdRef = useRef(new Map<string, string>());
   const [directoryVersion, setDirectoryVersion] = useState(0);
 
@@ -178,27 +192,52 @@ export function NotebookInventoryUXEnhancer() {
         else actions.appendChild(reportButton);
       }
 
-      const notice = document.querySelector<HTMLElement>(".notebook-inventory-page > .notebook-inventory-notice");
-      const message = (notice?.textContent ?? "").trim();
-      if (!message) {
+      const notebookNotice = document.querySelector<HTMLElement>(".notebook-inventory-page > .notebook-inventory-notice");
+      const notebookMessage = (notebookNotice?.textContent ?? "").trim();
+      if (!notebookMessage) {
         handledNoticeRef.current = "";
-        return;
+      } else if (notebookMessage !== handledNoticeRef.current) {
+        handledNoticeRef.current = notebookMessage;
+        if (/^NB-\d+\s+cadastrado/i.test(notebookMessage)) {
+          showHubSaveSuccess({
+            title: "Notebook cadastrado com sucesso",
+            newLabel: "Cadastrar novo notebook",
+            onNew: openNewNotebook,
+          });
+        } else if (/pessoa adicionada ao diret[oó]rio/i.test(notebookMessage)) {
+          showHubSaveSuccess({
+            title: "Pessoa cadastrada com sucesso",
+            newLabel: "Cadastrar nova pessoa",
+            onNew: openNewPerson,
+          });
+        }
       }
-      if (message === handledNoticeRef.current) return;
-      handledNoticeRef.current = message;
 
-      if (/^NB-\d+\s+cadastrado/i.test(message)) {
-        showHubSaveSuccess({
-          title: "Notebook cadastrado com sucesso",
-          newLabel: "Cadastrar novo notebook",
-          onNew: openNewNotebook,
-        });
-      } else if (/pessoa adicionada ao diret[oó]rio/i.test(message) || /^pessoa salva:/i.test(message)) {
-        showHubSaveSuccess({
-          title: "Pessoa cadastrada com sucesso",
-          newLabel: "Cadastrar nova pessoa",
-          onNew: openNewPerson,
-        });
+      const patrimonyNotice = document.querySelector<HTMLElement>(".patrimony-screen > .success-message");
+      const patrimonyMessage = (patrimonyNotice?.textContent ?? "").trim();
+      if (!patrimonyMessage) {
+        handledPatrimonyNoticeRef.current = "";
+      } else if (patrimonyMessage !== handledPatrimonyNoticeRef.current) {
+        handledPatrimonyNoticeRef.current = patrimonyMessage;
+        if (/^pessoa salva:/i.test(patrimonyMessage)) {
+          showHubSaveSuccess({
+            title: "Pessoa cadastrada com sucesso",
+            newLabel: "Cadastrar nova pessoa",
+            onNew: () => openNativePatrimonyRecord("Pessoas"),
+          });
+        } else if (/^item salvo:/i.test(patrimonyMessage)) {
+          showHubSaveSuccess({
+            title: "Item cadastrado com sucesso",
+            newLabel: "Cadastrar novo item",
+            onNew: () => openNativePatrimonyRecord("Itens"),
+          });
+        } else if (/\batribu[ií]do para\b/i.test(patrimonyMessage)) {
+          showHubSaveSuccess({
+            title: "Locker atribuído com sucesso",
+            newLabel: "Atribuir outro locker",
+            onNew: openLockerArea,
+          });
+        }
       }
     };
 
