@@ -26,6 +26,7 @@ type PersonRow = {
   name: string;
   person_type: OrganizationPerson["personType"];
   department: string;
+  team_name: string | null;
   job_title: string | null;
   email: string | null;
   phone: string | null;
@@ -42,6 +43,7 @@ type ItemRow = {
   name: string;
   category: string;
   tracking_mode: PatrimonyItem["trackingMode"];
+  equipment_model_id: string | null;
   brand: string | null;
   model: string | null;
   serial_number: string | null;
@@ -175,6 +177,7 @@ export async function saveOrganizationPerson(draft: OrganizationPersonDraft) {
       name,
       person_type: draft.personType,
       department: draft.department.trim() || "Não informado",
+      team_name: cleanOptional(draft.teamName),
       job_title: cleanOptional(draft.jobTitle),
       email: cleanOptional(draft.email),
       phone: cleanOptional(draft.phone),
@@ -183,6 +186,16 @@ export async function saveOrganizationPerson(draft: OrganizationPersonDraft) {
     }]),
   });
   if (!rows[0]) throw new PatrimonyRemoteError(500, "Não foi possível confirmar a pessoa salva.");
+  return mapPerson(rows[0]);
+}
+
+export async function setOrganizationPersonActive(personId: string, active: boolean) {
+  const rows = await requestJson<PersonRow[]>(`organization_people?id=eq.${encodeURIComponent(personId)}`, {
+    method: "PATCH",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify({ active }),
+  });
+  if (!rows[0]) throw new PatrimonyRemoteError(404, "Pessoa não encontrada.");
   return mapPerson(rows[0]);
 }
 
@@ -220,6 +233,7 @@ export async function savePatrimonyItem(draft: PatrimonyItemDraft) {
       name,
       category,
       tracking_mode: draft.trackingMode,
+      equipment_model_id: draft.equipmentModelId || null,
       brand: cleanOptional(draft.brand),
       model: cleanOptional(draft.model),
       serial_number: cleanOptional(draft.serialNumber),
@@ -495,6 +509,7 @@ function mapPerson(row: PersonRow): OrganizationPerson {
     name: row.name,
     personType: row.person_type,
     department: row.department,
+    teamName: row.team_name ?? undefined,
     jobTitle: row.job_title ?? undefined,
     email: row.email ?? undefined,
     phone: row.phone ?? undefined,
@@ -513,6 +528,7 @@ function mapItem(row: ItemRow): PatrimonyItem {
     name: row.name,
     category: row.category,
     trackingMode: row.tracking_mode,
+    equipmentModelId: row.equipment_model_id ?? undefined,
     brand: row.brand ?? undefined,
     model: row.model ?? undefined,
     serialNumber: row.serial_number ?? undefined,
