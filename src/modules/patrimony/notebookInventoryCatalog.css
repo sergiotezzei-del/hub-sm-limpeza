@@ -1,0 +1,149 @@
+.notebook-directory-panel {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+}
+
+.notebook-directory-panel > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.notebook-directory-panel > header h3,
+.notebook-directory-panel > header p {
+  margin: 0;
+}
+
+.notebook-directory-panel > header p {
+  margin-top: 4px;
+  color: #64748b;
+  font-size: 0.82rem;
+}
+
+.notebook-directory-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.notebook-directory-toolbar input {
+  flex: 1 1 260px;
+  min-height: 40px;
+  border: 1px solid #d7dde5;
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+
+.notebook-directory-toolbar button.primary,
+.notebook-directory-panel button.primary {
+  border-color: #c75b12;
+  background: #c75b12;
+  color: #fff;
+}
+
+.models-toolbar {
+  justify-content: space-between;
+}
+
+.models-toolbar > span {
+  color: #64748b;
+  font-size: 0.82rem;
+}
+
+.notebook-directory-list,
+.notebook-model-list {
+  display: grid;
+  gap: 8px;
+  max-height: min(58vh, 520px);
+  overflow: auto;
+}
+
+.notebook-directory-list article,
+.notebook-model-list article {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 11px 12px;
+}
+
+.notebook-directory-list article > div,
+.notebook-model-list article > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.notebook-directory-list article strong,
+.notebook-model-list article strong {
+  font-size: 0.9rem;
+}
+
+.notebook-directory-list article span,
+.notebook-model-list article span {
+  color: #64748b;
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.notebook-modal .danger-link {
+  flex: 0 0 auto;
+  min-height: 32px;
+  border-color: #fecaca;
+  background: #fff;
+  color: #b91c1c;
+  padding: 5px 9px;
+  font-size: 0.76rem;
+}
+
+.notebook-selected-model {
+  display: grid;
+  gap: 4px;
+  border: 1px solid #fed7aa;
+  border-radius: 12px;
+  background: #fff7ed;
+  padding: 11px 12px;
+}
+
+.notebook-selected-model strong {
+  color: #9a3412;
+  font-size: 0.9rem;
+}
+
+.notebook-selected-model span {
+  color: #7c2d12;
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.notebook-modal .compact-grid small {
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+@media (max-width: 620px) {
+  .notebook-directory-toolbar,
+  .models-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .notebook-directory-toolbar input,
+  .notebook-directory-toolbar button {
+    width: 100%;
+  }
+
+  .notebook-directory-list article,
+  .notebook-model-list article {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .notebook-modal .danger-link {
+    align-self: flex-end;
+  }
+}
