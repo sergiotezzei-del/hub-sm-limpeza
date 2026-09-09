@@ -27,6 +27,7 @@ import { MarketingSessionKeepalive } from "./modules/marketing/MarketingSessionK
 import { AirConditioningMapFeature } from "./modules/patrimony/AirConditioningMapFeature";
 import { NotebookInventoryFeatureV3 } from "./modules/patrimony/NotebookInventoryFeatureV3";
 import { NotebookInventoryUXEnhancer } from "./modules/patrimony/NotebookInventoryUXEnhancer";
+import { NotebookPersonEditEnhancer } from "./modules/patrimony/NotebookPersonEditEnhancer";
 import { PatrimonyPeopleEquipmentFeature } from "./modules/patrimony/PatrimonyPeopleEquipmentFeature";
 import { PatrimonySpaceMapsFeature } from "./modules/patrimony/PatrimonySpaceMapsFeature";
 import { MarketingPushAttentionHost } from "./modules/marketing/MarketingPushAttentionHost";
@@ -140,6 +141,7 @@ createRoot(document.getElementById("root")!).render(
         <AirConditioningMapFeature />
         <NotebookInventoryFeatureV3 />
         <NotebookInventoryUXEnhancer />
+        <NotebookPersonEditEnhancer />
         <PatrimonyPeopleEquipmentFeature />
         <PatrimonySpaceMapsFeature />
         <MarketingPushAttentionHost />

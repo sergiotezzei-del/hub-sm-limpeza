@@ -1,0 +1,269 @@
+.inventory-person-edit-button {
+  flex: 0 0 auto;
+  min-height: 32px;
+  border: 1px solid #d7dde5;
+  border-radius: 9px;
+  background: #fff;
+  color: #334155;
+  padding: 5px 10px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.inventory-person-edit-button:hover {
+  border-color: #c75b12;
+  color: #9a3412;
+}
+
+.inventory-person-edit-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10020;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(15, 23, 42, 0.54);
+  backdrop-filter: blur(2px);
+}
+
+.inventory-person-edit-modal {
+  width: min(760px, 96vw);
+  max-height: 92vh;
+  overflow: auto;
+  display: grid;
+  gap: 14px;
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.28);
+  padding: 20px;
+}
+
+.inventory-person-edit-modal > header,
+.inventory-person-edit-modal > footer,
+.inventory-edit-history-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.inventory-person-edit-modal > header h3,
+.inventory-person-edit-modal > header p,
+.inventory-edit-history-title h4 {
+  margin: 0;
+}
+
+.inventory-person-edit-modal > header p {
+  margin-top: 3px;
+  color: #64748b;
+  font-size: 0.85rem;
+}
+
+.inventory-person-edit-modal > header > button {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  font-size: 1.25rem;
+}
+
+.inventory-edit-rule {
+  border-left: 4px solid #c75b12;
+  border-radius: 10px;
+  background: #fff7ed;
+  color: #7c2d12;
+  padding: 10px 12px;
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.inventory-edit-error,
+.inventory-edit-success,
+.inventory-edit-warning {
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.inventory-edit-error {
+  border: 1px solid #fecaca;
+  background: #fef2f2;
+  color: #991b1b;
+}
+
+.inventory-edit-success {
+  border: 1px solid #bbf7d0;
+  background: #f0fdf4;
+  color: #166534;
+}
+
+.inventory-edit-warning {
+  border: 1px solid #fde68a;
+  background: #fffbeb;
+  color: #92400e;
+}
+
+.inventory-edit-warning p {
+  margin: 0;
+}
+
+.inventory-edit-warning p + p {
+  margin-top: 5px;
+}
+
+.inventory-edit-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.inventory-person-edit-modal label {
+  display: grid;
+  gap: 6px;
+  color: #334155;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.inventory-person-edit-modal input,
+.inventory-person-edit-modal select,
+.inventory-person-edit-modal textarea {
+  width: 100%;
+  min-height: 40px;
+  border: 1px solid #d7dde5;
+  border-radius: 10px;
+  background: #fff;
+  color: #0f172a;
+  padding: 8px 10px;
+  font: inherit;
+}
+
+.inventory-person-edit-modal textarea {
+  min-height: 78px;
+  resize: vertical;
+}
+
+.inventory-edit-notebook-field,
+.inventory-edit-reason {
+  grid-column: 1 / -1;
+}
+
+.inventory-edit-reason strong {
+  color: #b45309;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+}
+
+.inventory-edit-history {
+  display: grid;
+  gap: 8px;
+  border-top: 1px solid #e2e8f0;
+  padding-top: 14px;
+}
+
+.inventory-edit-history-title span {
+  min-width: 28px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #475569;
+  padding: 4px 8px;
+  text-align: center;
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.inventory-edit-history > p {
+  margin: 0;
+  color: #64748b;
+  font-size: 0.8rem;
+}
+
+.inventory-edit-history article {
+  display: grid;
+  gap: 5px;
+  border: 1px solid #e2e8f0;
+  border-radius: 11px;
+  padding: 10px 11px;
+}
+
+.inventory-edit-history article > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.inventory-edit-history article strong {
+  color: #0f172a;
+  font-size: 0.77rem;
+}
+
+.inventory-edit-history article span,
+.inventory-edit-history article small {
+  color: #64748b;
+  font-size: 0.73rem;
+}
+
+.inventory-edit-history article p {
+  margin: 0;
+  color: #334155;
+  font-size: 0.79rem;
+  line-height: 1.35;
+}
+
+.inventory-person-edit-modal > footer {
+  justify-content: flex-end;
+  border-top: 1px solid #e2e8f0;
+  padding-top: 14px;
+}
+
+.inventory-person-edit-modal > footer button {
+  min-height: 38px;
+  border-radius: 10px;
+  padding: 7px 14px;
+}
+
+.inventory-person-edit-modal > footer button.primary {
+  border-color: #c75b12;
+  background: #c75b12;
+  color: #fff;
+}
+
+.inventory-edit-floating-error {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 10030;
+  max-width: min(420px, calc(100vw - 36px));
+  border: 1px solid #fecaca;
+  border-radius: 12px;
+  background: #fef2f2;
+  color: #991b1b;
+  padding: 11px 13px;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.18);
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+@media (max-width: 650px) {
+  .inventory-person-edit-backdrop {
+    padding: 8px;
+  }
+
+  .inventory-person-edit-modal {
+    width: 100%;
+    max-height: 96vh;
+    border-radius: 14px;
+    padding: 15px;
+  }
+
+  .inventory-edit-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .inventory-person-edit-button,
+  .notebook-modal .danger-link {
+    align-self: stretch;
+  }
+}
