@@ -13,6 +13,12 @@ const COMBINED_LEASING_TEAM = "Equipe Ramzy/Adriana";
 const IHOME_INSURANCE_TEAM = "Equipe iHome Seguros";
 const IHOME_INSURANCE_DEPARTMENT = "iHome Seguros";
 
+type PendingOffsiteSave = {
+  personId: string;
+  offsiteUse: boolean;
+  submittedAt: number;
+};
+
 function normalize(value: string) {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
 }
@@ -135,7 +141,6 @@ function ensureNotebookOffsiteField(modal: HTMLElement, usageByPersonId: Map<str
 
     const status = document.createElement("small");
     status.dataset.notebookOffsiteStatus = "true";
-    status.textContent = "";
     field.appendChild(status);
 
     const compactGrid = modal.querySelector<HTMLElement>(".notebook-modal-grid.compact-grid");
@@ -153,7 +158,11 @@ function ensureNotebookOffsiteField(modal: HTMLElement, usageByPersonId: Map<str
     const personId = personSelect.value;
     offsiteSelect.disabled = !personId;
     offsiteSelect.value = personId && usageByPersonId.get(personId) ? "sim" : "nao";
-    if (status) status.textContent = personId ? "" : "Selecione uma pessoa para definir.";
+    if (status) {
+      status.textContent = personId
+        ? "Será salvo junto com o cadastro."
+        : "Selecione uma pessoa para definir.";
+    }
   };
 
   if (!personSelect.dataset.notebookOffsiteBound) {
@@ -161,28 +170,19 @@ function ensureNotebookOffsiteField(modal: HTMLElement, usageByPersonId: Map<str
     personSelect.addEventListener("change", () => window.setTimeout(sync, 0));
   }
 
-  if (!offsiteSelect.dataset.notebookOffsiteBound) {
-    offsiteSelect.dataset.notebookOffsiteBound = "true";
-    offsiteSelect.addEventListener("change", async () => {
+  const form = modal.querySelector<HTMLFormElement>("form");
+  if (form && !form.dataset.notebookOffsiteSubmitBound) {
+    form.dataset.notebookOffsiteSubmitBound = "true";
+    form.addEventListener("submit", () => {
       const personId = personSelect.value;
       if (!personId) return;
-      const previous = Boolean(usageByPersonId.get(personId));
-      const next = offsiteSelect.value === "sim";
-      usageByPersonId.set(personId, next);
-      offsiteSelect.disabled = true;
-      if (status) status.textContent = "Salvando...";
-      try {
-        await setPersonNotebookOffsiteUse(personId, next);
-        if (status) status.textContent = "Salvo no cadastro da pessoa.";
-        window.dispatchEvent(new CustomEvent("hub:organization-directory-updated"));
-      } catch (error) {
-        usageByPersonId.set(personId, previous);
-        offsiteSelect.value = previous ? "sim" : "nao";
-        if (status) status.textContent = "Não foi possível salvar. Tente novamente.";
-        console.error("Falha ao salvar uso externo do notebook:", error);
-      } finally {
-        offsiteSelect.disabled = false;
-      }
+      window.dispatchEvent(new CustomEvent<PendingOffsiteSave>("hub:notebook-offsite-submit", {
+        detail: {
+          personId,
+          offsiteUse: offsiteSelect.value === "sim",
+          submittedAt: Date.now(),
+        },
+      }));
     });
   }
 
@@ -243,6 +243,7 @@ export function NotebookInventoryUXEnhancer() {
   const handledPatrimonyNoticeRef = useRef("");
   const teamByPersonIdRef = useRef(new Map<string, string>());
   const offsiteByPersonIdRef = useRef(new Map<string, boolean>());
+  const pendingOffsiteSaveRef = useRef<PendingOffsiteSave | null>(null);
   const [directoryVersion, setDirectoryVersion] = useState(0);
 
   useEffect(() => {
@@ -259,16 +260,38 @@ export function NotebookInventoryUXEnhancer() {
         .catch((error) => console.warn("Diretório central indisponível para complemento visual:", error));
     };
 
+    const handleOffsiteSubmit = (event: Event) => {
+      const detail = (event as CustomEvent<PendingOffsiteSave>).detail;
+      if (detail?.personId) pendingOffsiteSaveRef.current = detail;
+    };
+
     refreshDirectory();
     const handleDirectoryChange = () => refreshDirectory();
     window.addEventListener("hub:organization-directory-updated", handleDirectoryChange);
+    window.addEventListener("hub:notebook-offsite-submit", handleOffsiteSubmit);
     return () => {
       cancelled = true;
       window.removeEventListener("hub:organization-directory-updated", handleDirectoryChange);
+      window.removeEventListener("hub:notebook-offsite-submit", handleOffsiteSubmit);
     };
   }, []);
 
   useEffect(() => {
+    const persistPendingOffsite = (notebookMessage: string) => {
+      if (!(/^NB-\d+\s+cadastrado/i.test(notebookMessage) || /^NB-\d+.*vinculado\s+a/i.test(notebookMessage))) return;
+      const pending = pendingOffsiteSaveRef.current;
+      if (!pending) return;
+      pendingOffsiteSaveRef.current = null;
+      if (Date.now() - pending.submittedAt > 30000) return;
+
+      void setPersonNotebookOffsiteUse(pending.personId, pending.offsiteUse)
+        .then(() => {
+          offsiteByPersonIdRef.current.set(pending.personId, pending.offsiteUse);
+          window.dispatchEvent(new CustomEvent("hub:organization-directory-updated"));
+        })
+        .catch((error) => console.error("Falha ao salvar uso externo do notebook após o cadastro:", error));
+    };
+
     const enhance = () => {
       document.querySelectorAll<HTMLLabelElement>(".notebook-modal label, .patrimony-screen label")
         .forEach(ensurePersonSearch);
@@ -317,6 +340,7 @@ export function NotebookInventoryUXEnhancer() {
         handledNoticeRef.current = "";
       } else if (notebookMessage !== handledNoticeRef.current) {
         handledNoticeRef.current = notebookMessage;
+        persistPendingOffsite(notebookMessage);
         if (/^NB-\d+\s+cadastrado/i.test(notebookMessage)) {
           showHubSaveSuccess({
             title: "Notebook cadastrado com sucesso",
