@@ -26,6 +26,7 @@ type PersonRow = {
   name: string;
   person_type: OrganizationPerson["personType"];
   department: string;
+  team_name: string | null;
   job_title: string | null;
   email: string | null;
   phone: string | null;
@@ -42,6 +43,7 @@ type ItemRow = {
   name: string;
   category: string;
   tracking_mode: PatrimonyItem["trackingMode"];
+  equipment_model_id: string | null;
   brand: string | null;
   model: string | null;
   serial_number: string | null;
@@ -167,6 +169,14 @@ export async function saveOrganizationPerson(draft: OrganizationPersonDraft) {
   if (!department) throw new PatrimonyRemoteError(400, "Informe o setor da pessoa.");
 
   const id = draft.id ?? crypto.randomUUID();
+  const current = draft.id
+    ? await requestJson<PersonRow[]>(`organization_people?id=eq.${encodeURIComponent(draft.id)}&select=*`)
+    : [];
+  const existing = current[0];
+  const preservedTeamName = draft.teamName === undefined
+    ? existing?.team_name ?? null
+    : cleanOptional(draft.teamName);
+
   const rows = await requestJson<PersonRow[]>("organization_people?on_conflict=id", {
     method: "POST",
     headers: { Prefer: "resolution=merge-duplicates,return=representation" },
@@ -175,14 +185,26 @@ export async function saveOrganizationPerson(draft: OrganizationPersonDraft) {
       name,
       person_type: draft.personType,
       department: draft.department.trim() || "Não informado",
+      team_name: preservedTeamName,
       job_title: cleanOptional(draft.jobTitle),
       email: cleanOptional(draft.email),
       phone: cleanOptional(draft.phone),
-      active: draft.active ?? true,
+      managed_user_id: existing?.managed_user_id ?? null,
+      active: draft.active ?? existing?.active ?? true,
       notes: cleanOptional(draft.notes),
     }]),
   });
   if (!rows[0]) throw new PatrimonyRemoteError(500, "Não foi possível confirmar a pessoa salva.");
+  return mapPerson(rows[0]);
+}
+
+export async function setOrganizationPersonActive(personId: string, active: boolean) {
+  const rows = await requestJson<PersonRow[]>(`organization_people?id=eq.${encodeURIComponent(personId)}`, {
+    method: "PATCH",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify({ active }),
+  });
+  if (!rows[0]) throw new PatrimonyRemoteError(404, "Pessoa não encontrada.");
   return mapPerson(rows[0]);
 }
 
@@ -210,6 +232,9 @@ export async function savePatrimonyItem(draft: PatrimonyItemDraft) {
     throw new PatrimonyRemoteError(400, `A quantidade total não pode ficar abaixo de ${usedQuantity}. Já existem unidades entregues, em manutenção ou perdidas.`);
   }
   const availableQuantity = Math.max(0, quantity - usedQuantity);
+  const preservedEquipmentModelId = draft.equipmentModelId === undefined
+    ? existing?.equipment_model_id ?? null
+    : draft.equipmentModelId || null;
 
   const rows = await requestJson<ItemRow[]>("patrimony_items?on_conflict=id", {
     method: "POST",
@@ -220,6 +245,7 @@ export async function savePatrimonyItem(draft: PatrimonyItemDraft) {
       name,
       category,
       tracking_mode: draft.trackingMode,
+      equipment_model_id: preservedEquipmentModelId,
       brand: cleanOptional(draft.brand),
       model: cleanOptional(draft.model),
       serial_number: cleanOptional(draft.serialNumber),
@@ -495,6 +521,7 @@ function mapPerson(row: PersonRow): OrganizationPerson {
     name: row.name,
     personType: row.person_type,
     department: row.department,
+    teamName: row.team_name ?? undefined,
     jobTitle: row.job_title ?? undefined,
     email: row.email ?? undefined,
     phone: row.phone ?? undefined,
@@ -513,6 +540,7 @@ function mapItem(row: ItemRow): PatrimonyItem {
     name: row.name,
     category: row.category,
     trackingMode: row.tracking_mode,
+    equipmentModelId: row.equipment_model_id ?? undefined,
     brand: row.brand ?? undefined,
     model: row.model ?? undefined,
     serialNumber: row.serial_number ?? undefined,

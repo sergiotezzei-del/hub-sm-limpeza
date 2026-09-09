@@ -26,6 +26,7 @@ export type OrganizationPerson = {
   name: string;
   personType: PatrimonyPersonType;
   department: string;
+  teamName?: string;
   jobTitle?: string;
   email?: string;
   phone?: string;
@@ -34,6 +35,32 @@ export type OrganizationPerson = {
   notes?: string;
   createdAt: string;
   updatedAt: string;
+};
+
+export type PatrimonyEquipmentModel = {
+  id: string;
+  slug: string;
+  name: string;
+  category: string;
+  brand?: string;
+  model?: string;
+  description: string;
+  active: boolean;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type PatrimonyEquipmentModelDraft = {
+  id?: string;
+  slug?: string;
+  name: string;
+  category?: string;
+  brand?: string;
+  model?: string;
+  description: string;
+  active?: boolean;
+  sortOrder?: number;
 };
 
 export type PatrimonySpace = {
@@ -63,6 +90,7 @@ export type PatrimonyItem = {
   name: string;
   category: string;
   trackingMode: PatrimonyTrackingMode;
+  equipmentModelId?: string;
   brand?: string;
   model?: string;
   serialNumber?: string;
@@ -154,6 +182,7 @@ export type OrganizationPersonDraft = {
   name: string;
   personType: PatrimonyPersonType;
   department: string;
+  teamName?: string;
   jobTitle?: string;
   email?: string;
   phone?: string;
@@ -167,6 +196,7 @@ export type PatrimonyItemDraft = {
   name: string;
   category: string;
   trackingMode: PatrimonyTrackingMode;
+  equipmentModelId?: string;
   brand?: string;
   model?: string;
   serialNumber?: string;
