@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { loadOrganizationDirectory } from "../../shared/organization/organizationDirectory";
 import { showHubSaveSuccess } from "../../shared/ui/HubSaveSuccessHost";
+import { NotebookItemEditEnhancer } from "./NotebookItemEditEnhancer";
 import { downloadNotebookInventoryPdf } from "./services/notebookInventoryPdf";
 import "./notebookInventoryUx.css";
 
@@ -247,5 +248,5 @@ export function NotebookInventoryUXEnhancer() {
     return () => observer.disconnect();
   }, [directoryVersion]);
 
-  return null;
+  return <NotebookItemEditEnhancer />;
 }
