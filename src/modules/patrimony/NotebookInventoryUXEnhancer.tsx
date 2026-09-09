@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { loadOrganizationDirectory } from "../../shared/organization/organizationDirectory";
 import { downloadNotebookInventoryPdf } from "./services/notebookInventoryPdf";
 import "./notebookInventoryUx.css";
 
@@ -58,7 +59,14 @@ function ensureCombinedLeasingTeam(select: HTMLSelectElement) {
   select.appendChild(option);
 }
 
-function enhanceTeamSelects(root: ParentNode) {
+function selectedPersonIdInside(container: Element | null) {
+  if (!container) return "";
+  const label = Array.from(container.querySelectorAll<HTMLLabelElement>("label"))
+    .find((entry) => normalize(directText(entry)).includes("nome da pessoa"));
+  return label?.querySelector<HTMLSelectElement>("select")?.value ?? "";
+}
+
+function enhanceTeamSelects(root: ParentNode, teamByPersonId: Map<string, string>) {
   root.querySelectorAll<HTMLLabelElement>("label").forEach((label) => {
     const labelText = normalize(directText(label));
     if (!labelText.includes("equipe / gerente")) return;
@@ -71,6 +79,12 @@ function enhanceTeamSelects(root: ParentNode) {
         option.disabled = true;
       }
     });
+
+    const modal = label.closest(".notebook-modal");
+    const personId = selectedPersonIdInside(modal);
+    if (personId && teamByPersonId.get(personId) === COMBINED_LEASING_TEAM) {
+      select.value = COMBINED_LEASING_TEAM;
+    }
   });
 }
 
@@ -92,12 +106,24 @@ function findButtonByText(selector: string, text: string) {
 export function NotebookInventoryUXEnhancer() {
   const [success, setSuccess] = useState<SuccessState>(null);
   const handledNoticeRef = useRef("");
+  const teamByPersonIdRef = useRef(new Map<string, string>());
+
+  useEffect(() => {
+    let cancelled = false;
+    void loadOrganizationDirectory(true)
+      .then((people) => {
+        if (cancelled) return;
+        teamByPersonIdRef.current = new Map(people.map((person) => [person.id, person.teamName ?? ""]));
+      })
+      .catch((error) => console.warn("Diretório central indisponível para complemento visual:", error));
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     const enhance = () => {
       document.querySelectorAll<HTMLLabelElement>(".notebook-modal label, .patrimony-screen label")
         .forEach(ensurePersonSearch);
-      enhanceTeamSelects(document);
+      enhanceTeamSelects(document, teamByPersonIdRef.current);
       removeDeveloperCreditFromDialogs(document);
 
       const actions = document.querySelector<HTMLElement>(".notebook-inventory-actions");
