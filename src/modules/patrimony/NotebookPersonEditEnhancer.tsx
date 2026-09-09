@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { loadPatrimonyDataset } from "./services/patrimonyService";
 import {
@@ -78,7 +78,6 @@ function formatDate(value: string) {
 }
 
 export function NotebookPersonEditEnhancer() {
-  const datasetRef = useRef<PatrimonyDataset>(EMPTY_DATASET);
   const [dataset, setDataset] = useState<PatrimonyDataset>(EMPTY_DATASET);
   const [editingPersonId, setEditingPersonId] = useState<string | null>(null);
   const [draft, setDraft] = useState<EditDraft | null>(null);
@@ -92,29 +91,9 @@ export function NotebookPersonEditEnhancer() {
 
   async function refreshDataset() {
     const next = await loadPatrimonyDataset();
-    datasetRef.current = next;
     setDataset(next);
     return next;
   }
-
-  useEffect(() => {
-    let cancelled = false;
-    const refreshWhenVisible = () => {
-      if (!document.querySelector(".patrimony-screen")) return;
-      void loadPatrimonyDataset().then((next) => {
-        if (cancelled) return;
-        datasetRef.current = next;
-        setDataset(next);
-      }).catch(() => undefined);
-    };
-    refreshWhenVisible();
-    const observer = new MutationObserver(refreshWhenVisible);
-    observer.observe(document.body, { childList: true, subtree: true });
-    return () => {
-      cancelled = true;
-      observer.disconnect();
-    };
-  }, []);
 
   useEffect(() => {
     const enhance = () => {
