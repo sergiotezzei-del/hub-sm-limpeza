@@ -93,7 +93,7 @@ export function WindowsNotificationControl() {
   }
 
   function openSettings() {
-    host.closest("details")?.removeAttribute("open");
+    host?.closest("details")?.removeAttribute("open");
     setSettingsMessage("");
     setSettingsOpen(true);
   }
