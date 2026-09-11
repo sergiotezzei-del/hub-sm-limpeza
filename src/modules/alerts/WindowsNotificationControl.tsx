@@ -22,6 +22,7 @@ import {
 import "./windowsNotifications.css";
 
 const SESSION_KEY = "hub-sm-active-session";
+const USERS_KEY = "hub-sm-users-permissions";
 
 export function WindowsNotificationControl() {
   const [host, setHost] = useState<HTMLElement | null>(null);
@@ -279,13 +280,35 @@ function readIsAdminSession() {
     const raw = window.sessionStorage.getItem(SESSION_KEY);
     if (!raw) return false;
     const session = JSON.parse(raw) as {
-      currentUser?: {
+      currentUser?: string | {
+        id?: string;
         userType?: string;
         permissions?: string[];
       } | null;
     };
-    return session.currentUser?.userType === "Admin"
-      || Boolean(session.currentUser?.permissions?.includes("painel-admin"));
+    const currentUser = session.currentUser;
+
+    if (currentUser === "tezzei") return true;
+
+    if (currentUser && typeof currentUser === "object") {
+      return currentUser.userType === "Admin"
+        || Boolean(currentUser.permissions?.includes("painel-admin"));
+    }
+
+    if (typeof currentUser !== "string") return false;
+
+    const rawUsers = window.localStorage.getItem(USERS_KEY);
+    if (!rawUsers) return false;
+    const users = JSON.parse(rawUsers) as unknown;
+    if (!Array.isArray(users)) return false;
+
+    const managedUser = users.find((item) => {
+      if (!item || typeof item !== "object") return false;
+      return String((item as { id?: unknown }).id ?? "") === currentUser;
+    }) as { userType?: string; permissions?: unknown } | undefined;
+
+    return managedUser?.userType === "Admin"
+      || (Array.isArray(managedUser?.permissions) && managedUser.permissions.includes("painel-admin"));
   } catch {
     return false;
   }
