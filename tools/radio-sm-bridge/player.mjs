@@ -1,7 +1,8 @@
+const SUPABASE_URL = (process.env.RADIO_SUPABASE_URL || "https://dtdepfpkyiqtnsjztjit.supabase.co").replace(/\/+$/, "");
+const SUPABASE_ANON_KEY = process.env.RADIO_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR0ZGVwZnBreWlxdG5zanp0aml0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMxODkyMTcsImV4cCI6MjA5ODc2NTIxN30.kNYAYQTw8gqUaYqRTqdcPtthXO5vbZD6XwxeBvhpRgo";
 const BRIDGE_TOKEN = (process.env.RADIO_BRIDGE_TOKEN || "").trim();
 const AUDIOCAST_IP = (process.env.RADIO_AUDIOCAST_IP || "10.11.22.53").trim();
 const DEVICE_NAME = (process.env.RADIO_DEVICE_NAME || "SOM SANTAMARIATEM").trim();
-const PLAYER_BRIDGE_URL = (process.env.RADIO_PLAYER_BRIDGE_URL || "https://dtdepfpkyiqtnsjztjit.supabase.co/functions/v1/radio-player-bridge").trim();
 
 if (!BRIDGE_TOKEN) {
   console.error("[radio-player] RADIO_BRIDGE_TOKEN nao informado.");
@@ -13,24 +14,57 @@ let commandBusy = false;
 let statusBusy = false;
 const warningTimes = new Map();
 
-console.log("[radio-player] Musica atual e controles habilitados.");
+console.log("[radio-player] Musica atual e controles habilitados via RPC direto.");
 
-async function bridgeRequest(action, extra = {}) {
-  const response = await fetch(PLAYER_BRIDGE_URL, {
+async function supabaseRpc(name, body, timeoutMs = 7000) {
+  const response = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${name}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Accept: "application/json" },
-    body: JSON.stringify({ action, token: BRIDGE_TOKEN, ...extra }),
-    signal: AbortSignal.timeout(7000),
+    headers: {
+      apikey: SUPABASE_ANON_KEY,
+      Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(timeoutMs),
   });
 
   const text = await response.text();
-  let data = {};
-  try { data = text ? JSON.parse(text) : {}; } catch { data = {}; }
-
   if (!response.ok) {
-    throw new Error(`ponte HTTP ${response.status}: ${data.error || text || "sem resposta"}`);
+    throw new Error(`Supabase ${name}: HTTP ${response.status} ${text.slice(0, 300)}`);
   }
-  return data;
+  return text ? JSON.parse(text) : null;
+}
+
+async function claimCommand() {
+  const rows = await supabaseRpc("radio_bridge_claim_command", { p_token: BRIDGE_TOKEN });
+  return Array.isArray(rows) && rows.length ? rows[0] : null;
+}
+
+async function finishCommand(id, success, error = null) {
+  return supabaseRpc("radio_bridge_finish_command", {
+    p_token: BRIDGE_TOKEN,
+    p_id: id,
+    p_success: success,
+    p_error: error,
+  });
+}
+
+async function setPlayerState(state) {
+  return supabaseRpc("radio_bridge_set_player_state", {
+    p_token: BRIDGE_TOKEN,
+    p_device_name: state.device_name,
+    p_title: state.title,
+    p_artist: state.artist,
+    p_album: state.album,
+    p_player_status: state.player_status,
+    p_volume: state.volume,
+    p_mute: state.mute,
+    p_mode: state.mode,
+    p_current_ms: state.current_ms,
+    p_total_ms: state.total_ms,
+    p_error: state.last_error,
+  });
 }
 
 async function pollCommands() {
@@ -39,8 +73,7 @@ async function pollCommands() {
   let command = null;
 
   try {
-    const result = await bridgeRequest("claim");
-    command = result.command || null;
+    command = await claimCommand();
     if (!command) return;
 
     const audioCastCommand = mapCommand(command);
@@ -54,7 +87,7 @@ async function pollCommands() {
       throw new Error(`AudioCast respondeu ${response.status}: ${text || "sem resposta"}`);
     }
 
-    await bridgeRequest("finish", { id: command.id, success: true });
+    await finishCommand(command.id, true, null);
     console.log(`[radio-player] Controle executado: ${commandLabel(command)}`);
     setTimeout(() => void syncStatus(), 300);
   } catch (error) {
@@ -62,7 +95,7 @@ async function pollCommands() {
     if (command?.id) {
       console.error(`[radio-player] Falha no controle ${commandLabel(command)}: ${message}`);
       try {
-        await bridgeRequest("finish", { id: command.id, success: false, error: message });
+        await finishCommand(command.id, false, message);
       } catch {}
     } else {
       logTransient("cloud", `Conexao com o HUB indisponivel. Tentando novamente... (${message})`);
@@ -86,20 +119,18 @@ async function syncStatus() {
 
     const raw = JSON.parse(await response.text());
 
-    await bridgeRequest("status", {
-      state: {
-        device_name: DEVICE_NAME,
-        title: decodeLinkPlayText(raw.Title),
-        artist: decodeLinkPlayText(raw.Artist),
-        album: decodeLinkPlayText(raw.Album),
-        player_status: typeof raw.status === "string" ? raw.status : "",
-        volume: integerOr(raw.vol, 0),
-        mute: String(raw.mute) === "1",
-        mode: nullableInteger(raw.mode),
-        current_ms: nullableInteger(raw.curpos),
-        total_ms: nullableInteger(raw.totlen),
-        last_error: null,
-      },
+    await setPlayerState({
+      device_name: DEVICE_NAME,
+      title: decodeLinkPlayText(raw.Title),
+      artist: decodeLinkPlayText(raw.Artist),
+      album: decodeLinkPlayText(raw.Album),
+      player_status: typeof raw.status === "string" ? raw.status : "",
+      volume: integerOr(raw.vol, 0),
+      mute: String(raw.mute) === "1",
+      mode: nullableInteger(raw.mode),
+      current_ms: nullableInteger(raw.curpos),
+      total_ms: nullableInteger(raw.totlen),
+      last_error: null,
     });
   } catch (error) {
     const message = errorMessage(error);
