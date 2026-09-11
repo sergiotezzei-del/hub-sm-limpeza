@@ -143,10 +143,10 @@ server.listen(HTTP_PORT, "0.0.0.0", () => {
   console.log(`[radio-sm] Ponte ativa em http://${BIND_IP}:${HTTP_PORT}`);
   console.log(`[radio-sm] AudioCast: ${AUDIOCAST_IP}`);
   console.log(`[radio-sm] Pasta de áudios: ${AUDIO_DIR}`);
-  console.log("[radio-sm] Aguardando comunicados e playlists do HUB...");
+  console.log("[radio-sm] Aguardando comunicados e playlists do HUB via RPC direto...");
 });
 
-async function supabaseRpc(name, body) {
+async function supabaseRpc(name, body, timeoutMs = 15000) {
   const response = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${name}`, {
     method: "POST",
     headers: {
@@ -156,6 +156,7 @@ async function supabaseRpc(name, body) {
       Accept: "application/json",
     },
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(timeoutMs),
   });
 
   const text = await response.text();
@@ -166,7 +167,7 @@ async function supabaseRpc(name, body) {
   return JSON.parse(text);
 }
 
-async function bridgeEdge(action, payload = {}) {
+async function edgeStorageRequest(action, payload = {}) {
   const response = await fetch(PLAYER_BRIDGE_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "application/json" },
@@ -192,6 +193,51 @@ async function finishJob(id, success, errorMessage = null) {
     p_success: success,
     p_error: errorMessage,
   });
+}
+
+async function claimPlaylist() {
+  const rows = await supabaseRpc("radio_bridge_claim_playlist", { p_token: BRIDGE_TOKEN });
+  return Array.isArray(rows) && rows.length ? rows[0] : null;
+}
+
+async function markPlaylistStarted(id) {
+  return supabaseRpc("radio_bridge_playlist_started", {
+    p_token: BRIDGE_TOKEN,
+    p_id: id,
+  });
+}
+
+async function shouldStopPlaylist(id) {
+  const value = await supabaseRpc("radio_bridge_playlist_should_stop", {
+    p_token: BRIDGE_TOKEN,
+    p_id: id,
+  });
+  return value === true;
+}
+
+async function finishPlaylist(id, success, errorMessage = null) {
+  return supabaseRpc("radio_bridge_playlist_finish", {
+    p_token: BRIDGE_TOKEN,
+    p_id: id,
+    p_success: success,
+    p_error: errorMessage,
+  });
+}
+
+async function cleanupPlaylistStorage(id) {
+  try {
+    await edgeStorageRequest("playlist_cleanup", { id });
+  } catch (error) {
+    console.warn(`[radio-playlist] Playlist finalizada, mas a limpeza do Storage falhou: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+async function finalizePlaylist(id, success, errorMessage = null) {
+  const finished = await finishPlaylist(id, success, errorMessage);
+  if (finished !== true) {
+    throw new Error(`playlist ${id} não pôde ser finalizada no HUB`);
+  }
+  await cleanupPlaylistStorage(id);
 }
 
 function resolveAudioFile(localFile) {
@@ -267,19 +313,18 @@ async function pollPlaylist() {
   let session = null;
 
   try {
-    const claimed = await bridgeEdge("playlist_claim");
-    session = claimed?.session ?? null;
+    session = await claimPlaylist();
     if (!session) return;
 
     await dispatchPlaylist(session);
-    await bridgeEdge("playlist_finish", { id: session.id, success: true, error: null });
+    await finalizePlaylist(session.id, true, null);
     console.log(`[radio-playlist] Finalizada: ${session.title || session.id}`);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error(`[radio-playlist] Falha: ${message}`);
     if (session?.id) {
       try {
-        await bridgeEdge("playlist_finish", { id: session.id, success: false, error: message });
+        await finalizePlaylist(session.id, false, message);
       } catch (finishError) {
         console.error(`[radio-playlist] Não foi possível finalizar no HUB: ${finishError instanceof Error ? finishError.message : String(finishError)}`);
       }
@@ -314,7 +359,9 @@ async function dispatchPlaylist(session) {
     const audioUrl = `http://${BIND_IP}:${HTTP_PORT}/radio-playlist/${id}.mp3`;
     await audioCastCommand(`playPromptUrl:${audioUrl}`);
     await withTimeout(state.started, 10000, "AudioCast não solicitou o stream da playlist");
-    await bridgeEdge("playlist_started", { id });
+
+    const started = await markPlaylistStarted(id);
+    if (started !== true) throw new Error(`playlist ${id} não pôde ser marcada como iniciada`);
     console.log(`[radio-playlist] Tocando: ${session.title || id}`);
 
     while (!stopped) {
@@ -326,8 +373,7 @@ async function dispatchPlaylist(session) {
 
       let shouldStop = false;
       try {
-        const status = await bridgeEdge("playlist_should_stop", { id });
-        shouldStop = status?.stop === true;
+        shouldStop = await shouldStopPlaylist(id);
       } catch (error) {
         console.warn(`[radio-playlist] Falha transitória ao consultar parada: ${error instanceof Error ? error.message : String(error)}`);
       }
