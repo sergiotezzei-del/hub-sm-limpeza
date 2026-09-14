@@ -32,6 +32,9 @@ export type OrganizationPerson = {
   phone?: string;
   managedUserId?: string;
   active: boolean;
+  inactiveAt?: string;
+  inactiveByName?: string;
+  inactiveReason?: string;
   notes?: string;
   createdAt: string;
   updatedAt: string;

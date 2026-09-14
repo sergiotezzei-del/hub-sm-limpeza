@@ -14,9 +14,11 @@ import {
   assignPatrimonyItem,
   getPatrimonyErrorMessage,
   loadPatrimonyDataset,
+  returnPatrimonyAssignment,
   saveOrganizationPerson,
   savePatrimonyItem,
   setOrganizationPersonActive,
+  transferNotebookAssignment,
 } from "./services/patrimonyService";
 import type {
   OrganizationPersonDraft,
@@ -54,8 +56,9 @@ const MANAGER_TEAMS = new Set([
   "ze alberto",
 ]);
 
-type ModalMode = "people" | "person-new" | "models" | "model-new" | "notebook" | "assign" | null;
+type ModalMode = "people" | "person-new" | "person-inactivate" | "models" | "model-new" | "notebook" | "assign" | "transfer" | null;
 type ModelReturn = "models" | "notebook";
+type DirectoryStatusFilter = "all" | "active" | "inactive";
 
 type PersonDraft = {
   name: string;
@@ -79,6 +82,23 @@ type NotebookDraft = {
   notes: string;
 };
 
+type TransferDraft = {
+  itemId: string;
+  fromPersonId: string;
+  toPersonId: string;
+  reason: string;
+  transferMovementId: string;
+  deliveryMovementId: string;
+  newAssignmentId: string;
+  deactivateAfterPersonId?: string;
+  inactiveReason?: string;
+};
+
+type InactivateDraft = {
+  personId: string;
+  reason: string;
+};
+
 const emptyPerson = (): PersonDraft => ({
   name: "",
   personType: "funcionario",
@@ -97,6 +117,16 @@ const emptyNotebook = (): NotebookDraft => ({
   notes: "",
 });
 
+const emptyTransfer = (): TransferDraft => ({
+  itemId: "",
+  fromPersonId: "",
+  toPersonId: "",
+  reason: "",
+  transferMovementId: crypto.randomUUID(),
+  deliveryMovementId: crypto.randomUUID(),
+  newAssignmentId: crypto.randomUUID(),
+});
+
 function normalize(value: string) {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
 }
@@ -113,6 +143,14 @@ function getActorName() {
   } catch {
     return "Admin Tezzei";
   }
+}
+
+function formatDateTime(value?: string) {
+  if (!value) return "";
+  const date = new Date(value);
+  return Number.isFinite(date.getTime())
+    ? new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(date)
+    : value;
 }
 
 function isNotebook(item: PatrimonyItem) {
@@ -157,6 +195,7 @@ export function NotebookInventoryFeatureV3() {
   const [departmentFilter, setDepartmentFilter] = useState("all");
   const [teamFilter, setTeamFilter] = useState("all");
   const [directorySearch, setDirectorySearch] = useState("");
+  const [directoryStatusFilter, setDirectoryStatusFilter] = useState<DirectoryStatusFilter>("active");
   const [modal, setModal] = useState<ModalMode>(null);
   const [personDraft, setPersonDraft] = useState<PersonDraft>(emptyPerson);
   const [modelDraft, setModelDraft] = useState<ModelDraft>(emptyModel);
@@ -166,6 +205,8 @@ export function NotebookInventoryFeatureV3() {
   const [assignTeamName, setAssignTeamName] = useState("");
   const [assignDepartment, setAssignDepartment] = useState("");
   const [assignPersonId, setAssignPersonId] = useState("");
+  const [transferDraft, setTransferDraft] = useState<TransferDraft>(emptyTransfer);
+  const [inactivateDraft, setInactivateDraft] = useState<InactivateDraft>({ personId: "", reason: "" });
 
   useEffect(() => {
     const sync = () => {
@@ -232,6 +273,10 @@ export function NotebookInventoryFeatureV3() {
     if (active) void refresh();
   }, [active]);
 
+  const allPeople = useMemo(
+    () => dataset.people.slice().sort((a, b) => Number(b.active) - Number(a.active) || a.name.localeCompare(b.name, "pt-BR")),
+    [dataset.people],
+  );
   const people = useMemo(
     () => dataset.people.filter((person) => person.active).sort((a, b) => a.name.localeCompare(b.name, "pt-BR")),
     [dataset.people],
@@ -254,6 +299,14 @@ export function NotebookInventoryFeatureV3() {
   const notebookAssignmentByItem = useMemo(() => {
     const ids = new Set(notebookItems.map((item) => item.id));
     return new Map(activeAssignments.filter((assignment) => ids.has(assignment.itemId)).map((assignment) => [assignment.itemId, assignment]));
+  }, [activeAssignments, notebookItems]);
+  const notebookAssignmentByPerson = useMemo(() => {
+    const ids = new Set(notebookItems.map((item) => item.id));
+    return new Map(
+      activeAssignments
+        .filter((assignment) => ids.has(assignment.itemId))
+        .map((assignment) => [assignment.personId, assignment]),
+    );
   }, [activeAssignments, notebookItems]);
 
   const departments = useMemo(
@@ -288,8 +341,13 @@ export function NotebookInventoryFeatureV3() {
   );
   const directoryPeople = useMemo(() => {
     const term = normalize(directorySearch);
-    return people.filter((person) => !term || normalize(`${person.name} ${person.department} ${person.teamName ?? ""} ${person.jobTitle ?? ""}`).includes(term));
-  }, [directorySearch, people]);
+    return allPeople.filter((person) => {
+      const matchesStatus = directoryStatusFilter === "all"
+        || (directoryStatusFilter === "active" ? person.active : !person.active);
+      const matchesTerm = !term || normalize(`${person.name} ${person.department} ${person.teamName ?? ""} ${person.jobTitle ?? ""}`).includes(term);
+      return matchesStatus && matchesTerm;
+    });
+  }, [allPeople, directorySearch, directoryStatusFilter]);
   const modelCount = useMemo(
     () => new Set(notebookItems.map((item) => item.equipmentModelId || normalize(`${item.brand ?? ""} ${item.model ?? ""}`)).filter(Boolean)).size,
     [notebookItems],
@@ -392,23 +450,101 @@ export function NotebookInventoryFeatureV3() {
     }
   }
 
-  async function handleDeactivatePerson(personId: string) {
-    if (busy) return;
-    if (peopleWithNotebook.has(personId)) {
-      setNotice("Esta pessoa está com notebook vinculado. Transfira ou devolva o equipamento antes de excluir.");
+  function openInactivatePerson(personId: string) {
+    setNotice("");
+    setInactivateDraft({ personId, reason: "" });
+    setModal("person-inactivate");
+  }
+
+  function openTransfer(itemId: string, options: { deactivateAfterPersonId?: string; inactiveReason?: string } = {}) {
+    const assignment = notebookAssignmentByItem.get(itemId);
+    if (!assignment) {
+      setNotice("Este notebook não possui vínculo ativo para transferência.");
+      return;
+    }
+    setNotice("");
+    setTransferDraft({
+      ...emptyTransfer(),
+      itemId,
+      fromPersonId: assignment.personId,
+      reason: options.inactiveReason
+        ? `Pessoa desligada/inativada. ${options.inactiveReason}`
+        : "",
+      deactivateAfterPersonId: options.deactivateAfterPersonId,
+      inactiveReason: options.inactiveReason,
+    });
+    setModal("transfer");
+  }
+
+  async function handleConfirmInactivation() {
+    if (busy || !inactivateDraft.personId || inactivateDraft.reason.trim().length < 3) return;
+    const assignment = notebookAssignmentByPerson.get(inactivateDraft.personId);
+    if (assignment) {
+      setNotice("Esta pessoa possui um notebook vinculado. Escolha transferir ou devolver antes de concluir o desligamento.");
       return;
     }
     setBusy(true);
     setNotice("");
     try {
-      await setOrganizationPersonActive(personId, false);
-      setNotice("Pessoa removida da lista ativa. O histórico foi preservado.");
+      const person = personById.get(inactivateDraft.personId);
+      await setOrganizationPersonActive(inactivateDraft.personId, false, {
+        actorName: getActorName(),
+        reason: inactivateDraft.reason,
+      });
+      setModal("people");
+      setNotice(`${person?.name ?? "Pessoa"} marcada como inativa/desligada. O histórico foi preservado.`);
       await refresh();
     } catch (error) {
       setNotice(getPatrimonyErrorMessage(error));
     } finally {
       setBusy(false);
     }
+  }
+
+  async function handleReturnNotebookAndInactivate() {
+    if (busy || !inactivateDraft.personId || inactivateDraft.reason.trim().length < 3) return;
+    const assignment = notebookAssignmentByPerson.get(inactivateDraft.personId);
+    if (!assignment) {
+      await handleConfirmInactivation();
+      return;
+    }
+    const person = personById.get(inactivateDraft.personId);
+    const item = itemById.get(assignment.itemId);
+    setBusy(true);
+    setNotice("");
+    try {
+      await returnPatrimonyAssignment({
+        assignmentId: assignment.id,
+        quantity: openQuantity(assignment),
+        condition: "bom",
+        actorName: getActorName(),
+        notes: `Devolução para estoque/reserva por desligamento. Motivo: ${inactivateDraft.reason.trim()}`,
+      });
+      await setOrganizationPersonActive(inactivateDraft.personId, false, {
+        actorName: getActorName(),
+        reason: inactivateDraft.reason,
+      });
+      setModal("people");
+      setNotice(`${person?.name ?? "Pessoa"} foi inativada e ${item?.code ?? "o notebook"} voltou para estoque/reserva.`);
+      await refresh();
+    } catch (error) {
+      setNotice(getPatrimonyErrorMessage(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function handleInactivationTransferChoice() {
+    if (inactivateDraft.reason.trim().length < 3) {
+      setNotice("Informe o motivo do desligamento antes de transferir o notebook.");
+      return;
+    }
+    const assignment = notebookAssignmentByPerson.get(inactivateDraft.personId);
+    if (!assignment) return;
+    openTransfer(assignment.itemId, {
+      deactivateAfterPersonId: inactivateDraft.personId,
+      inactiveReason: inactivateDraft.reason,
+    });
   }
 
   async function handleSaveModel(event: FormEvent) {
@@ -540,6 +676,56 @@ export function NotebookInventoryFeatureV3() {
     }
   }
 
+  async function handleTransfer(event: FormEvent) {
+    event.preventDefault();
+    if (busy || !transferDraft.itemId || !transferDraft.fromPersonId || !transferDraft.toPersonId) return;
+    if (transferDraft.fromPersonId === transferDraft.toPersonId) {
+      setNotice("Selecione uma pessoa diferente da origem.");
+      return;
+    }
+    if (transferDraft.reason.trim().length < 3) {
+      setNotice("Informe o motivo da transferência.");
+      return;
+    }
+    const destination = personById.get(transferDraft.toPersonId);
+    if (!destination?.active) {
+      setNotice("Pessoa inativa não pode receber notebook.");
+      return;
+    }
+
+    setBusy(true);
+    setNotice("");
+    try {
+      await transferNotebookAssignment({
+        transferMovementId: transferDraft.transferMovementId,
+        deliveryMovementId: transferDraft.deliveryMovementId,
+        newAssignmentId: transferDraft.newAssignmentId,
+        itemId: transferDraft.itemId,
+        fromPersonId: transferDraft.fromPersonId,
+        toPersonId: transferDraft.toPersonId,
+        actorName: getActorName(),
+        reason: transferDraft.reason,
+      });
+
+      if (transferDraft.deactivateAfterPersonId && transferDraft.inactiveReason) {
+        await setOrganizationPersonActive(transferDraft.deactivateAfterPersonId, false, {
+          actorName: getActorName(),
+          reason: transferDraft.inactiveReason,
+        });
+      }
+
+      const item = itemById.get(transferDraft.itemId);
+      setModal(null);
+      setTransferDraft(emptyTransfer());
+      setNotice(`${item?.code ?? "Notebook"} transferido para ${destination.name}. Histórico preservado.`);
+      await refresh();
+    } catch (error) {
+      setNotice(getPatrimonyErrorMessage(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   if (!tabs || !sourceButton) return null;
 
   const tab = createPortal(
@@ -630,6 +816,7 @@ export function NotebookInventoryFeatureV3() {
                 </div>
                 <div className="notebook-card-status">
                   <span className={person ? "assigned" : "available"}>{person ? "EM USO" : item.status === "disponivel" ? "DISPONÍVEL" : item.status.toUpperCase()}</span>
+                  {person && <button type="button" onClick={() => openTransfer(item.id)}>Transferir</button>}
                   {!person && item.status === "disponivel" && <button type="button" onClick={() => openAssign(item.id)}>Vincular</button>}
                 </div>
               </article>
@@ -663,7 +850,7 @@ export function NotebookInventoryFeatureV3() {
         {modal === "people" && (
           <div className="notebook-directory-panel">
             <header>
-              <div><h3>Pessoas da empresa</h3><p>{people.length} nomes disponíveis no diretório.</p></div>
+              <div><h3>Pessoas da empresa</h3><p>{allPeople.length} nomes no diretório central · {people.length} ativos.</p></div>
               <button type="button" onClick={() => setModal(null)} disabled={busy}>×</button>
             </header>
             {notice && <div className="notebook-inventory-notice" role="status">{notice}</div>}
@@ -671,14 +858,28 @@ export function NotebookInventoryFeatureV3() {
               <input value={directorySearch} onChange={(event) => setDirectorySearch(event.target.value)} placeholder="Buscar nome, setor ou gerente" />
               <button className="primary" type="button" onClick={() => { setPersonDraft(emptyPerson()); setNotice(""); setModal("person-new"); }}>+ Nova pessoa</button>
             </div>
+            <div className="notebook-directory-status-filter" role="group" aria-label="Filtrar pessoas por status">
+              <button className={directoryStatusFilter === "all" ? "active" : ""} type="button" onClick={() => setDirectoryStatusFilter("all")}>Todos</button>
+              <button className={directoryStatusFilter === "active" ? "active" : ""} type="button" onClick={() => setDirectoryStatusFilter("active")}>Ativos</button>
+              <button className={directoryStatusFilter === "inactive" ? "active" : ""} type="button" onClick={() => setDirectoryStatusFilter("inactive")}>Inativos</button>
+            </div>
             <div className="notebook-directory-list">
               {directoryPeople.map((person) => (
-                <article key={person.id}>
+                <article className={person.active ? "" : "inactive"} key={person.id}>
                   <div>
                     <strong>{person.name}</strong>
                     <span>{isKnownDepartment(person.department) ? person.department : "Setor a definir"}{person.teamName ? ` · Gerente: ${teamManagerLabel(person.teamName)}` : ""}{person.jobTitle ? ` · ${person.jobTitle}` : ""}</span>
+                    {!person.active && (
+                      <small>
+                        INATIVA{person.inactiveAt ? ` · desligada em ${formatDateTime(person.inactiveAt)}` : ""}{person.inactiveReason ? ` · ${person.inactiveReason}` : ""}
+                      </small>
+                    )}
                   </div>
-                  <button type="button" className="danger-link" onClick={() => { void handleDeactivatePerson(person.id); }} disabled={busy}>Excluir</button>
+                  {person.active ? (
+                    <button type="button" className="danger-link" onClick={() => openInactivatePerson(person.id)} disabled={busy}>Desligar / Inativar</button>
+                  ) : (
+                    <span className="notebook-directory-inactive-pill">INATIVA</span>
+                  )}
                 </article>
               ))}
               {directoryPeople.length === 0 && <p className="notebook-inventory-empty">Nenhuma pessoa encontrada.</p>}
@@ -700,6 +901,93 @@ export function NotebookInventoryFeatureV3() {
             <footer><button type="button" onClick={() => setModal("people")} disabled={busy}>Voltar</button><button className="primary" type="submit" disabled={busy}>{busy ? "Salvando..." : "Salvar pessoa"}</button></footer>
           </form>
         )}
+
+        {modal === "person-inactivate" && (() => {
+          const person = personById.get(inactivateDraft.personId);
+          const assignment = inactivateDraft.personId ? notebookAssignmentByPerson.get(inactivateDraft.personId) : undefined;
+          const item = assignment ? itemById.get(assignment.itemId) : undefined;
+          const model = item?.equipmentModelId ? modelById.get(item.equipmentModelId) : undefined;
+          return (
+            <form onSubmit={(event) => { event.preventDefault(); void handleConfirmInactivation(); }}>
+              <header><div><h3>Desligar / Inativar pessoa</h3><p>{person?.name ?? "Pessoa do diretório central"}</p></div><button type="button" onClick={() => setModal("people")} disabled={busy}>×</button></header>
+              {notice && <div className="notebook-inventory-notice" role="status">{notice}</div>}
+              <div className="notebook-inactivation-summary">
+                <strong>{person?.name}</strong>
+                <span>{person ? `${person.department}${person.teamName ? ` · ${teamManagerLabel(person.teamName)}` : ""}` : ""}</span>
+              </div>
+              <label>Motivo do desligamento <strong>obrigatório</strong>
+                <textarea
+                  required
+                  rows={3}
+                  value={inactivateDraft.reason}
+                  onChange={(event) => setInactivateDraft({ ...inactivateDraft, reason: event.target.value })}
+                  placeholder="Ex.: Desligamento da empresa"
+                />
+              </label>
+              {assignment && item ? (
+                <div className="notebook-inactivation-warning">
+                  <strong>Esta pessoa possui um notebook vinculado.</strong>
+                  <span>{item.code} — {model?.name || notebookDescription(item)}</span>
+                  <p>Escolha transferir ou devolver para estoque/reserva antes de concluir o desligamento.</p>
+                  <div>
+                    <button type="button" onClick={handleInactivationTransferChoice} disabled={busy || inactivateDraft.reason.trim().length < 3}>Transferir notebook</button>
+                    <button type="button" onClick={() => { void handleReturnNotebookAndInactivate(); }} disabled={busy || inactivateDraft.reason.trim().length < 3}>Devolver para estoque/reserva</button>
+                  </div>
+                </div>
+              ) : (
+                <p className="notebook-modal-info">Nenhum notebook ativo vinculado a esta pessoa.</p>
+              )}
+              <footer>
+                <button type="button" onClick={() => setModal("people")} disabled={busy}>Cancelar</button>
+                {!assignment && <button className="primary" type="submit" disabled={busy || inactivateDraft.reason.trim().length < 3}>{busy ? "Inativando..." : "Confirmar inativação"}</button>}
+              </footer>
+            </form>
+          );
+        })()}
+
+        {modal === "transfer" && (() => {
+          const item = itemById.get(transferDraft.itemId);
+          const model = item?.equipmentModelId ? modelById.get(item.equipmentModelId) : undefined;
+          const fromPerson = personById.get(transferDraft.fromPersonId);
+          return (
+            <form onSubmit={handleTransfer}>
+              <header><div><h3>Transferir notebook</h3><p>{item ? `${item.code} — ${model?.name || notebookDescription(item)}` : "Notebook"}</p></div><button type="button" onClick={() => setModal(null)} disabled={busy}>×</button></header>
+              {notice && <div className="notebook-inventory-notice" role="status">{notice}</div>}
+              <div className="notebook-transfer-summary">
+                <small>Notebook</small>
+                <strong>{item ? `${item.code} — ${model?.name || notebookDescription(item)}` : "Notebook não encontrado"}</strong>
+                <span>{item?.serialNumber ? `Série ${item.serialNumber}` : "Série não informada"}</span>
+              </div>
+              <div className="notebook-transfer-route">
+                <div><small>De</small><strong>{fromPerson?.name ?? "Pessoa origem"}</strong><span>{fromPerson ? `${fromPerson.department}${fromPerson.teamName ? ` · ${teamManagerLabel(fromPerson.teamName)}` : ""}` : ""}</span></div>
+                <label>Nome da pessoa
+                  <select required value={transferDraft.toPersonId} onChange={(event) => setTransferDraft({ ...transferDraft, toPersonId: event.target.value })}>
+                    <option value="">Selecione o destino</option>
+                    {people.filter((person) => person.id !== transferDraft.fromPersonId).map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}
+                  </select>
+                </label>
+              </div>
+              {transferDraft.deactivateAfterPersonId && (
+                <div className="notebook-inactivation-link-note">
+                  Após confirmar a transferência, {fromPerson?.name ?? "a pessoa origem"} será marcada como inativa/desligada.
+                </div>
+              )}
+              <label>Motivo da transferência <strong>obrigatório</strong>
+                <textarea
+                  required
+                  rows={3}
+                  value={transferDraft.reason}
+                  onChange={(event) => setTransferDraft({ ...transferDraft, reason: event.target.value })}
+                  placeholder="Ex.: Funcionária desligada e notebook repassado ao novo funcionário."
+                />
+              </label>
+              <footer>
+                <button type="button" onClick={() => setModal(null)} disabled={busy}>Cancelar</button>
+                <button className="primary" type="submit" disabled={busy || !transferDraft.toPersonId || transferDraft.reason.trim().length < 3}>{busy ? "Transferindo..." : "Confirmar transferência"}</button>
+              </footer>
+            </form>
+          );
+        })()}
 
         {modal === "models" && (
           <div className="notebook-directory-panel">

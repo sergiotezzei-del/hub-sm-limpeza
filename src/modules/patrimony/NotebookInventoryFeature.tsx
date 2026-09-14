@@ -596,7 +596,7 @@ export function NotebookInventoryFeature() {
               {directoryPeople.map((person) => (
                 <article key={person.id}>
                   <div><strong>{person.name}</strong><span>{person.department}{person.teamName ? ` · ${person.teamName}` : ""}{person.jobTitle ? ` · ${person.jobTitle}` : ""}</span></div>
-                  <button type="button" className="danger-link" onClick={() => { void handleDeactivatePerson(person.id); }} disabled={busy}>Excluir</button>
+                  <button type="button" className="danger-link" onClick={() => { void handleDeactivatePerson(person.id); }} disabled={busy}>Desligar / Inativar</button>
                 </article>
               ))}
               {directoryPeople.length === 0 && <p className="notebook-inventory-empty">Nenhum usuário encontrado.</p>}
