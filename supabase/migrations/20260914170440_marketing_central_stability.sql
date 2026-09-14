@@ -1,5 +1,38 @@
 -- Stabilizes the current Marketing workflow without rewriting historical rows.
 
+-- A requested date is only a preference. The operational schedule is occupied
+-- exclusively by confirmed reservations.
+create or replace function private.marketing_schedule_occupied_slots()
+returns table(
+  booking_key uuid,
+  representative_request_id uuid,
+  capture_group_id uuid,
+  team_id uuid,
+  start_at timestamptz,
+  end_at timestamptz,
+  is_confirmed boolean
+)
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select
+    r.booking_key,
+    r.representative_request_id,
+    r.capture_group_id,
+    q.team_id,
+    r.start_at,
+    r.end_at,
+    true
+  from private.marketing_capture_reservations r
+  join public.marketing_requests q on q.id = r.representative_request_id
+  where q.deleted_at is null
+    and q.status <> 'cancelado';
+$$;
+
+revoke all on function private.marketing_schedule_occupied_slots() from public, anon, authenticated;
+
 create or replace function private.marketing_validate_operational_state()
 returns trigger
 language plpgsql
@@ -39,6 +72,16 @@ begin
 
   if new.confirmed_capture_at is not null and new.confirmed_capture_duration_minutes <> 60 then
     raise exception 'MARKETING_CAPTURE_DURATION_INVALID';
+  end if;
+
+  if new.status = 'solicitado'
+    and new.confirmed_capture_at is not null
+    and (
+      tg_op = 'INSERT'
+      or new.status is distinct from old.status
+      or new.confirmed_capture_at is distinct from old.confirmed_capture_at
+    ) then
+    raise exception 'MARKETING_CONFIRMED_CAPTURE_STATE_INVALID';
   end if;
 
   if new.confirmed_capture_at is not null
@@ -265,6 +308,7 @@ declare
   v_settings public.marketing_schedule_settings%rowtype;
   v_local_date date;
   v_mode text;
+  v_member record;
 begin
   select r.user_id, r.user_name, r.access_role into v_user_id, v_user_name, v_role
   from private.marketing_resolve_session(p_session_token) r;
@@ -311,21 +355,36 @@ begin
       and tstzrange(s.start_at, s.end_at, '[)') && tstzrange(p_special_capture_at, p_special_capture_at + interval '60 minutes', '[)')
   ) then raise exception 'MARKETING_SPECIAL_EXACT_CONFLICT'; end if;
 
-  update public.marketing_requests q
-  set special_capture_at = p_special_capture_at,
-      special_capture_reason = btrim(p_reason),
-      special_capture_status = 'pending',
-      special_capture_decided_by_user_id = null,
-      special_capture_decided_by_name = null,
-      special_capture_decided_at = null
-  where coalesce(q.capture_group_id, q.id) = v_booking_key
-    and q.deleted_at is null and q.status = 'solicitado';
+  for v_member in
+    select q.id, q.status
+    from public.marketing_requests q
+    where coalesce(q.capture_group_id, q.id) = v_booking_key
+      and q.deleted_at is null
+      and q.status = 'solicitado'
+    for update
+  loop
+    update public.marketing_requests
+    set special_capture_at = p_special_capture_at,
+        special_capture_reason = btrim(p_reason),
+        special_capture_status = 'pending',
+        special_capture_decided_by_user_id = null,
+        special_capture_decided_by_name = null,
+        special_capture_decided_at = null
+    where id = v_member.id;
 
-  insert into public.marketing_request_events(request_id, event_type, from_status, to_status, actor_user_id, actor_name, details)
-  values (
-    v_request.id, 'excecao_agenda_solicitada', v_request.status, v_request.status, v_user_id, v_user_name,
-    jsonb_build_object('specialCaptureAt', p_special_capture_at, 'reason', btrim(p_reason), 'mode', v_mode, 'approvalRequiredBy', 'tezzei')
-  );
+    insert into public.marketing_request_events(
+      request_id, event_type, from_status, to_status, actor_user_id, actor_name, details
+    ) values (
+      v_member.id, 'excecao_agenda_solicitada', v_member.status, v_member.status, v_user_id, v_user_name,
+      jsonb_build_object(
+        'specialCaptureAt', p_special_capture_at,
+        'reason', btrim(p_reason),
+        'mode', v_mode,
+        'approvalRequiredBy', 'tezzei',
+        'captureGroupId', v_request.capture_group_id
+      )
+    );
+  end loop;
 end;
 $$;
 
@@ -417,6 +476,103 @@ $$;
 revoke all on function public.marketing_v2_decide_special_capture(text, uuid, text) from public, anon, authenticated;
 grant execute on function public.marketing_v2_decide_special_capture(text, uuid, text) to anon, authenticated;
 
+create or replace function public.marketing_v2_reschedule_request(
+  p_session_token text,
+  p_request_id uuid
+)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_user_id text;
+  v_user_name text;
+  v_role text;
+  v_request public.marketing_requests%rowtype;
+  v_previous_group_id uuid;
+  v_now timestamptz := now();
+begin
+  select r.user_id, r.user_name, r.access_role
+    into v_user_id, v_user_name, v_role
+  from private.marketing_resolve_session(p_session_token) r;
+
+  if v_user_id is null then raise exception 'MARKETING_SESSION_EXPIRED'; end if;
+  if v_role <> 'marketing' or v_user_id not in ('arthur', 'maria') then
+    raise exception 'MARKETING_RESCHEDULE_DENIED';
+  end if;
+
+  select * into v_request
+  from public.marketing_requests q
+  where q.id = p_request_id and q.deleted_at is null
+  for update;
+
+  if v_request.id is null then raise exception 'MARKETING_REQUEST_NOT_FOUND'; end if;
+  if v_request.request_kind <> 'capture_edit' then raise exception 'MARKETING_RESCHEDULE_CAPTURE_ONLY'; end if;
+  if v_request.status <> 'agendado' or v_request.confirmed_capture_at is null then
+    raise exception 'MARKETING_RESCHEDULE_NOT_SCHEDULED';
+  end if;
+
+  v_previous_group_id := v_request.capture_group_id;
+
+  update public.marketing_requests
+  set status = 'solicitado',
+      confirmed_capture_at = null,
+      confirmed_capture_duration_minutes = null,
+      confirmed_capture_end_at = null,
+      capture_group_id = null,
+      completed_at = null,
+      queue_entered_at = v_now,
+      updated_at = v_now
+  where id = p_request_id;
+
+  update public.marketing_queue_override_requests
+  set status = 'rejected',
+      decided_by_user_id = v_user_id,
+      decided_by_name = v_user_name,
+      decided_at = v_now
+  where request_id = p_request_id and status = 'pending';
+
+  update public.marketing_queue_override_requests
+  set consumed_at = v_now
+  where request_id = p_request_id and status = 'approved' and consumed_at is null;
+
+  insert into public.marketing_request_events(
+    request_id, event_type, from_status, to_status, actor_user_id, actor_name, details
+  ) values (
+    p_request_id,
+    'pedido_reagendado_para_fim_da_fila',
+    v_request.status,
+    'solicitado',
+    v_user_id,
+    v_user_name,
+    jsonb_build_object(
+      'previousConfirmedCaptureAt', v_request.confirmed_capture_at,
+      'previousConfirmedCaptureDurationMinutes', v_request.confirmed_capture_duration_minutes,
+      'previousCaptureGroupId', v_previous_group_id,
+      'reason', 'Reagendado pelo Marketing a pedido do corretor',
+      'queueEnteredAt', v_now
+    )
+  );
+
+  perform private.marketing_notify_manager(
+    p_request_id,
+    'captacao_alterada',
+    'Pedido voltou para a fila de agendamento',
+    format(
+      'Pedido #%s · %s foi reagendado e voltou para o final da fila para receber uma nova data disponível.',
+      v_request.request_number,
+      v_request.broker_name
+    ),
+    v_user_id,
+    v_user_name
+  );
+end;
+$$;
+
+revoke all on function public.marketing_v2_reschedule_request(text, uuid) from public, anon, authenticated;
+grant execute on function public.marketing_v2_reschedule_request(text, uuid) to anon, authenticated;
+
 create or replace function private.marketing_alert_source_at(p_request_id uuid, p_alert_kind text)
 returns timestamptz
 language sql
@@ -458,6 +614,8 @@ declare
   v_role text;
   v_request public.marketing_requests%rowtype;
   v_source_at timestamptz;
+  v_booking_key uuid;
+  v_member record;
 begin
   select r.user_id, r.user_name, r.access_role into v_user_id, v_user_name, v_role
   from private.marketing_resolve_session(p_session_token) r;
@@ -467,19 +625,43 @@ begin
 
   select * into v_request from public.marketing_requests q where q.id = p_request_id and q.deleted_at is null;
   if v_request.id is null then raise exception 'MARKETING_REQUEST_NOT_FOUND'; end if;
-  v_source_at := private.marketing_alert_source_at(p_request_id, p_alert_kind);
+  v_booking_key := coalesce(v_request.capture_group_id, v_request.id);
 
-  if not exists (
-    select 1 from public.marketing_request_events e
-    where e.request_id = p_request_id and e.event_type = 'admin_alert_acknowledged'
-      and e.actor_user_id = v_user_id and e.details->>'alertKind' = p_alert_kind
-      and e.created_at >= v_source_at
-  ) then
-    insert into public.marketing_request_events(request_id, event_type, from_status, to_status, actor_user_id, actor_name, details)
-    values (p_request_id, 'admin_alert_acknowledged', v_request.status, v_request.status, v_user_id,
-      coalesce(nullif(btrim(v_user_name), ''), 'Administrador'),
-      jsonb_build_object('alertKind', p_alert_kind, 'source', 'dashboard', 'alertSourceAt', v_source_at));
-  end if;
+  for v_member in
+    select q.id, q.status
+    from public.marketing_requests q
+    where q.deleted_at is null
+      and (
+        (p_alert_kind <> 'special_capture' and q.id = p_request_id)
+        or (
+          p_alert_kind = 'special_capture'
+          and coalesce(q.capture_group_id, q.id) = v_booking_key
+        )
+      )
+  loop
+    v_source_at := private.marketing_alert_source_at(v_member.id, p_alert_kind);
+    if not exists (
+      select 1 from public.marketing_request_events e
+      where e.request_id = v_member.id
+        and e.event_type = 'admin_alert_acknowledged'
+        and e.actor_user_id = v_user_id
+        and e.details->>'alertKind' = p_alert_kind
+        and e.created_at >= v_source_at
+    ) then
+      insert into public.marketing_request_events(
+        request_id, event_type, from_status, to_status, actor_user_id, actor_name, details
+      ) values (
+        v_member.id, 'admin_alert_acknowledged', v_member.status, v_member.status, v_user_id,
+        coalesce(nullif(btrim(v_user_name), ''), 'Administrador'),
+        jsonb_build_object(
+          'alertKind', p_alert_kind,
+          'source', 'dashboard',
+          'alertSourceAt', v_source_at,
+          'captureGroupId', case when p_alert_kind = 'special_capture' then v_request.capture_group_id else null end
+        )
+      );
+    end if;
+  end loop;
 end;
 $$;
 
@@ -529,6 +711,7 @@ as $$
 declare
   v_client_id text;
   v_queue_ids jsonb := '[]'::jsonb;
+  v_previous_group_tasks jsonb := '[]'::jsonb;
   v_requests jsonb := '[]'::jsonb;
   v_connections jsonb := '[]'::jsonb;
 begin
@@ -544,16 +727,34 @@ begin
   limit 1;
 
   with queued as (
-    select q.request_id
+    select q.request_id, q.queued_at
     from private.marketing_google_calendar_sync_queue q
     where q.attempts < 8
     order by q.queued_at
     limit greatest(1, least(coalesce(p_limit, 50), 100))
+  ), previous_group_tasks as (
+    select distinct
+      q.request_id as queue_request_id,
+      nullif(e.details->>'previousCaptureGroupId', '')::uuid as capture_group_id
+    from queued q
+    join lateral (
+      select event.details, event.created_at
+      from public.marketing_request_events event
+      where event.request_id = q.request_id
+        and event.event_type = 'pedido_reagendado_para_fim_da_fila'
+        and event.details ? 'previousCaptureGroupId'
+        and pg_catalog.abs(extract(epoch from event.created_at - q.queued_at)) <= 5
+      order by event.created_at desc
+      limit 1
+    ) e on true
+    where nullif(e.details->>'previousCaptureGroupId', '') is not null
   ), queued_groups as (
     select distinct r.capture_group_id
     from public.marketing_requests r
     join queued q on q.request_id = r.id
     where r.capture_group_id is not null
+    union
+    select p.capture_group_id from previous_group_tasks p
   ), relevant as (
     select r.* from public.marketing_requests r
     where r.id in (select request_id from queued)
@@ -561,6 +762,10 @@ begin
   )
   select
     coalesce((select jsonb_agg(q.request_id) from queued q), '[]'::jsonb),
+    coalesce((select jsonb_agg(jsonb_build_object(
+      'queueRequestId', p.queue_request_id,
+      'captureGroupId', p.capture_group_id
+    )) from previous_group_tasks p), '[]'::jsonb),
     coalesce((select jsonb_agg(jsonb_build_object(
       'id', r.id,
       'requestNumber', r.request_number,
@@ -576,7 +781,7 @@ begin
       'contentTypes', r.content_types,
       'deletedAt', r.deleted_at
     ) order by r.request_number) from relevant r), '[]'::jsonb)
-  into v_queue_ids, v_requests;
+  into v_queue_ids, v_previous_group_tasks, v_requests;
 
   select coalesce(jsonb_agg(jsonb_build_object(
     'managedUserId', c.managed_user_id,
@@ -592,6 +797,7 @@ begin
   return jsonb_build_object(
     'clientId', coalesce(v_client_id, ''),
     'queueRequestIds', v_queue_ids,
+    'previousCaptureGroups', v_previous_group_tasks,
     'requests', v_requests,
     'connections', v_connections
   );

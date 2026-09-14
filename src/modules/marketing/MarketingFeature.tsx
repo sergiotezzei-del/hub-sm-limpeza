@@ -305,7 +305,9 @@ export function MarketingFeature(props: MarketingFeatureProps) {
       ].filter(({ request, kind }) => !acknowledgedAlerts.has(marketingAlertKey(request.id, kind))).slice(0, 8)
     : [];
   const specialCaptureAlerts = dashboard?.context.userId === "tezzei" && alertHost && acknowledgementsLoaded
-    ? dashboard.requests.filter((request) => request.specialCaptureStatus === "pending" && !acknowledgedAlerts.has(marketingAlertKey(request.id, "special_capture"))).slice(0, 8)
+    ? uniqueCaptureOutings(dashboard.requests.filter((request) => request.specialCaptureStatus === "pending"))
+      .filter((request) => !acknowledgedAlerts.has(marketingAlertKey(request.id, "special_capture")))
+      .slice(0, 8)
     : [];
   const queueOverrideAlerts = dashboard?.context.role === "admin" && alertHost
     ? dashboard.queueOverrideRequests.filter((request) => request.status === "pending").slice(0, 8)
@@ -1431,6 +1433,10 @@ function RequestDetail(props: { sessionToken: string; dashboard: MarketingDashbo
       props.onError("Escolha um horário antes de marcar o pedido como agendado.");
       return;
     }
+    if (props.request.requestKind === "capture_edit" && status === "solicitado" && confirmed) {
+      props.onError("Ao confirmar um horário, avance o pedido para Agendado.");
+      return;
+    }
     const payload: Record<string, unknown> = {
       status,
       promisedAt: promised ? new Date(promised).toISOString() : "",
@@ -1568,7 +1574,7 @@ function RequestDetail(props: { sessionToken: string; dashboard: MarketingDashbo
               </div>
               <label className="marketing-exception-reason">Justificativa<textarea value={periodExceptionReason} onChange={(event) => setPeriodExceptionReason(event.target.value)} minLength={5} maxLength={1000} placeholder="Explique por que esse encaixe ou horário especial é necessário." required /></label>
               <div className="marketing-exception-approval-note"><strong>Próximo passo</strong><span>Você envia → Sérgio Tezzei analisa → somente se aprovado o pedido entra na agenda.</span></div>
-              <footer><button type="button" className="secondary" onClick={() => setPeriodExceptionOpen(false)}>CANCELAR</button><button type="submit" disabled={busy}>{busy ? "Enviando..." : "ENVIAR PARA APROVAÇÃO"}</button></footer>
+              <div className="marketing-schedule-exception-actions"><button type="button" className="secondary" onClick={() => setPeriodExceptionOpen(false)}>CANCELAR</button><button type="submit" disabled={busy}>{busy ? "Enviando..." : "ENVIAR PARA APROVAÇÃO"}</button></div>
             </form>
           </div>,
           document.body,
@@ -1593,7 +1599,7 @@ function RequestDetail(props: { sessionToken: string; dashboard: MarketingDashbo
         )}
         {(props.dashboard.context.userId === "arthur" || props.dashboard.context.userId === "maria") && props.request.status === "agendado" && props.request.requestKind === "capture_edit" && Boolean(props.request.confirmedCaptureAt) && <button type="button" className="marketing-reschedule-request" disabled={busy} onClick={() => { void rescheduleRequest(); }}>REAGENDAR PEDIDO</button>}
         {(props.dashboard.context.userId === "arthur" || props.dashboard.context.userId === "maria") && !requestIsClosed && <button type="button" className="marketing-cancel-request" disabled={busy} onClick={() => { const scheduled = Boolean(props.request.confirmedCaptureAt); if (window.confirm(scheduled ? "Cancelar este agendamento? O pedido ficará como cancelado e sairá da agenda." : "Cancelar este pedido? Ele sairá da operação, mas o histórico será preservado.")) void run("cancel", { reason: "Cancelado pelo Marketing a pedido do corretor." }); }}>{props.request.confirmedCaptureAt ? "CANCELAR AGENDAMENTO" : "CANCELAR PEDIDO"}</button>}
-        {!canManage && !["pronto", "cancelado"].includes(props.request.status) && <button type="button" className="marketing-cancel-request" disabled={busy} onClick={() => void run("cancel")}>Cancelar pedido</button>}
+        {!canManage && !["pronto", "cancelado"].includes(props.request.status) && <button type="button" className="marketing-cancel-request" disabled={busy} onClick={() => { if (window.confirm("Cancelar este pedido? Ele sairá da operação, mas o histórico será preservado.")) void run("cancel"); }}>Cancelar pedido</button>}
         {deleteOpen && <AdminDeleteRequestModal sessionToken={props.sessionToken} request={props.request} onClose={() => setDeleteOpen(false)} onError={props.onError} onDeleted={async () => { props.onNotice(`Pedido #${props.request.requestNumber} excluído da operação com o histórico preservado.`); setDeleteOpen(false); await props.onChanged(); props.onClose(); }} />}
       </section>
     </div>,
@@ -1620,7 +1626,7 @@ function RequestCard({ request, onClick, showCaptureStatus = false, timezone }: 
           {request.confirmedCaptureAt && request.confirmedCaptureDurationMinutes && <strong>{formatCaptureRange(request.confirmedCaptureAt, request.confirmedCaptureDurationMinutes, timezone)}</strong>}
         </div>
       )}
-      <footer><span>{request.assignedMarketingName || "Não atribuído"}</span><time>{request.promisedAt ? `Entrega ${formatShortDate(request.promisedAt)}` : request.confirmedCaptureAt ? `Captação ${formatShortDate(request.confirmedCaptureAt)}` : "Sem previsão"}</time></footer>
+      <div className="marketing-request-meta"><span>{request.assignedMarketingName || "Não atribuído"}</span><time>{request.promisedAt ? `Entrega ${formatShortDate(request.promisedAt)}` : request.confirmedCaptureAt ? `Captação ${formatShortDate(request.confirmedCaptureAt)}` : "Sem previsão"}</time></div>
     </button>
   );
 }

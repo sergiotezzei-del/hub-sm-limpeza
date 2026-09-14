@@ -506,6 +506,7 @@ export function getMarketingErrorMessage(error: unknown) {
   if (normalized.includes("MARKETING_GROUP_ASSIGNEE_MISMATCH")) return "Todos os pedidos da mesma saída precisam ter o mesmo responsável.";
   if (normalized.includes("MARKETING_STATUS_TRANSITION_INVALID")) return "Essa mudança de status não é válida para a etapa atual do pedido.";
   if (normalized.includes("MARKETING_CAPTURE_IN_PAST")) return "Escolha uma data e horário futuros para a captação.";
+  if (normalized.includes("MARKETING_CONFIRMED_CAPTURE_STATE_INVALID")) return "Ao confirmar um horário, avance o pedido para Agendado.";
   if (normalized.includes("MARKETING_SPECIAL_NOT_PENDING")) return "Esta exceção já foi analisada ou não está mais pendente.";
   if (normalized.includes("MARKETING_TEAM_REQUIRED")) return "Escolha a equipe deste gerente.";
   if (normalized.includes("MARKETING_USER_NOT_FOUND")) return "O usuário do HUB não foi encontrado ou está inativo.";

@@ -89,7 +89,7 @@ export function CaptureSchedulePicker(props: CaptureSchedulePickerProps) {
                 className={`${availability} ${selectedDate === dateKey ? "selected" : ""}`}
                 disabled={fullWithoutException}
                 onClick={() => chooseDate(dateKey)}
-                title={availability === "full" ? "Manhã e tarde já reservadas" : undefined}
+                title={availability === "full" ? "Não há horários disponíveis neste dia" : undefined}
               >
                 <small>{formatWeekday(dateKey)}</small>
                 <strong>{formatDay(dateKey)}</strong>
@@ -137,7 +137,7 @@ export function CaptureSchedulePicker(props: CaptureSchedulePickerProps) {
         <small className="marketing-lunch-note">Almoço protegido: não há agenda padrão entre 12:00 e 13:59.</small>
       </div>
 
-      <footer>
+      <div className="marketing-schedule-picker-footer">
         <div className="marketing-selected-slot">
           {selectedTimeIsAvailable ? <><span>Selecionado</span><strong>{formatSelected(selectedDate, selectedTime)}</strong></> : <span>Escolha um horário livre.</span>}
         </div>
@@ -145,7 +145,7 @@ export function CaptureSchedulePicker(props: CaptureSchedulePickerProps) {
           {props.onCancel && <button type="button" className="secondary" onClick={props.onCancel}>VOLTAR</button>}
           <button type="button" onClick={confirm} disabled={!selectedTimeIsAvailable}>CONFIRMAR HORÁRIO</button>
         </div>
-      </footer>
+      </div>
     </section>
   );
 }
@@ -164,17 +164,18 @@ function PeriodCard(props: {
   onRequestException?: (context: { dateKey: string; period: MarketingPeriod }) => void;
 }) {
   const occupiedTimes = occupiedTimesForPeriod(props.dateKey, props.period, props.config, props.occupied);
+  const periodClosed = !props.reserved && props.times.every((time) => !isTimeAvailable(props.dateKey, time, props.config, props.occupied));
   return (
-    <section className={`marketing-period-card ${props.reserved ? "reserved" : "free"}`}>
+    <section className={`marketing-period-card ${props.reserved || periodClosed ? "reserved" : "free"}`}>
       <header>
         <div><strong>{props.title}</strong><small>{props.subtitle}</small></div>
-        <span>{props.reserved ? "RESERVADA" : "LIVRE"}</span>
+        <span>{props.reserved ? "RESERVADA" : periodClosed ? "ENCERRADO" : "LIVRE"}</span>
       </header>
 
-      {props.reserved ? (
+      {props.reserved || periodClosed ? (
         <div className="marketing-period-reserved-message">
-          <p>Já existe agendamento neste período{occupiedTimes.length ? `: ${occupiedTimes.join(", ")}` : "."}</p>
-          {props.onRequestException && (
+          <p>{props.reserved ? `Já existe agendamento neste período${occupiedTimes.length ? `: ${occupiedTimes.join(", ")}` : "."}` : "Os horários deste período já passaram."}</p>
+          {props.reserved && props.onRequestException && (
             <button type="button" onClick={() => props.onRequestException?.({ dateKey: props.dateKey, period: props.period })}>
               PRECISO DE ENCAIXE
             </button>
@@ -218,10 +219,10 @@ function firstWorkingDate(config: MarketingScheduleConfig) {
 }
 
 function dayAvailability(dateKey: string, config: MarketingScheduleConfig, occupied: MarketingOccupiedCaptureSlot[]) {
-  const morning = periodIsOccupied(dateKey, "morning", config, occupied);
-  const afternoon = periodIsOccupied(dateKey, "afternoon", config, occupied);
-  if (morning && afternoon) return "full";
-  if (morning || afternoon) return "partial";
+  const morningAvailable = MORNING_TIMES.some((time) => isTimeAvailable(dateKey, time, config, occupied));
+  const afternoonAvailable = AFTERNOON_TIMES.some((time) => isTimeAvailable(dateKey, time, config, occupied));
+  if (!morningAvailable && !afternoonAvailable) return "full";
+  if (!morningAvailable || !afternoonAvailable) return "partial";
   return "free";
 }
 
