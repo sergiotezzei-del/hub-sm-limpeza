@@ -193,6 +193,10 @@ export function NotebookPersonEditEnhancer() {
       setError("Informe o motivo da alteração.");
       return;
     }
+    if (selectedNotebookOwner && selectedNotebookOwner.id !== editingPersonId) {
+      setError("Este notebook está vinculado a outra pessoa. Use o botão Transferir no card do notebook para preservar a cadeia histórica.");
+      return;
+    }
     setBusy(true);
     setError("");
     setMessage("");
@@ -238,7 +242,7 @@ export function NotebookPersonEditEnhancer() {
     ? notebookItems.find((item) => item.id === currentNotebookAssignment.itemId)
     : undefined;
   const transferWarning = selectedNotebookOwner && selectedNotebookOwner.id !== editingPersonId
-    ? `${selectedNotebookOwner.name} está com este notebook hoje. Ao salvar, o vínculo será transferido para ${draft.name}.`
+    ? `${selectedNotebookOwner.name} está com este notebook hoje. Use o botão Transferir no card do notebook para mudar o responsável preservando o histórico.`
     : "";
   const replacingWarning = currentNotebook && notebookItemId && currentNotebook.id !== notebookItemId
     ? `${currentNotebook.code} ficará disponível/reserva após a correção.`
@@ -307,7 +311,7 @@ export function NotebookPersonEditEnhancer() {
               const assignment = assignmentByNotebook.get(item.id);
               const owner = assignment ? dataset.people.find((person) => person.id === assignment.personId) : undefined;
               const ownerLabel = owner ? ` · hoje: ${owner.name}` : " · disponível";
-              return <option key={item.id} value={item.id}>{item.code} · {item.name}{item.serialNumber ? ` · série ${item.serialNumber}` : ""}{ownerLabel}</option>;
+              return <option disabled={Boolean(owner && owner.id !== editingPersonId)} key={item.id} value={item.id}>{item.code} · {item.name}{item.serialNumber ? ` · série ${item.serialNumber}` : ""}{ownerLabel}</option>;
             })}
           </select>
         </label>

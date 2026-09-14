@@ -43,6 +43,36 @@
   color: #fff;
 }
 
+.notebook-directory-status-filter {
+  display: inline-flex;
+  width: fit-content;
+  overflow: hidden;
+  border: 1px solid #d7dde5;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.notebook-directory-status-filter button {
+  min-height: 34px;
+  border: 0;
+  border-right: 1px solid #d7dde5;
+  border-radius: 0;
+  background: transparent;
+  padding: 7px 11px;
+  color: #475569;
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.notebook-directory-status-filter button:last-child {
+  border-right: 0;
+}
+
+.notebook-directory-status-filter button.active {
+  background: #0f172a;
+  color: #fff;
+}
+
 .models-toolbar {
   justify-content: space-between;
 }
@@ -71,6 +101,11 @@
   padding: 11px 12px;
 }
 
+.notebook-directory-list article.inactive {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+
 .notebook-directory-list article > div,
 .notebook-model-list article > div {
   display: grid;
@@ -88,6 +123,22 @@
   color: #64748b;
   font-size: 0.78rem;
   line-height: 1.35;
+}
+
+.notebook-directory-list article small {
+  color: #9f1239;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.notebook-directory-inactive-pill {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: #e2e8f0;
+  padding: 6px 9px;
+  color: #475569 !important;
+  font-size: 0.68rem !important;
+  font-weight: 900;
 }
 
 .notebook-modal .danger-link {
@@ -130,6 +181,12 @@
   .models-toolbar {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .notebook-directory-status-filter {
+    display: grid;
+    width: 100%;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .notebook-directory-toolbar input,

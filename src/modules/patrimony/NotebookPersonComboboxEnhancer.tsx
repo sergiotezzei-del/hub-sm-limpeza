@@ -4,6 +4,7 @@ import {
   getPatrimonyErrorMessage,
   saveOrganizationPerson,
 } from "./services/patrimonyService";
+import type { PatrimonyPersonType } from "./types/patrimony.types";
 import "./notebookPersonCombobox.css";
 
 function normalize(value: string) {
@@ -103,6 +104,21 @@ function openNewPersonDialog(targetSelect: HTMLSelectElement, suggestedName = ""
         <datalist id="hub-person-teams"></datalist>
       </label>
     </div>
+    <div class="hub-new-person-grid">
+      <label>Função
+        <input name="jobTitle" autocomplete="off" placeholder="Ex.: Assistente administrativo" />
+      </label>
+      <label>Tipo
+        <select name="personType">
+          <option value="funcionario">Funcionário</option>
+          <option value="corretor_terceirizado">Corretor terceirizado</option>
+          <option value="consultor_terceirizado">Consultor terceirizado</option>
+          <option value="prestador">Prestador</option>
+          <option value="temporario">Temporário</option>
+          <option value="outro">Outro</option>
+        </select>
+      </label>
+    </div>
     <div class="hub-new-person-error" data-error="true" role="status"></div>
     <footer>
       <button type="button" data-close="true">Cancelar</button>
@@ -113,6 +129,8 @@ function openNewPersonDialog(targetSelect: HTMLSelectElement, suggestedName = ""
   const nameInput = form.elements.namedItem("name") as HTMLInputElement;
   const departmentInput = form.elements.namedItem("department") as HTMLInputElement;
   const teamInput = form.elements.namedItem("teamName") as HTMLInputElement;
+  const jobTitleInput = form.elements.namedItem("jobTitle") as HTMLInputElement;
+  const personTypeSelect = form.elements.namedItem("personType") as HTMLSelectElement;
   const departmentList = form.querySelector<HTMLDataListElement>("#hub-person-departments");
   const teamList = form.querySelector<HTMLDataListElement>("#hub-person-teams");
   const errorBox = form.querySelector<HTMLElement>("[data-error='true']");
@@ -152,9 +170,10 @@ function openNewPersonDialog(targetSelect: HTMLSelectElement, suggestedName = ""
     try {
       const saved = await saveOrganizationPerson({
         name: nameInput.value.trim(),
-        personType: "funcionario",
+        personType: personTypeSelect.value as PatrimonyPersonType,
         department: departmentInput.value.trim(),
         teamName: teamInput.value.trim(),
+        jobTitle: jobTitleInput.value.trim(),
         active: true,
       });
 

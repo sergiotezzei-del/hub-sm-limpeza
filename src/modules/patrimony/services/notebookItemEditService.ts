@@ -57,7 +57,7 @@ export async function updateInventoryNotebookWithAudit(input: {
 
 export async function loadNotebookItemAudit(itemId: string) {
   const rows = await requestJson<AuditRow[]>(
-    `patrimony_audit_log?select=id,actor_name,reason,change_summary,created_at&action=eq.notebook_item_update&item_id=eq.${encodeURIComponent(itemId)}&order=created_at.desc&limit=50`,
+    `patrimony_audit_log?select=id,actor_name,reason,change_summary,created_at&action=in.(notebook_item_update,notebook_transfer)&item_id=eq.${encodeURIComponent(itemId)}&order=created_at.desc&limit=50`,
   );
   return rows.map((row) => ({
     id: row.id,
