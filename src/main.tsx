@@ -2,6 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
 import { AlertToastHost } from "./modules/alerts/AlertToastHost";
+import { AlertTimeEnhancer } from "./modules/alerts/AlertTimeEnhancer";
 import { LiveAlertDashboardEnhancer } from "./modules/alerts/LiveAlertDashboardEnhancer";
 import { CleaningActivityAlertEnhancer } from "./modules/alerts/CleaningActivityAlertEnhancer";
 import { CleaningOrderAlertEnhancer } from "./modules/alerts/CleaningOrderAlertEnhancer";
@@ -23,6 +24,10 @@ import { NeiaDeliveryShortcutFeature } from "./modules/cleaning/components/NeiaD
 import { NeiaHistoryEnhancer } from "./modules/cleaning/components/NeiaHistoryEnhancer";
 import { MarketingSessionKeepalive } from "./modules/marketing/MarketingSessionKeepalive";
 import { AirConditioningMapFeature } from "./modules/patrimony/AirConditioningMapFeature";
+import { NotebookInventoryFeatureV3 } from "./modules/patrimony/NotebookInventoryFeatureV3";
+import { NotebookInventoryUXEnhancer } from "./modules/patrimony/NotebookInventoryUXEnhancer";
+import { NotebookPersonComboboxEnhancer } from "./modules/patrimony/NotebookPersonComboboxEnhancer";
+import { NotebookPersonEditEnhancer } from "./modules/patrimony/NotebookPersonEditEnhancer";
 import { PatrimonyPeopleEquipmentFeature } from "./modules/patrimony/PatrimonyPeopleEquipmentFeature";
 import { PatrimonySpaceMapsFeature } from "./modules/patrimony/PatrimonySpaceMapsFeature";
 import { MarketingPushAttentionHost } from "./modules/marketing/MarketingPushAttentionHost";
@@ -39,6 +44,7 @@ import { RadioTestPage } from "./modules/radio/RadioTestPage";
 import { HubAuthSessionGuard } from "./modules/security/HubAuthSessionGuard";
 import { PublicServiceRequestPage } from "./modules/service-requests/PublicServiceRequestPage";
 import { isPwaStandalone } from "./pwaInstall";
+import { HubSaveSuccessHost } from "./shared/ui/HubSaveSuccessHost";
 import "./styles.css";
 import "./modules/alerts/alertsExtensions.css";
 import "./modules/alerts/dashboardAlignment.css";
@@ -113,9 +119,11 @@ createRoot(document.getElementById("root")!).render(
     ) : (
       <>
         <App />
+        <HubSaveSuccessHost />
         <HubAuthSessionGuard />
         <MarketingSessionKeepalive />
         <LiveAlertDashboardEnhancer />
+        <AlertTimeEnhancer />
         <WindowsNotificationControl />
         <AlertToastHost />
         <CleaningActivityAlertEnhancer />
@@ -130,6 +138,10 @@ createRoot(document.getElementById("root")!).render(
         <NeiaDeliveryShortcutFeature />
         <NeiaHistoryEnhancer />
         <AirConditioningMapFeature />
+        <NotebookInventoryFeatureV3 />
+        <NotebookInventoryUXEnhancer />
+        <NotebookPersonComboboxEnhancer />
+        <NotebookPersonEditEnhancer />
         <PatrimonyPeopleEquipmentFeature />
         <PatrimonySpaceMapsFeature />
         <MarketingPushAttentionHost />

@@ -1,0 +1,268 @@
+.notebook-item-edit-button {
+  margin-top: 8px;
+  min-height: 30px;
+  border: 1px solid #fed7aa;
+  border-radius: 9px;
+  background: #fff7ed;
+  color: #c2410c;
+  padding: 5px 10px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.notebook-item-edit-button:hover {
+  background: #ffedd5;
+}
+
+.notebook-item-edit-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: grid;
+  place-items: center;
+  background: rgba(15, 23, 42, 0.48);
+  padding: 18px;
+}
+
+.notebook-item-edit-modal {
+  width: min(720px, 96vw);
+  max-height: 92vh;
+  overflow: auto;
+  display: grid;
+  gap: 14px;
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.24);
+  padding: 18px;
+}
+
+.notebook-item-edit-modal > header,
+.notebook-item-edit-modal > footer,
+.notebook-item-edit-history > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.notebook-item-edit-modal > header {
+  align-items: flex-start;
+}
+
+.notebook-item-edit-modal h3,
+.notebook-item-edit-modal h4,
+.notebook-item-edit-modal p {
+  margin: 0;
+}
+
+.notebook-item-edit-modal > header p {
+  margin-top: 4px;
+  color: #64748b;
+  font-size: 0.82rem;
+}
+
+.notebook-item-edit-modal > header > button {
+  width: 34px;
+  height: 34px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #fff;
+  font-size: 1.25rem;
+}
+
+.notebook-item-edit-rule {
+  border-left: 4px solid #f97316;
+  border-radius: 10px;
+  background: #fff7ed;
+  color: #9a3412;
+  padding: 10px 12px;
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.notebook-item-edit-modal label {
+  display: grid;
+  gap: 6px;
+  color: #334155;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.notebook-item-edit-modal label small {
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+.notebook-item-edit-modal input,
+.notebook-item-edit-modal select,
+.notebook-item-edit-modal textarea {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid #d7dde5;
+  border-radius: 10px;
+  background: #fff;
+  padding: 9px 10px;
+  color: #0f172a;
+  font: inherit;
+  font-weight: 500;
+}
+
+.notebook-item-edit-modal textarea {
+  min-height: 86px;
+  resize: vertical;
+}
+
+.notebook-item-edit-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.notebook-item-edit-selected-model {
+  display: grid;
+  gap: 4px;
+  border: 1px solid #fed7aa;
+  border-radius: 12px;
+  background: #fff7ed;
+  padding: 11px 12px;
+}
+
+.notebook-item-edit-selected-model strong {
+  color: #9a3412;
+}
+
+.notebook-item-edit-selected-model span {
+  color: #7c2d12;
+  font-size: 0.8rem;
+}
+
+.notebook-item-edit-reason strong {
+  color: #c2410c;
+}
+
+.notebook-item-edit-error,
+.notebook-item-edit-success,
+.notebook-item-edit-floating-error {
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 0.82rem;
+}
+
+.notebook-item-edit-error,
+.notebook-item-edit-floating-error {
+  border: 1px solid #fecaca;
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+.notebook-item-edit-success {
+  border: 1px solid #bbf7d0;
+  background: #f0fdf4;
+  color: #166534;
+}
+
+.notebook-item-edit-floating-error {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 10000;
+  max-width: 420px;
+  cursor: pointer;
+}
+
+.notebook-item-edit-history {
+  display: grid;
+  gap: 8px;
+  border-top: 1px solid #e2e8f0;
+  padding-top: 12px;
+}
+
+.notebook-item-edit-history > div > span {
+  min-width: 28px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  padding: 3px 8px;
+  text-align: center;
+  font-size: 0.76rem;
+}
+
+.notebook-item-edit-history > p {
+  color: #64748b;
+  font-size: 0.8rem;
+}
+
+.notebook-item-edit-history article {
+  display: grid;
+  gap: 4px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 9px 10px;
+}
+
+.notebook-item-edit-history article strong {
+  font-size: 0.78rem;
+}
+
+.notebook-item-edit-history article p,
+.notebook-item-edit-history article small {
+  color: #64748b;
+  font-size: 0.76rem;
+  line-height: 1.4;
+}
+
+.notebook-item-edit-modal > footer {
+  justify-content: flex-end;
+  border-top: 1px solid #e2e8f0;
+  padding-top: 12px;
+}
+
+.notebook-item-edit-modal > footer button {
+  min-height: 38px;
+  border: 1px solid #d7dde5;
+  border-radius: 10px;
+  background: #fff;
+  padding: 7px 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.notebook-item-edit-modal > footer button.primary {
+  border-color: #c75b12;
+  background: #c75b12;
+  color: #fff;
+}
+
+.notebook-item-edit-modal button:disabled,
+.notebook-item-edit-modal input:disabled,
+.notebook-item-edit-modal select:disabled,
+.notebook-item-edit-modal textarea:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* A edição da pessoa cuida apenas dos dados da pessoa.
+   O equipamento é editado diretamente no card do notebook. */
+.inventory-edit-notebook-field,
+.inventory-edit-warning {
+  display: none !important;
+}
+
+@media (max-width: 620px) {
+  .notebook-item-edit-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .notebook-item-edit-modal {
+    padding: 14px;
+  }
+
+  .notebook-item-edit-modal > footer {
+    align-items: stretch;
+    flex-direction: column-reverse;
+  }
+
+  .notebook-item-edit-modal > footer button {
+    width: 100%;
+  }
+}

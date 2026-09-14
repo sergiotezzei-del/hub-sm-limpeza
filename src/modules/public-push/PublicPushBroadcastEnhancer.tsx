@@ -20,14 +20,13 @@ export function PublicPushBroadcastEnhancer() {
 
   useEffect(() => {
     const sync = () => {
-      const next = document.querySelector<HTMLElement>(".hub-admin-push-box");
+      const next = document.querySelector<HTMLElement>(".hub-notification-settings-public-push-host")
+        ?? document.querySelector<HTMLElement>(".hub-admin-push-box");
       setHost((current) => current === next ? current : next);
     };
     sync();
-    const root = document.getElementById("root");
-    if (!root) return;
     const observer = new MutationObserver(sync);
-    observer.observe(root, { childList: true, subtree: true });
+    observer.observe(document.body, { childList: true, subtree: true });
     return () => observer.disconnect();
   }, []);
 

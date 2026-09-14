@@ -13,7 +13,8 @@
   width: 100%;
 }
 
-.hub-windows-notification-button {
+.hub-windows-notification-button,
+.hub-profile-notification-settings-button {
   width: 100%;
   padding: 10px 12px;
   border: 1px solid rgba(249, 115, 22, 0.3);
@@ -25,6 +26,12 @@
   font-weight: 850;
   text-align: left;
   cursor: pointer;
+}
+
+.hub-profile-notification-settings-button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .hub-windows-notification-button.permission-granted {
@@ -39,4 +46,261 @@
   background: #fff5f5;
   color: #b91c1c;
   cursor: default;
+}
+
+/* O gerenciador de alertas fica somente com regras e rotinas. */
+.hub-alert-modal > .hub-email-config {
+  display: none !important;
+}
+
+.hub-notification-settings-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10050;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(15, 23, 42, 0.58);
+  backdrop-filter: blur(3px);
+}
+
+.hub-notification-settings-modal {
+  width: min(720px, 100%);
+  max-height: calc(100vh - 40px);
+  overflow: auto;
+  box-sizing: border-box;
+  border: 1px solid rgba(148, 163, 184, 0.32);
+  border-radius: 22px;
+  background: #fff;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.28);
+  padding: 22px;
+}
+
+.hub-notification-settings-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.hub-notification-settings-head p {
+  margin: 0 0 3px;
+  color: #f97316;
+  font-size: 0.7rem;
+  font-weight: 900;
+  letter-spacing: 0.09em;
+}
+
+.hub-notification-settings-head h2 {
+  margin: 0;
+  color: #172033;
+  font-size: 1.35rem;
+}
+
+.hub-notification-settings-head > button {
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 10px;
+  background: #f1f5f9;
+  color: #334155;
+  font-size: 1.4rem;
+  cursor: pointer;
+}
+
+.hub-notification-settings-message {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #fff7ed;
+  color: #9a3412;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.hub-notification-settings-card {
+  display: grid;
+  gap: 13px;
+  padding: 18px;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  background: #f8fafc;
+}
+
+.hub-notification-settings-card-head,
+.hub-notification-device-row,
+.hub-notification-browser-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.hub-notification-settings-card-head small,
+.hub-notification-settings-card-head h3,
+.hub-notification-device-row strong,
+.hub-notification-device-row small {
+  display: block;
+}
+
+.hub-notification-settings-card-head small {
+  color: #64748b;
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+
+.hub-notification-settings-card-head h3 {
+  margin: 2px 0 0;
+  color: #172033;
+}
+
+.hub-notification-settings-card-head > span {
+  border-radius: 999px;
+  padding: 6px 9px;
+  background: #e2e8f0;
+  color: #475569;
+  font-size: 0.68rem;
+  font-weight: 900;
+}
+
+.hub-notification-settings-card-head > span.is-connected {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.hub-notification-settings-card > p {
+  margin: 0;
+  color: #475569;
+  line-height: 1.45;
+}
+
+.hub-notification-device-row,
+.hub-notification-browser-row {
+  padding: 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.hub-notification-device-row small {
+  margin-top: 3px;
+  color: #64748b;
+}
+
+.hub-notification-device-row button,
+.hub-notification-browser-row button,
+.hub-notification-email-form > button {
+  min-height: 38px;
+  border: 0;
+  border-radius: 9px;
+  background: #0f172a;
+  color: #fff;
+  padding: 8px 12px;
+  font: inherit;
+  font-size: 0.74rem;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.hub-notification-device-row button:disabled,
+.hub-notification-browser-row button:disabled,
+.hub-notification-email-form > button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.hub-notification-browser-row > span {
+  color: #334155;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.hub-notification-browser-row button.permission-granted {
+  background: #15803d;
+}
+
+.hub-notification-browser-row button.permission-denied {
+  background: #b91c1c;
+}
+
+.hub-notification-settings-help,
+.hub-notification-settings-status {
+  color: #64748b;
+  line-height: 1.4;
+}
+
+.hub-notification-settings-public-push-host {
+  width: 100%;
+}
+
+.hub-notification-email-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  padding-top: 14px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.hub-notification-email-form label {
+  display: grid;
+  gap: 5px;
+  color: #334155;
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.hub-notification-email-form input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #cbd5e1;
+  border-radius: 9px;
+  background: #fff;
+  padding: 9px 10px;
+  color: #0f172a;
+  font: inherit;
+}
+
+.hub-notification-email-form > button {
+  grid-column: 1 / -1;
+}
+
+.hub-notification-settings-card > small {
+  color: #64748b;
+}
+
+.hub-notification-settings-error {
+  margin: 0;
+  color: #b91c1c !important;
+  font-size: 0.78rem;
+}
+
+@media (max-width: 640px) {
+  .hub-notification-settings-backdrop {
+    padding: 10px;
+    align-items: end;
+  }
+
+  .hub-notification-settings-modal {
+    max-height: 92vh;
+    border-radius: 18px 18px 0 0;
+    padding: 16px;
+  }
+
+  .hub-notification-settings-card-head,
+  .hub-notification-device-row,
+  .hub-notification-browser-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .hub-notification-device-row button,
+  .hub-notification-browser-row button {
+    width: 100%;
+  }
+
+  .hub-notification-email-form {
+    grid-template-columns: 1fr;
+  }
 }

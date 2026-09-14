@@ -26,11 +26,15 @@ type PersonRow = {
   name: string;
   person_type: OrganizationPerson["personType"];
   department: string;
+  team_name: string | null;
   job_title: string | null;
   email: string | null;
   phone: string | null;
   managed_user_id: string | null;
   active: boolean;
+  inactive_at: string | null;
+  inactive_by_name: string | null;
+  inactive_reason: string | null;
   notes: string | null;
   created_at: string;
   updated_at: string;
@@ -42,6 +46,7 @@ type ItemRow = {
   name: string;
   category: string;
   tracking_mode: PatrimonyItem["trackingMode"];
+  equipment_model_id: string | null;
   brand: string | null;
   model: string | null;
   serial_number: string | null;
@@ -167,6 +172,14 @@ export async function saveOrganizationPerson(draft: OrganizationPersonDraft) {
   if (!department) throw new PatrimonyRemoteError(400, "Informe o setor da pessoa.");
 
   const id = draft.id ?? crypto.randomUUID();
+  const current = draft.id
+    ? await requestJson<PersonRow[]>(`organization_people?id=eq.${encodeURIComponent(draft.id)}&select=*`)
+    : [];
+  const existing = current[0];
+  const preservedTeamName = draft.teamName === undefined
+    ? existing?.team_name ?? null
+    : cleanOptional(draft.teamName);
+
   const rows = await requestJson<PersonRow[]>("organization_people?on_conflict=id", {
     method: "POST",
     headers: { Prefer: "resolution=merge-duplicates,return=representation" },
@@ -175,15 +188,69 @@ export async function saveOrganizationPerson(draft: OrganizationPersonDraft) {
       name,
       person_type: draft.personType,
       department: draft.department.trim() || "Não informado",
+      team_name: preservedTeamName,
       job_title: cleanOptional(draft.jobTitle),
       email: cleanOptional(draft.email),
       phone: cleanOptional(draft.phone),
-      active: draft.active ?? true,
+      managed_user_id: existing?.managed_user_id ?? null,
+      active: draft.active ?? existing?.active ?? true,
+      inactive_at: draft.active === true ? null : existing?.inactive_at ?? null,
+      inactive_by_name: draft.active === true ? null : existing?.inactive_by_name ?? null,
+      inactive_reason: draft.active === true ? null : existing?.inactive_reason ?? null,
       notes: cleanOptional(draft.notes),
     }]),
   });
   if (!rows[0]) throw new PatrimonyRemoteError(500, "Não foi possível confirmar a pessoa salva.");
   return mapPerson(rows[0]);
+}
+
+export async function setOrganizationPersonActive(
+  personId: string,
+  active: boolean,
+  options: { actorName?: string; reason?: string } = {},
+) {
+  if (!active) {
+    return inactivateOrganizationPerson({
+      personId,
+      actorName: options.actorName ?? "Admin Tezzei",
+      reason: options.reason ?? "Desligamento da empresa",
+    });
+  }
+
+  const rows = await requestJson<PersonRow[]>(`organization_people?id=eq.${encodeURIComponent(personId)}`, {
+    method: "PATCH",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify({
+      active: true,
+      inactive_at: null,
+      inactive_by_name: null,
+      inactive_reason: null,
+    }),
+  });
+  if (!rows[0]) throw new PatrimonyRemoteError(404, "Pessoa não encontrada.");
+  return mapPerson(rows[0]);
+}
+
+export async function inactivateOrganizationPerson(input: {
+  personId: string;
+  actorName: string;
+  reason: string;
+}) {
+  const rows = await requestJson<Array<{ person_id: string; audit_id: string | null }>>(
+    "rpc/inactivate_organization_person_with_audit",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        p_person_id: input.personId,
+        p_actor_name: input.actorName.trim(),
+        p_reason: input.reason.trim(),
+      }),
+    },
+  );
+  if (!rows[0]) throw new PatrimonyRemoteError(404, "Pessoa não encontrada.");
+  const refreshed = await requestJson<PersonRow[]>(`organization_people?id=eq.${encodeURIComponent(input.personId)}&select=*`);
+  if (!refreshed[0]) throw new PatrimonyRemoteError(404, "Pessoa não encontrada.");
+  return mapPerson(refreshed[0]);
 }
 
 export async function savePatrimonyItem(draft: PatrimonyItemDraft) {
@@ -210,6 +277,9 @@ export async function savePatrimonyItem(draft: PatrimonyItemDraft) {
     throw new PatrimonyRemoteError(400, `A quantidade total não pode ficar abaixo de ${usedQuantity}. Já existem unidades entregues, em manutenção ou perdidas.`);
   }
   const availableQuantity = Math.max(0, quantity - usedQuantity);
+  const preservedEquipmentModelId = draft.equipmentModelId === undefined
+    ? existing?.equipment_model_id ?? null
+    : draft.equipmentModelId || null;
 
   const rows = await requestJson<ItemRow[]>("patrimony_items?on_conflict=id", {
     method: "POST",
@@ -220,6 +290,7 @@ export async function savePatrimonyItem(draft: PatrimonyItemDraft) {
       name,
       category,
       tracking_mode: draft.trackingMode,
+      equipment_model_id: preservedEquipmentModelId,
       brand: cleanOptional(draft.brand),
       model: cleanOptional(draft.model),
       serial_number: cleanOptional(draft.serialNumber),
@@ -322,6 +393,41 @@ export async function returnPatrimonyAssignment(input: {
   }
 }
 
+export async function transferNotebookAssignment(input: {
+  transferMovementId: string;
+  deliveryMovementId: string;
+  newAssignmentId: string;
+  itemId: string;
+  fromPersonId: string;
+  toPersonId: string;
+  actorName: string;
+  reason: string;
+}) {
+  return requestJson<Array<{
+    item_id: string;
+    from_assignment_id: string;
+    to_assignment_id: string;
+    item_status: string;
+    available_quantity: number | string;
+    audit_id: string | null;
+  }>>(
+    "rpc/transfer_notebook_assignment",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        p_transfer_movement_id: input.transferMovementId,
+        p_delivery_movement_id: input.deliveryMovementId,
+        p_new_assignment_id: input.newAssignmentId,
+        p_item_id: input.itemId,
+        p_from_person_id: input.fromPersonId,
+        p_to_person_id: input.toPersonId,
+        p_actor_name: input.actorName.trim(),
+        p_reason: input.reason.trim(),
+      }),
+    },
+  );
+}
+
 export async function assignPatrimonySpace(input: {
   operationId?: string;
   spaceId: string;
@@ -375,6 +481,14 @@ export function getPatrimonyErrorMessage(error: unknown) {
   if (normalized.includes("ESPACO JA OCUPADO")) return "Este espaço já está ocupado.";
   if (normalized.includes("ESPACO NAO DISPONIVEL")) return "Este espaço não está disponível.";
   if (normalized.includes("IDENTIFICADOR DE DEVOLUCAO REUTILIZADO")) return "Esta devolução foi alterada durante uma tentativa anterior. Atualize os dados e tente novamente.";
+  if (normalized.includes("POSSUI NOTEBOOK VINCULADO")) return "Esta pessoa possui um notebook vinculado. Transfira ou devolva o equipamento antes de inativar.";
+  if (normalized.includes("PESSOA DESTINO NAO ENCONTRADA OU INATIVA")) return "Pessoa inativa não pode receber notebook.";
+  if (normalized.includes("PESSOA DESTINO DEVE SER DIFERENTE")) return "Selecione uma pessoa diferente da origem.";
+  if (normalized.includes("MOTIVO DO DESLIGAMENTO")) return "Informe o motivo do desligamento.";
+  if (normalized.includes("MOTIVO DA TRANSFERENCIA")) return "Informe o motivo da transferência.";
+  if (normalized.includes("EXATAMENTE UM VINCULO ATIVO")) return "Este notebook precisa ter exatamente um vínculo ativo para transferência.";
+  if (normalized.includes("VINCULO ATIVO DA PESSOA ORIGEM")) return "O vínculo ativo da pessoa origem não foi encontrado. Atualize a tela e tente novamente.";
+  if (normalized.includes("IDENTIFICADOR DE TRANSFERENCIA REUTILIZADO")) return "Esta transferência foi alterada durante uma tentativa anterior. Atualize os dados e tente novamente.";
   if (normalized.includes("DUPLICATE") || normalized.includes("UNIQUE")) return "Já existe um cadastro com este código ou número de série.";
   if (error instanceof PatrimonyRemoteError && (error.status === 401 || error.status === 403)) {
     return "A sessão de administrador expirou. Entre novamente.";
@@ -495,11 +609,15 @@ function mapPerson(row: PersonRow): OrganizationPerson {
     name: row.name,
     personType: row.person_type,
     department: row.department,
+    teamName: row.team_name ?? undefined,
     jobTitle: row.job_title ?? undefined,
     email: row.email ?? undefined,
     phone: row.phone ?? undefined,
     managedUserId: row.managed_user_id ?? undefined,
     active: row.active,
+    inactiveAt: row.inactive_at ?? undefined,
+    inactiveByName: row.inactive_by_name ?? undefined,
+    inactiveReason: row.inactive_reason ?? undefined,
     notes: row.notes ?? undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -513,6 +631,7 @@ function mapItem(row: ItemRow): PatrimonyItem {
     name: row.name,
     category: row.category,
     trackingMode: row.tracking_mode,
+    equipmentModelId: row.equipment_model_id ?? undefined,
     brand: row.brand ?? undefined,
     model: row.model ?? undefined,
     serialNumber: row.serial_number ?? undefined,
