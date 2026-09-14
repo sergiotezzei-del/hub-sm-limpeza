@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AppIcon } from "../../components/AppIcon";
 import { CaptureSchedulePicker } from "./CaptureSchedulePicker";
@@ -9,6 +9,7 @@ import {
   MARKETING_ASSIGNEES,
   MARKETING_CONTENT_OPTIONS,
   MARKETING_REVIEW_REASONS,
+  MARKETING_STANDARD_TIMES,
   MarketingCaptureSelection,
   zonedLocalToIso,
 } from "./marketingConfig";
@@ -40,11 +41,16 @@ import {
   saveMarketingAccess,
   updateMarketingRequest,
 } from "./marketingService";
+import {
+  acknowledgeMarketingRequestAlert,
+  loadAcknowledgedMarketingAlerts,
+  type MarketingAlertKind,
+} from "./marketingAlertAcknowledgementService";
 import { MarketingGoogleCalendarBridge, MarketingGoogleCalendarPanel } from "./MarketingGoogleCalendarPanel";
+import "./marketingAlertAcknowledgement.css";
 import "./marketing.css";
 
 const REFRESH_MS = 20000;
-const MARKETING_STANDARD_TIMES = ["08:00", "09:00", "10:00", "11:00", "14:00", "15:00", "16:00", "17:00"] as const;
 
 const statusOrder: MarketingRequestStatus[] = [
   "solicitado",
@@ -138,6 +144,12 @@ export function MarketingFeature(props: MarketingFeatureProps) {
   const [notice, setNotice] = useState("");
   const [tab, setTab] = useState<MarketingTab>("central");
   const [selected, setSelected] = useState<MarketingRequest | null>(null);
+  const [acknowledgedAlerts, setAcknowledgedAlerts] = useState<Set<string>>(() => new Set());
+  const [acknowledgementsLoaded, setAcknowledgementsLoaded] = useState(false);
+  const [acknowledgementPending, setAcknowledgementPending] = useState<Set<string>>(() => new Set());
+  const acknowledgementVersion = dashboard?.context.role === "admin"
+    ? dashboard.requests.map((request) => request.updatedAt).join("|")
+    : "";
 
   useEffect(() => {
     const sync = () => {
@@ -174,6 +186,7 @@ export function MarketingFeature(props: MarketingFeatureProps) {
           throw new Error("MARKETING_SESSION_MISMATCH");
         }
         setDashboard(next);
+        setSelected((current) => current ? next.requests.find((request) => request.id === current.id) ?? null : null);
         setError("");
       } catch (refreshError) {
         if (!active) return;
@@ -191,6 +204,28 @@ export function MarketingFeature(props: MarketingFeatureProps) {
       window.clearInterval(interval);
     };
   }, [props.currentUserId, props.onSessionInvalid, props.sessionToken]);
+
+  useEffect(() => {
+    if (!props.sessionToken || dashboard?.context.role !== "admin") {
+      setAcknowledgedAlerts(new Set());
+      setAcknowledgementsLoaded(false);
+      return;
+    }
+    let active = true;
+    setAcknowledgementsLoaded(false);
+    void loadAcknowledgedMarketingAlerts(props.sessionToken)
+      .then((rows) => {
+        if (!active) return;
+        setAcknowledgedAlerts(new Set(rows.map((row) => marketingAlertKey(row.request_id, row.alert_kind))));
+      })
+      .catch(() => {
+        if (active) setAcknowledgedAlerts(new Set());
+      })
+      .finally(() => {
+        if (active) setAcknowledgementsLoaded(true);
+      });
+    return () => { active = false; };
+  }, [acknowledgementVersion, dashboard?.context.role, props.sessionToken]);
 
   useEffect(() => {
     if (!props.active) return;
@@ -235,7 +270,7 @@ export function MarketingFeature(props: MarketingFeatureProps) {
         throw new Error("MARKETING_SESSION_MISMATCH");
       }
       setDashboard(next);
-      if (selected) setSelected(next.requests.find((request) => request.id === selected.id) ?? null);
+      setSelected((current) => current ? next.requests.find((request) => request.id === current.id) ?? null : null);
       setError("");
     } catch (refreshError) {
       setError(getMarketingErrorMessage(refreshError));
@@ -244,11 +279,33 @@ export function MarketingFeature(props: MarketingFeatureProps) {
     }
   }
 
-  const adminAlerts = dashboard?.context.role === "admin" && alertHost
-    ? dashboard.requests.filter((request) => request.specialCaptureStatus !== "pending" && (request.status === "solicitado" || (request.urgencyRequested && !request.urgencyDecidedAt))).slice(0, 8)
+  async function acknowledgeAlert(requestId: string, kind: MarketingAlertKind) {
+    if (!props.sessionToken) return;
+    const key = marketingAlertKey(requestId, kind);
+    if (acknowledgedAlerts.has(key) || acknowledgementPending.has(key)) return;
+    setAcknowledgementPending((current) => new Set(current).add(key));
+    try {
+      await acknowledgeMarketingRequestAlert(props.sessionToken, requestId, kind);
+      setAcknowledgedAlerts((current) => new Set(current).add(key));
+    } catch (acknowledgeError) {
+      setError(getMarketingErrorMessage(acknowledgeError));
+    } finally {
+      setAcknowledgementPending((current) => {
+        const next = new Set(current);
+        next.delete(key);
+        return next;
+      });
+    }
+  }
+
+  const adminAlerts = dashboard?.context.role === "admin" && alertHost && acknowledgementsLoaded
+    ? [
+        ...dashboard.requests.filter((request) => request.status === "solicitado").map((request) => ({ request, kind: "request" as const })),
+        ...dashboard.requests.filter((request) => request.urgencyRequested && !request.urgencyDecidedAt).map((request) => ({ request, kind: "urgency" as const })),
+      ].filter(({ request, kind }) => !acknowledgedAlerts.has(marketingAlertKey(request.id, kind))).slice(0, 8)
     : [];
-  const specialCaptureAlerts = dashboard?.context.userId === "tezzei" && alertHost
-    ? dashboard.requests.filter((request) => request.specialCaptureStatus === "pending").slice(0, 8)
+  const specialCaptureAlerts = dashboard?.context.userId === "tezzei" && alertHost && acknowledgementsLoaded
+    ? dashboard.requests.filter((request) => request.specialCaptureStatus === "pending" && !acknowledgedAlerts.has(marketingAlertKey(request.id, "special_capture"))).slice(0, 8)
     : [];
   const queueOverrideAlerts = dashboard?.context.role === "admin" && alertHost
     ? dashboard.queueOverrideRequests.filter((request) => request.status === "pending").slice(0, 8)
@@ -264,13 +321,16 @@ export function MarketingFeature(props: MarketingFeatureProps) {
           onError={(message) => { setError(message); props.onOpen(); }}
         />
       )}
-      {alertHost && adminAlerts.map((request) => createPortal(
-        <article className={`hub-alert-card marketing-day-alert ${request.urgencyRequested && !request.urgencyDecidedAt ? "is-urgent" : ""}`} key={`marketing-alert-${request.id}`} data-marketing-request-id={request.id}>
-          <div className="hub-alert-card-status"><span>{request.urgencyRequested && !request.urgencyDecidedAt ? "URGÊNCIA" : "MARKETING"}</span><time>{formatTime(request.createdAt)}</time></div>
-          <h3>{request.urgencyRequested && !request.urgencyDecidedAt ? "Pedido de urgência" : "Novo pedido de Marketing"}</h3>
-          <p>{request.managerName} · {request.brokerName} · {request.propertyReference}</p>
+      {alertHost && adminAlerts.map(({ request, kind }) => createPortal(
+        <article className={`hub-alert-card marketing-day-alert ${kind === "urgency" ? "is-urgent" : ""}`} key={`marketing-alert-${kind}-${request.id}`} data-marketing-request-id={request.id}>
+          <div className="hub-alert-card-status"><span>{kind === "urgency" ? "URGÊNCIA" : "MARKETING"}</span><time>{formatTime(request.createdAt)}</time></div>
+          <h3>{kind === "urgency" ? "Pedido de urgência" : "Novo pedido de Marketing"}</h3>
+          <p>{request.managerName} · {request.brokerName} · {propertyLabel(request)}</p>
           <small>{contentSummary(request)} · {statusLabels[request.status]}</small>
-          <button className="hub-alert-done-button marketing-alert-open" type="button" onClick={() => { setSelected(request); setTab("central"); props.onOpen(); }}>VER PEDIDO</button>
+          <div className="marketing-alert-actions">
+            <button className="hub-alert-done-button marketing-alert-open" type="button" onClick={() => { void acknowledgeAlert(request.id, kind); setSelected(request); setTab("central"); props.onOpen(); }}>VER PEDIDO</button>
+            <button className="hub-alert-done-button marketing-alert-ack-button" type="button" disabled={acknowledgementPending.has(marketingAlertKey(request.id, kind))} onClick={() => void acknowledgeAlert(request.id, kind)}>FEITO</button>
+          </div>
         </article>,
         alertHost,
       ))}
@@ -280,7 +340,10 @@ export function MarketingFeature(props: MarketingFeatureProps) {
           <h3>Autorizar agenda excepcional</h3>
           <p>Pedido #{request.requestNumber} · {request.brokerName}</p>
           <small>{request.specialCaptureAt ? formatMarketingDateTime(request.specialCaptureAt, dashboard!.scheduleConfig.timezone) : "Horário não informado"}<br />Motivo: {request.specialCaptureReason}</small>
-          <button className="hub-alert-done-button marketing-alert-open" type="button" onClick={() => { setSelected(request); setTab("central"); props.onOpen(); }}>ANALISAR</button>
+          <div className="marketing-alert-actions">
+            <button className="hub-alert-done-button marketing-alert-open" type="button" onClick={() => { void acknowledgeAlert(request.id, "special_capture"); setSelected(request); setTab("central"); props.onOpen(); }}>ANALISAR</button>
+            <button className="hub-alert-done-button marketing-alert-ack-button" type="button" disabled={acknowledgementPending.has(marketingAlertKey(request.id, "special_capture"))} onClick={() => void acknowledgeAlert(request.id, "special_capture")}>FEITO</button>
+          </div>
         </article>,
         alertHost,
       ))}
@@ -424,7 +487,7 @@ function MarketingScreen(props: {
 
       {props.selected && (
         <RequestDetail
-          key={props.selected.id}
+          key={`${props.selected.id}:${props.selected.updatedAt}`}
           sessionToken={props.sessionToken}
           dashboard={props.dashboard}
           request={props.selected}
@@ -450,7 +513,11 @@ function CentralView(props: {
 }) {
   const { dashboard, onSelect } = props;
   const active = dashboard.requests.filter((request) => !["pronto", "cancelado"].includes(request.status));
-  const ready = dashboard.requests.filter((request) => request.status === "pronto").slice(-12).reverse();
+  const ready = dashboard.requests
+    .filter((request) => request.status === "pronto")
+    .sort((a, b) => new Date(b.completedAt || b.updatedAt).getTime() - new Date(a.completedAt || a.updatedAt).getTime())
+    .slice(0, 12);
+  const nextRequest = active.find((request) => request.status === "solicitado");
   const metrics = {
     new: active.filter((request) => request.status === "solicitado").length,
     production: active.filter((request) => ["aguardando_edicao", "em_edicao", "em_aprovacao", "revisao"].includes(request.status)).length,
@@ -473,8 +540,15 @@ function CentralView(props: {
         <Metric label="Novos pedidos" value={metrics.new} />
         <Metric label="Em produção" value={metrics.production} />
         <Metric label="Bloqueados" value={metrics.blocked} />
-        <Metric label="Urgências para decidir" value={metrics.urgency} danger={metrics.urgency > 0} />
+        <Metric label={dashboard.context.role === "admin" ? "Urgências para decidir" : "Urgências em análise"} value={metrics.urgency} danger={metrics.urgency > 0} />
       </section>
+      {nextRequest && (
+        <button type="button" className="marketing-next-request" onClick={() => onSelect(nextRequest)}>
+          <span>PRÓXIMO DA FILA</span>
+          <strong>Pedido #{nextRequest.requestNumber} · {nextRequest.brokerName}</strong>
+          <small>{nextRequest.managerName} · {propertyLabel(nextRequest)}{nextRequest.urgencyApproved ? " · prioridade aprovada" : ""}</small>
+        </button>
+      )}
       <section className="marketing-section-head"><div><h2>Fila de produção</h2><p>Ordem de entrada. A urgência só altera a posição após análise interna.</p></div></section>
       <section className="marketing-kanban">
         {statusOrder.map((status) => {
@@ -558,11 +632,11 @@ function AgendaView({ sessionToken, dashboard, onSelect, onError, onNotice }: {
   onError: (message: string) => void;
   onNotice: (message: string) => void;
 }) {
-  const scheduled = dashboard.requests
-    .filter((request) => request.requestKind === "capture_edit" && request.status !== "cancelado" && (request.confirmedCaptureAt || request.preferredCaptureAt))
-    .sort((a, b) => new Date(a.confirmedCaptureAt || a.preferredCaptureAt || 0).getTime() - new Date(b.confirmedCaptureAt || b.preferredCaptureAt || 0).getTime())
-    .filter((request, index, requests) => !request.captureGroupId
-      || requests.findIndex((candidate) => candidate.captureGroupId === request.captureGroupId) === index);
+  const activeCaptureRequests = dashboard.requests.filter((request) => request.requestKind === "capture_edit" && !["pronto", "cancelado"].includes(request.status));
+  const confirmed = uniqueCaptureOutings(activeCaptureRequests.filter((request) => request.confirmedCaptureAt))
+    .sort((a, b) => new Date(a.confirmedCaptureAt!).getTime() - new Date(b.confirmedCaptureAt!).getTime());
+  const requested = uniqueCaptureOutings(activeCaptureRequests.filter((request) => !request.confirmedCaptureAt && request.preferredCaptureAt))
+    .sort((a, b) => new Date(a.preferredCaptureAt!).getTime() - new Date(b.preferredCaptureAt!).getTime());
   return (
     <section className="marketing-agenda-view">
       <MarketingGoogleCalendarPanel
@@ -572,34 +646,42 @@ function AgendaView({ sessionToken, dashboard, onSelect, onError, onNotice }: {
         onError={onError}
         onNotice={onNotice}
       />
-      <div className="marketing-section-head"><div><h2>Agenda de captação</h2><p>Data solicitada pelo gerente e confirmação do Marketing ficam separadas.</p></div></div>
-      {scheduled.length === 0 ? <div className="marketing-empty"><h3>Nenhuma captação agendada.</h3><p>Os novos pedidos aparecem aqui assim que tiverem data.</p></div> : (
-        <div className="marketing-agenda-list">
-          {scheduled.map((request) => {
-            const groupMembers = request.captureGroupId
-              ? dashboard.requests.filter((candidate) => candidate.captureGroupId === request.captureGroupId)
-              : [request];
-            const date = request.confirmedCaptureAt || request.preferredCaptureAt!;
-            const duration = request.confirmedCaptureAt
-              ? request.confirmedCaptureDurationMinutes
-              : request.preferredCaptureDurationMinutes;
-            return (
-              <button type="button" key={request.id} className="marketing-agenda-row" onClick={() => onSelect(request)}>
-                <time>{duration ? formatCaptureRange(date, duration, dashboard.scheduleConfig.timezone) : formatMarketingDateTime(date, dashboard.scheduleConfig.timezone)}</time>
-                <div>
-                  <strong>{request.brokerName} · {propertyLabel(request)}</strong>
-                  <span>{request.managerName} · {request.captureLocation || "Local não informado"}</span>
-                  <small>{request.assignedMarketingName || "Responsável não definido"}</small>
-                  {groupMembers.length > 1 && <small className="marketing-group-summary">Saída agrupada · {groupMembers.length} imóveis · {groupMembers.map((member) => `#${member.requestNumber}`).join(", ")}</small>}
-                </div>
-                <em className={request.confirmedCaptureAt ? "confirmed" : "pending"}>{request.confirmedCaptureAt ? "CAPTAÇÃO CONFIRMADA" : "SOLICITAÇÃO DE DATA"}</em>
-              </button>
-            );
-          })}
-        </div>
-      )}
+      <div className="marketing-section-head"><div><h2>Agenda confirmada</h2><p>Somente estes horários estão reservados na operação.</p></div></div>
+      <AgendaRequestList requests={confirmed} dashboard={dashboard} onSelect={onSelect} confirmed />
+      <div className="marketing-section-head marketing-requested-dates-head"><div><h2>Datas solicitadas</h2><p>Preferências ainda não confirmadas; não ocupam a agenda.</p></div></div>
+      <AgendaRequestList requests={requested} dashboard={dashboard} onSelect={onSelect} />
     </section>
   );
+}
+
+function AgendaRequestList({ requests, dashboard, onSelect, confirmed = false }: {
+  requests: MarketingRequest[];
+  dashboard: MarketingDashboard;
+  onSelect: (request: MarketingRequest) => void;
+  confirmed?: boolean;
+}) {
+  if (requests.length === 0) {
+    return <div className="marketing-empty compact"><h3>{confirmed ? "Nenhuma captação confirmada." : "Nenhuma preferência aguardando confirmação."}</h3></div>;
+  }
+  return <div className="marketing-agenda-list">{requests.map((request) => {
+    const groupMembers = request.captureGroupId
+      ? dashboard.requests.filter((candidate) => candidate.captureGroupId === request.captureGroupId && !["pronto", "cancelado"].includes(candidate.status))
+      : [request];
+    const date = confirmed ? request.confirmedCaptureAt! : request.preferredCaptureAt!;
+    const duration = confirmed ? request.confirmedCaptureDurationMinutes : request.preferredCaptureDurationMinutes;
+    return (
+      <button type="button" key={request.captureGroupId || request.id} className="marketing-agenda-row" onClick={() => onSelect(request)}>
+        <time>{duration ? formatCaptureRange(date, duration, dashboard.scheduleConfig.timezone) : formatMarketingDateTime(date, dashboard.scheduleConfig.timezone)}</time>
+        <div>
+          <strong>{request.brokerName} · {propertyLabel(request)}</strong>
+          <span>{request.managerName} · {request.captureLocation || "Local não informado"}</span>
+          <small>{request.assignedMarketingName || "Responsável não definido"}</small>
+          {groupMembers.length > 1 && <small className="marketing-group-summary">Saída agrupada · {groupMembers.length} imóveis · {groupMembers.map((member) => `#${member.requestNumber}`).join(", ")}</small>}
+        </div>
+        <em className={confirmed ? "confirmed" : "pending"}>{confirmed ? "CAPTAÇÃO CONFIRMADA" : "SOLICITAÇÃO DE DATA"}</em>
+      </button>
+    );
+  })}</div>;
 }
 
 function MyTeamView({ dashboard, onSelect }: { dashboard: MarketingDashboard; onSelect: (request: MarketingRequest) => void }) {
@@ -1225,16 +1307,21 @@ function RequestDetail(props: { sessionToken: string; dashboard: MarketingDashbo
   const [periodExceptionDate, setPeriodExceptionDate] = useState("");
   const [periodExceptionTime, setPeriodExceptionTime] = useState("14:00");
   const [periodExceptionReason, setPeriodExceptionReason] = useState("");
-  const canManage = props.role === "admin" || props.role === "marketing";
+  const actionInFlight = useRef(false);
+  const requestIsClosed = ["pronto", "cancelado"].includes(props.request.status);
+  const canManage = (props.role === "admin" || props.role === "marketing") && !requestIsClosed;
   const isMarketingScheduler = props.dashboard.context.userId === "maria" || props.dashboard.context.userId === "arthur";
+  const selectableStatuses = allowedManagementStatuses(props.request);
   const pendingOverride = props.dashboard.queueOverrideRequests.find((request) => request.requestId === props.request.id && request.status === "pending");
   const pendingManagerReview = props.dashboard.managerReviews.find((review) => review.requestId === props.request.id && review.status === "pending");
 
   async function run(action: "save_management" | "approve_urgency" | "reject_urgency" | "cancel", payload: Record<string, unknown> = {}) {
+    if (actionInFlight.current) return;
+    actionInFlight.current = true;
     setBusy(true);
     props.onError("");
     try {
-      await updateMarketingRequest(props.sessionToken, props.request.id, action, payload);
+      await updateMarketingRequest(props.sessionToken, props.request.id, action, payload, props.request.updatedAt);
       props.onNotice(action === "approve_urgency" ? "Urgência aprovada." : action === "reject_urgency" ? "Pedido mantido na fila normal." : action === "cancel" ? "Pedido cancelado." : "Pedido atualizado pelo Marketing.");
       await props.onChanged();
       if (action === "cancel") props.onClose();
@@ -1242,6 +1329,7 @@ function RequestDetail(props: { sessionToken: string; dashboard: MarketingDashbo
       if (isMarketingError(error, "MARKETING_QUEUE_ORDER_BLOCKED")) setQueueBlocked(true);
       props.onError(getMarketingErrorMessage(error));
     } finally {
+      actionInFlight.current = false;
       setBusy(false);
     }
   }
@@ -1334,6 +1422,15 @@ function RequestDetail(props: { sessionToken: string; dashboard: MarketingDashbo
 
   function saveManagement(event: FormEvent) {
     event.preventDefault();
+    const statusNeedsOwner = !["solicitado", "bloqueado", "cancelado"].includes(status);
+    if (statusNeedsOwner && !assigned) {
+      props.onError("Defina Maria ou Arthur como responsável antes de avançar o pedido.");
+      return;
+    }
+    if (props.request.requestKind === "capture_edit" && status === "agendado" && !confirmed) {
+      props.onError("Escolha um horário antes de marcar o pedido como agendado.");
+      return;
+    }
     const payload: Record<string, unknown> = {
       status,
       promisedAt: promised ? new Date(promised).toISOString() : "",
@@ -1416,9 +1513,10 @@ function RequestDetail(props: { sessionToken: string; dashboard: MarketingDashbo
         {props.role === "admin" && <div className="marketing-admin-actions"><button type="button" className="secondary" onClick={() => setAdminEditOpen((open) => !open)}>{adminEditOpen ? "FECHAR EDIÇÃO" : "EDITAR PEDIDO"}</button><button type="button" className="danger" onClick={() => setDeleteOpen(true)}>EXCLUIR PEDIDO</button></div>}
         {props.role === "admin" && adminEditOpen && <AdminRequestEditForm key={props.request.updatedAt} sessionToken={props.sessionToken} dashboard={props.dashboard} request={props.request} onCancel={() => setAdminEditOpen(false)} onSaved={props.onChanged} onError={props.onError} onNotice={props.onNotice} />}
         {props.request.managerReviewStatus && props.request.managerReviewStatus !== "pending" && <div className="marketing-review-answered"><strong>AUDITORIA RESPONDIDA</strong><span>{managerReviewStatusLabel(props.request.managerReviewStatus)}</span></div>}
+        {requestIsClosed && (props.role === "admin" || props.role === "marketing") && <div className="marketing-closed-notice"><strong>Pedido encerrado</strong><span>O histórico permanece disponível, mas os controles operacionais estão bloqueados.</span></div>}
         {canManage && <form className="marketing-management-form" onSubmit={saveManagement}>
           <h3>Controle do Marketing</h3>
-          <label>Status<select value={status} onChange={(event) => setStatus(event.target.value as MarketingRequestStatus)}>{Object.entries(statusLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
+          <label>Próxima etapa<select value={status} onChange={(event) => setStatus(event.target.value as MarketingRequestStatus)}>{selectableStatuses.map((value) => <option value={value} key={value}>{statusLabels[value]}</option>)}</select></label>
           <label>Previsão de entrega<input type="datetime-local" value={promised} onChange={(event) => setPromised(event.target.value)} /></label>
           <label>Responsável no Marketing<select value={assigned} onChange={(event) => setAssigned(event.target.value)}><option value="">Não definido</option>{MARKETING_ASSIGNEES.map((name) => <option value={name} key={name}>{name}</option>)}</select></label>
           {props.request.requestKind === "capture_edit" && props.request.specialCaptureStatus !== "pending" && (
@@ -1494,7 +1592,7 @@ function RequestDetail(props: { sessionToken: string; dashboard: MarketingDashbo
           </section>
         )}
         {(props.dashboard.context.userId === "arthur" || props.dashboard.context.userId === "maria") && props.request.status === "agendado" && props.request.requestKind === "capture_edit" && Boolean(props.request.confirmedCaptureAt) && <button type="button" className="marketing-reschedule-request" disabled={busy} onClick={() => { void rescheduleRequest(); }}>REAGENDAR PEDIDO</button>}
-        {(props.dashboard.context.userId === "arthur" || props.dashboard.context.userId === "maria") && !["pronto", "cancelado"].includes(props.request.status) && <button type="button" className="marketing-cancel-request" disabled={busy} onClick={() => { if (window.confirm("Cancelar este agendamento? O pedido ficará como cancelado e sairá da agenda.")) void run("cancel", { reason: "Cancelado pelo Marketing a pedido do corretor." }); }}>CANCELAR AGENDAMENTO</button>}
+        {(props.dashboard.context.userId === "arthur" || props.dashboard.context.userId === "maria") && !requestIsClosed && <button type="button" className="marketing-cancel-request" disabled={busy} onClick={() => { const scheduled = Boolean(props.request.confirmedCaptureAt); if (window.confirm(scheduled ? "Cancelar este agendamento? O pedido ficará como cancelado e sairá da agenda." : "Cancelar este pedido? Ele sairá da operação, mas o histórico será preservado.")) void run("cancel", { reason: "Cancelado pelo Marketing a pedido do corretor." }); }}>{props.request.confirmedCaptureAt ? "CANCELAR AGENDAMENTO" : "CANCELAR PEDIDO"}</button>}
         {!canManage && !["pronto", "cancelado"].includes(props.request.status) && <button type="button" className="marketing-cancel-request" disabled={busy} onClick={() => void run("cancel")}>Cancelar pedido</button>}
         {deleteOpen && <AdminDeleteRequestModal sessionToken={props.sessionToken} request={props.request} onClose={() => setDeleteOpen(false)} onError={props.onError} onDeleted={async () => { props.onNotice(`Pedido #${props.request.requestNumber} excluído da operação com o histórico preservado.`); setDeleteOpen(false); await props.onChanged(); props.onClose(); }} />}
       </section>
@@ -1535,6 +1633,22 @@ function availableTabs(role: MarketingRole): Array<{ id: MarketingTab; label: st
   if (role === "sales_manager") return [{ id: "request", label: "Novo pedido" }, { id: "mine", label: "Minha equipe" }, { id: "reviews", label: "Para conferir" }, { id: "updates", label: "Atualizações" }];
   if (role === "marketing") return [{ id: "central", label: "Central do Marketing" }, { id: "agenda", label: "Agenda" }, { id: "updates", label: "Atualizações" }];
   return [{ id: "central", label: "Central do Marketing" }, { id: "agenda", label: "Agenda" }, { id: "request", label: "Novo pedido" }, { id: "updates", label: "Atualizações" }, { id: "access", label: "Equipes e acessos" }, { id: "deleted", label: "Excluídos" }];
+}
+
+function allowedManagementStatuses(request: MarketingRequest): MarketingRequestStatus[] {
+  const status = request.status;
+  if (status === "pronto" || status === "cancelado") return [status];
+  if (status === "solicitado") {
+    return request.requestKind === "capture_edit"
+      ? ["solicitado", "agendado", "bloqueado", "cancelado"]
+      : ["solicitado", "aguardando_edicao", "bloqueado", "cancelado"];
+  }
+  if (status === "agendado") return ["agendado", "aguardando_edicao", "bloqueado", "cancelado"];
+  if (status === "aguardando_edicao") return ["aguardando_edicao", "em_edicao", "bloqueado", "cancelado"];
+  if (status === "em_edicao") return ["em_edicao", "em_aprovacao", "bloqueado", "cancelado"];
+  if (status === "em_aprovacao") return ["em_aprovacao", "revisao", "em_edicao", "pronto", "bloqueado", "cancelado"];
+  if (status === "revisao") return ["revisao", "em_edicao", "em_aprovacao", "pronto", "bloqueado", "cancelado"];
+  return ["bloqueado", "solicitado", "agendado", "aguardando_edicao", "em_edicao", "em_aprovacao", "revisao", "cancelado"];
 }
 
 function defaultTab(role: MarketingRole): MarketingTab {
@@ -1606,4 +1720,13 @@ function safeOpen(value: string) {
   } catch {
     // Link inválido: não abre nada.
   }
+}
+
+function uniqueCaptureOutings(requests: MarketingRequest[]) {
+  return requests.filter((request, index) => !request.captureGroupId
+    || requests.findIndex((candidate) => candidate.captureGroupId === request.captureGroupId) === index);
+}
+
+function marketingAlertKey(requestId: string, kind: MarketingAlertKind) {
+  return `${kind}:${requestId}`;
 }

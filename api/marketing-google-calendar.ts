@@ -400,7 +400,7 @@ async function deleteGoogleEventIfPresent(accessToken: string, calendarId: strin
 
 function buildGoogleEvent(task: SyncTask) {
   const start = new Date(task.startAt!);
-  const end = new Date(start.getTime() + 60 * 1000);
+  const end = new Date(start.getTime() + 60 * 60 * 1000);
   const members = [...task.requests].sort((a, b) => Number(a.requestNumber) - Number(b.requestNumber));
   const first = members[0];
   const numbers = members.map((request) => `#${request.requestNumber}`).join(", ");

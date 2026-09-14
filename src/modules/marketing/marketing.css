@@ -205,6 +205,36 @@
   color: #c52121;
 }
 
+.marketing-next-request {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  margin: -8px 0 24px;
+  padding: 14px 16px;
+  border: 1px solid #b9d8c2;
+  border-left: 5px solid #27713f;
+  border-radius: 8px;
+  background: #f4fbf6;
+  color: #24352a;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+
+.marketing-next-request span {
+  color: #27713f;
+  font-size: .72rem;
+  font-weight: 900;
+}
+
+.marketing-next-request strong {
+  font-size: 1rem;
+}
+
+.marketing-next-request small {
+  color: #5e6d62;
+}
+
 .marketing-section-head {
   display: flex;
   align-items: end;
@@ -361,6 +391,14 @@
 .marketing-agenda-list {
   display: grid;
   gap: 10px;
+}
+
+.marketing-requested-dates-head {
+  margin-top: 30px;
+}
+
+.marketing-empty.compact {
+  padding: 22px 18px;
 }
 
 .marketing-agenda-row {
@@ -752,6 +790,17 @@
 .marketing-management-form h3 {
   grid-column: 1 / -1;
   margin: 0 0 2px;
+}
+
+.marketing-closed-notice {
+  display: flex;
+  gap: 8px 14px;
+  margin: 18px 22px;
+  padding: 13px 14px;
+  border: 1px solid #ddd6e6;
+  border-radius: 8px;
+  background: #f7f5f9;
+  color: #655c70;
 }
 
 .marketing-cancel-request {

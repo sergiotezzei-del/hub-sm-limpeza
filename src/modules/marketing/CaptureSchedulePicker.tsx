@@ -4,6 +4,7 @@ import {
   getDateKeyInTimeZone,
   getTimeKeyInTimeZone,
   isoWeekday,
+  MARKETING_STANDARD_TIMES,
   MarketingCaptureSelection,
   MarketingOccupiedCaptureSlot,
   MarketingScheduleConfig,
@@ -24,9 +25,8 @@ type CaptureSchedulePickerProps = {
 };
 
 const DATE_WINDOW_DAYS = 28;
-const STANDARD_TIMES = ["08:00", "09:00", "10:00", "11:00", "14:00", "15:00", "16:00", "17:00"] as const;
-const MORNING_TIMES = STANDARD_TIMES.slice(0, 4);
-const AFTERNOON_TIMES = STANDARD_TIMES.slice(4);
+const MORNING_TIMES = MARKETING_STANDARD_TIMES.slice(0, 4);
+const AFTERNOON_TIMES = MARKETING_STANDARD_TIMES.slice(4);
 const DEFAULT_DURATION_MINUTES = 60;
 
 export function CaptureSchedulePicker(props: CaptureSchedulePickerProps) {
@@ -226,11 +226,12 @@ function dayAvailability(dateKey: string, config: MarketingScheduleConfig, occup
 }
 
 function isTimeAvailable(dateKey: string, time: string, config: MarketingScheduleConfig, occupied: MarketingOccupiedCaptureSlot[]) {
-  if (!STANDARD_TIMES.includes(time as (typeof STANDARD_TIMES)[number])) return false;
+  if (!MARKETING_STANDARD_TIMES.includes(time as (typeof MARKETING_STANDARD_TIMES)[number])) return false;
   const period = standardPeriodForTime(time);
   if (!period || periodIsOccupied(dateKey, period, config, occupied)) return false;
 
   const start = new Date(zonedLocalToIso(dateKey, time, config.timezone)).getTime();
+  if (start <= Date.now()) return false;
   const end = start + DEFAULT_DURATION_MINUTES * 60000;
   return !occupied.some((slot) => {
     const occupiedStart = new Date(slot.startAt).getTime();

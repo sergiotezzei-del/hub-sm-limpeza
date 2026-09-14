@@ -263,6 +263,11 @@ export async function endMarketingSession(sessionToken: string) {
   await rpc<unknown>("marketing_end_session", { p_session_token: sessionToken });
 }
 
+export async function refreshMarketingSession(sessionToken: string) {
+  if (!sessionToken) throw new MarketingRemoteError(401, "MARKETING_SESSION_REQUIRED");
+  await rpc<unknown>("marketing_refresh_session", { p_session_token: sessionToken });
+}
+
 export async function getMarketingDashboard(sessionToken: string): Promise<MarketingDashboard> {
   const dashboard = await rpc<MarketingDashboard>("marketing_v2_get_dashboard_review", { p_session_token: sessionToken });
   let operation: MarketingOperationSchedule;
@@ -328,8 +333,10 @@ export async function updateMarketingRequest(
   requestId: string,
   action: "save_management" | "approve_urgency" | "reject_urgency" | "cancel",
   payload: Record<string, unknown> = {},
+  expectedUpdatedAt?: string,
 ) {
-  const body = { p_session_token: sessionToken, p_request_id: requestId, p_action: action, p_payload: payload };
+  const guardedPayload = expectedUpdatedAt ? { ...payload, expectedUpdatedAt } : payload;
+  const body = { p_session_token: sessionToken, p_request_id: requestId, p_action: action, p_payload: guardedPayload };
   try {
     await rpc<unknown>("marketing_v2_update_request_grouped", body);
   } catch (error) {
@@ -474,6 +481,7 @@ export function getMarketingErrorMessage(error: unknown) {
   if (normalized.includes("MARKETING_ACCESS_DENIED")) return "Este usuário ainda não tem acesso ao Marketing.";
   if (normalized.includes("MARKETING_SESSION_EXPIRED")) return "Sua sessão do Marketing expirou. Entre novamente no HUB.";
   if (normalized.includes("MARKETING_SESSION_MISMATCH")) return "A sessão do Marketing não corresponde ao usuário atual.";
+  if (normalized.includes("MARKETING_REQUEST_STALE")) return "Este pedido foi atualizado por outra pessoa. Recarregue os dados antes de salvar novamente.";
   if (normalized.includes("MARKETING_AUTH_REQUIRED")) return "A sessão segura do administrador não está disponível. Entre novamente no HUB.";
   if (normalized.includes("MARKETING_CREATE_DENIED")) return "Seu acesso permite acompanhar o Marketing, mas não criar pedidos.";
   if (normalized.includes("MARKETING_TEAM_DENIED")) return "O gerente só pode abrir pedidos para a própria equipe.";
@@ -493,6 +501,11 @@ export function getMarketingErrorMessage(error: unknown) {
     if (normalized.includes("MARKETING_SPECIAL_PERIOD_NOT_RESERVED")) return "Esse período está livre. Use o agendamento normal; para outro horário, escolha Fora do padrão.";
   if (normalized.includes("MARKETING_SPECIAL_EXACT_CONFLICT")) return "Já existe uma captação ocupando esse horário. Escolha outro horário.";
   if (normalized.includes("MARKETING_SPECIAL_ALREADY_PENDING")) return "Já existe uma exceção aguardando autorização para este pedido.";
+  if (normalized.includes("MARKETING_SPECIAL_REQUEST_STATE_INVALID")) return "A exceção de agenda só pode ser solicitada enquanto o pedido aguarda atendimento.";
+  if (normalized.includes("MARKETING_SCHEDULE_ASSIGNEE_REQUIRED")) return "Defina Maria ou Arthur como responsável antes de confirmar o agendamento.";
+  if (normalized.includes("MARKETING_GROUP_ASSIGNEE_MISMATCH")) return "Todos os pedidos da mesma saída precisam ter o mesmo responsável.";
+  if (normalized.includes("MARKETING_STATUS_TRANSITION_INVALID")) return "Essa mudança de status não é válida para a etapa atual do pedido.";
+  if (normalized.includes("MARKETING_CAPTURE_IN_PAST")) return "Escolha uma data e horário futuros para a captação.";
   if (normalized.includes("MARKETING_SPECIAL_NOT_PENDING")) return "Esta exceção já foi analisada ou não está mais pendente.";
   if (normalized.includes("MARKETING_TEAM_REQUIRED")) return "Escolha a equipe deste gerente.";
   if (normalized.includes("MARKETING_USER_NOT_FOUND")) return "O usuário do HUB não foi encontrado ou está inativo.";
