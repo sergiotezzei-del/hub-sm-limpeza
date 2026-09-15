@@ -377,6 +377,11 @@
   font-size: .76rem;
 }
 
+.marketing-request-meta::before {
+  content: none !important;
+  display: none !important;
+}
+
 .marketing-ready-list {
   margin-top: 28px;
 }
