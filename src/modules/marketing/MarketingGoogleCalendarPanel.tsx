@@ -140,10 +140,10 @@ export function MarketingGoogleCalendarPanel(props: PanelProps) {
             <article key={user.userId} className={user.connected ? "connected" : "disconnected"}>
               <div>
                 <span className="marketing-google-dot" aria-hidden="true" />
-                <div><strong>{user.userName}</strong><small>{user.connected ? user.googleEmail || "Agenda conectada" : "Ainda não conectou a agenda"}</small></div>
+                <div><strong>{user.userName}</strong><small>{user.connected ? user.googleEmail || "Agenda conectada" : "A conta ainda não foi conectada"}</small></div>
               </div>
-              <em>{user.connected ? "CONECTADA" : "AGUARDANDO"}</em>
-              {user.lastError && <p className="marketing-google-error">{user.lastError}</p>}
+              <em>{user.connected ? "CONECTADA" : "NÃO CONECTADA"}</em>
+              {user.connected && user.lastError && <p className="marketing-google-error">{user.lastError}</p>}
               {user.connected && <small className="marketing-google-sync">{user.lastSyncedAt ? `Última sincronização: ${formatDateTime(user.lastSyncedAt)}` : "Pronta para sincronizar os próximos agendamentos."}</small>}
             </article>
           ))}

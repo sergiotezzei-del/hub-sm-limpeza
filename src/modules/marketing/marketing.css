@@ -205,6 +205,36 @@
   color: #c52121;
 }
 
+.marketing-next-request {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  margin: -8px 0 24px;
+  padding: 14px 16px;
+  border: 1px solid #b9d8c2;
+  border-left: 5px solid #27713f;
+  border-radius: 8px;
+  background: #f4fbf6;
+  color: #24352a;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+
+.marketing-next-request span {
+  color: #27713f;
+  font-size: .72rem;
+  font-weight: 900;
+}
+
+.marketing-next-request strong {
+  font-size: 1rem;
+}
+
+.marketing-next-request small {
+  color: #5e6d62;
+}
+
 .marketing-section-head {
   display: flex;
   align-items: end;
@@ -336,7 +366,7 @@
   font-size: .9rem;
 }
 
-.marketing-request-card footer {
+.marketing-request-meta {
   display: flex;
   justify-content: space-between;
   gap: 8px;
@@ -361,6 +391,14 @@
 .marketing-agenda-list {
   display: grid;
   gap: 10px;
+}
+
+.marketing-requested-dates-head {
+  margin-top: 30px;
+}
+
+.marketing-empty.compact {
+  padding: 22px 18px;
 }
 
 .marketing-agenda-row {
@@ -752,6 +790,17 @@
 .marketing-management-form h3 {
   grid-column: 1 / -1;
   margin: 0 0 2px;
+}
+
+.marketing-closed-notice {
+  display: flex;
+  gap: 8px 14px;
+  margin: 18px 22px;
+  padding: 13px 14px;
+  border: 1px solid #ddd6e6;
+  border-radius: 8px;
+  background: #f7f5f9;
+  color: #655c70;
 }
 
 .marketing-cancel-request {
@@ -1453,7 +1502,7 @@
 .marketing-duration-options button,
 .marketing-capture-summary button,
 .marketing-capture-actions button,
-.marketing-schedule-picker footer button,
+.marketing-schedule-picker-footer button,
 .marketing-period-grid button,
 .marketing-date-grid button,
 .marketing-override-list button,
@@ -1519,7 +1568,7 @@
 
 .marketing-date-legend,
 .marketing-duration-options,
-.marketing-schedule-picker footer,
+.marketing-schedule-picker-footer,
 .marketing-capture-actions {
   display: flex;
   flex-wrap: wrap;
@@ -1606,7 +1655,7 @@
   color: #205d35;
 }
 
-.marketing-schedule-picker footer {
+.marketing-schedule-picker-footer {
   justify-content: flex-end;
   margin-top: 0;
   padding: 12px 0 0;
@@ -1615,12 +1664,12 @@
   text-align: right;
 }
 
-.marketing-schedule-picker footer::before {
+.marketing-schedule-picker-footer::before {
   content: none;
   display: none;
 }
 
-.marketing-schedule-picker footer button:not(.secondary),
+.marketing-schedule-picker-footer button:not(.secondary),
 .marketing-notification-list button,
 .marketing-queue-blocked button,
 .marketing-override-list button:not(.secondary) {
@@ -1973,7 +2022,7 @@
 .marketing-period-reserved-message p { margin:0; color:#6f5316; }
 .marketing-period-reserved-message button { min-height:40px; border:1px solid #b17a12; border-radius:8px; background:#fff; color:#7b5510; font:inherit; font-weight:900; cursor:pointer; }
 .marketing-lunch-note { color:#6e6676; }
-.marketing-schedule-picker footer { align-items:center; justify-content:space-between; }
+.marketing-schedule-picker-footer { align-items:center; justify-content:space-between; }
 .marketing-selected-slot { display:grid; gap:2px; text-align:left; }
 .marketing-selected-slot span { color:#756c82; font-size:.76rem; }
 .marketing-schedule-footer-actions { display:flex; flex-wrap:wrap; gap:8px; }
@@ -2001,18 +2050,18 @@
 .marketing-schedule-exception-modal textarea { min-height:100px; resize:vertical; }
 .marketing-exception-approval-note { display:grid; gap:3px; padding:11px; border-left:4px solid #8b6411; background:#fff8e8; }
 .marketing-exception-approval-note span { color:#625b69; }
-.marketing-schedule-exception-modal > footer { display:flex; justify-content:flex-end; gap:8px; }
-.marketing-schedule-exception-modal > footer button { min-height:42px; border:0; border-radius:8px; padding:10px 14px; background:#5d386e; color:#fff; font:inherit; font-weight:900; cursor:pointer; }
-.marketing-schedule-exception-modal > footer button.secondary { background:#ebe7ef; color:#4e3f57; }
-.marketing-schedule-exception-modal > footer button:disabled { opacity:.55; cursor:not-allowed; }
+.marketing-schedule-exception-actions { display:flex; justify-content:flex-end; gap:8px; }
+.marketing-schedule-exception-actions button { min-height:42px; border:0; border-radius:8px; padding:10px 14px; background:#5d386e; color:#fff; font:inherit; font-weight:900; cursor:pointer; }
+.marketing-schedule-exception-actions button.secondary { background:#ebe7ef; color:#4e3f57; }
+.marketing-schedule-exception-actions button:disabled { opacity:.55; cursor:not-allowed; }
 @media (max-width:700px) {
   .marketing-period-cards,
   .marketing-exception-mode,
   .marketing-period-exception-fields { grid-template-columns:1fr; }
   .marketing-time-buttons { grid-template-columns:repeat(2,minmax(0,1fr)); }
-  .marketing-schedule-picker footer { align-items:stretch; flex-direction:column; }
+  .marketing-schedule-picker-footer { align-items:stretch; flex-direction:column; }
   .marketing-schedule-footer-actions,
-  .marketing-schedule-exception-modal > footer { display:grid; grid-template-columns:1fr; }
+  .marketing-schedule-exception-actions { display:grid; grid-template-columns:1fr; }
   .marketing-schedule-footer-actions button,
-  .marketing-schedule-exception-modal > footer button { width:100%; }
+  .marketing-schedule-exception-actions button { width:100%; }
 }

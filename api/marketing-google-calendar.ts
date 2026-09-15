@@ -48,6 +48,10 @@ type SyncRequest = {
 type SyncBatch = {
   clientId?: string;
   queueRequestIds?: string[];
+  previousCaptureGroups?: Array<{
+    queueRequestId?: string;
+    captureGroupId?: string;
+  }>;
   requests?: SyncRequest[];
   connections?: SyncConnection[];
 };
@@ -248,17 +252,24 @@ async function syncQueuedRequests(secret: string) {
     }
   }
 
-  const taskToQueueIds = new Map<string, string[]>();
+  const taskToQueueIds = new Map<string, Set<string>>();
+  const addTask = (taskKey: string, queueId: string) => {
+    const ids = taskToQueueIds.get(taskKey) ?? new Set<string>();
+    ids.add(queueId);
+    taskToQueueIds.set(taskKey, ids);
+  };
   for (const queueId of queueIds) {
     const request = requestById.get(queueId);
     const taskKey = request?.captureGroupId ? `group:${request.captureGroupId}` : `request:${queueId}`;
-    const ids = taskToQueueIds.get(taskKey) ?? [];
-    ids.push(queueId);
-    taskToQueueIds.set(taskKey, ids);
+    addTask(taskKey, queueId);
+  }
+  for (const previous of batch.previousCaptureGroups ?? []) {
+    if (previous.queueRequestId && previous.captureGroupId && queueIds.includes(previous.queueRequestId)) {
+      addTask(`group:${previous.captureGroupId}`, previous.queueRequestId);
+    }
   }
 
-  let processed = 0;
-  let failed = 0;
+  const queueErrors = new Map<string, string[]>();
   const successfulConnections = new Set<string>();
   const failedConnections = new Set<string>();
 
@@ -270,25 +281,42 @@ async function syncQueuedRequests(secret: string) {
           failedConnections.add(state.connection.managedUserId);
           throw new Error(state.error || `Google Agenda de ${state.connection.managedUserId} indisponível.`);
         }
-        const shouldExist = task.active && task.targetUserId === state.connection.managedUserId;
-        if (shouldExist) {
-          await ensureGoogleEvent(state.accessToken, state.connection.calendarId || "primary", task);
-        } else {
-          await deleteGoogleEventIfPresent(state.accessToken, state.connection.calendarId || "primary", task.eventId);
+        try {
+          const shouldExist = task.active && task.targetUserId === state.connection.managedUserId;
+          if (shouldExist) {
+            await ensureGoogleEvent(state.accessToken, state.connection.calendarId || "primary", task);
+          } else {
+            await deleteGoogleEventIfPresent(state.accessToken, state.connection.calendarId || "primary", task.eventId);
+          }
+          successfulConnections.add(state.connection.managedUserId);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Falha ao sincronizar Google Agenda.";
+          failedConnections.add(state.connection.managedUserId);
+          await recordConnection(secret, state.connection.managedUserId, message);
+          throw error;
         }
-        successfulConnections.add(state.connection.managedUserId);
       }
 
-      for (const queueId of originalQueueIds) {
-        await markRequest(secret, queueId, true, "");
-        processed += 1;
-      }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Falha ao sincronizar Google Agenda.";
       for (const queueId of originalQueueIds) {
-        await markRequest(secret, queueId, false, message);
-        failed += 1;
+        const errors = queueErrors.get(queueId) ?? [];
+        errors.push(message);
+        queueErrors.set(queueId, errors);
       }
+    }
+  }
+
+  let processed = 0;
+  let failed = 0;
+  for (const queueId of queueIds) {
+    const errors = queueErrors.get(queueId) ?? [];
+    if (errors.length > 0) {
+      await markRequest(secret, queueId, false, Array.from(new Set(errors)).join(" "));
+      failed += 1;
+    } else {
+      await markRequest(secret, queueId, true, "");
+      processed += 1;
     }
   }
 
@@ -400,7 +428,7 @@ async function deleteGoogleEventIfPresent(accessToken: string, calendarId: strin
 
 function buildGoogleEvent(task: SyncTask) {
   const start = new Date(task.startAt!);
-  const end = new Date(start.getTime() + 60 * 1000);
+  const end = new Date(start.getTime() + 60 * 60 * 1000);
   const members = [...task.requests].sort((a, b) => Number(a.requestNumber) - Number(b.requestNumber));
   const first = members[0];
   const numbers = members.map((request) => `#${request.requestNumber}`).join(", ");
@@ -422,7 +450,7 @@ function buildGoogleEvent(task: SyncTask) {
       properties ? `Imóvel(is): ${properties}` : "",
       `Responsável: ${responsible}`,
       "",
-      "O HUB registra o horário de início. A duração da captação não é definida pelo sistema.",
+      "Duração operacional no HUB: 60 minutos.",
     ].filter(Boolean).join("\n"),
     start: { dateTime: start.toISOString(), timeZone: TIME_ZONE },
     end: { dateTime: end.toISOString(), timeZone: TIME_ZONE },

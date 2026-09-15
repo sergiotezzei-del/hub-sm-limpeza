@@ -22,6 +22,7 @@ import "./marketing.css";
 import "./publicMarketing.css";
 
 type PublicFormState = {
+  requesterName: string;
   teamId: string;
   brokerName: string;
   hasPropertyCode: boolean;
@@ -42,6 +43,7 @@ type PublicFormState = {
 };
 
 const emptyForm = (): PublicFormState => ({
+  requesterName: "",
   teamId: "",
   brokerName: "",
   hasPropertyCode: true,
@@ -123,8 +125,8 @@ export function PublicMarketingRequestPage() {
     event.preventDefault();
     if (submitting) return;
     setMessage("");
-    if (!form.teamId || !form.brokerName.trim()) {
-      setMessage("Preencha equipe e nome do corretor.");
+    if (!form.requesterName.trim() || !form.teamId || !form.brokerName.trim()) {
+      setMessage("Preencha seu nome, a equipe e o nome do corretor.");
       return;
     }
     if (form.hasPropertyCode && !form.propertyReference.trim()) {
@@ -163,7 +165,7 @@ export function PublicMarketingRequestPage() {
         : null;
       const nextReceipt = await submitPublicMarketingRequest({
         submissionId,
-        requesterName: form.brokerName,
+        requesterName: form.requesterName,
         teamId: form.teamId,
         brokerName: form.brokerName,
         hasPropertyCode: form.hasPropertyCode,
@@ -200,6 +202,7 @@ export function PublicMarketingRequestPage() {
     setSubmissionId(createSubmissionId());
     setForm({
       ...emptyForm(),
+      requesterName: common.requesterName,
       teamId: common.teamId,
       brokerName: common.brokerName,
       requestKind: common.requestKind,
@@ -257,8 +260,9 @@ export function PublicMarketingRequestPage() {
 
             {loading ? <div className="marketing-public-loading">Carregando formulário...</div> : options && availability ? (
               <form onSubmit={submit}>
+                <label>Nome de quem está solicitando *<input value={form.requesterName} onChange={(event) => setForm({ ...form, requesterName: event.target.value })} maxLength={120} autoComplete="name" required disabled={continuingCaptureGroup} /></label>
                 <label>Equipe / gerente *<select value={form.teamId} onChange={(event) => setForm({ ...form, teamId: event.target.value })} required disabled={continuingCaptureGroup}><option value="" disabled>Selecione...</option>{options.teams.map((team) => <option key={team.id} value={team.id}>{team.managerName}</option>)}</select></label>
-                <label>Nome do corretor *<input value={form.brokerName} onChange={(event) => setForm({ ...form, brokerName: event.target.value })} maxLength={120} autoComplete="name" required disabled={continuingCaptureGroup} /></label>
+                <label>Nome do corretor *<input value={form.brokerName} onChange={(event) => setForm({ ...form, brokerName: event.target.value })} maxLength={120} required disabled={continuingCaptureGroup} /></label>
 
                 <fieldset><legend>O imóvel já tem código?</legend><label><input type="radio" checked={form.hasPropertyCode} onChange={() => setForm({ ...form, hasPropertyCode: true })} /> Sim</label><label><input type="radio" checked={!form.hasPropertyCode} onChange={() => setForm({ ...form, hasPropertyCode: false, propertyReference: "" })} /> Ainda não</label></fieldset>
                 <label className={!form.hasPropertyCode ? "marketing-public-field-disabled" : ""}>Código do imóvel<input value={form.propertyReference} onChange={(event) => setForm({ ...form, propertyReference: event.target.value })} maxLength={80} placeholder={form.hasPropertyCode ? "Ex.: 78119" : "Sem código informado"} required={form.hasPropertyCode} disabled={!form.hasPropertyCode} /></label>

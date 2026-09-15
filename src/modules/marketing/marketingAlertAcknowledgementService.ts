@@ -4,7 +4,7 @@ import {
   supabaseConfigured,
 } from "../security/services/supabaseClient";
 
-export type MarketingAlertKind = "request" | "urgency";
+export type MarketingAlertKind = "request" | "urgency" | "special_capture";
 
 export type MarketingAlertAcknowledgement = {
   request_id: string;

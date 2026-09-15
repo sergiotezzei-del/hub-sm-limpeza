@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { forceHubSessionReauthentication } from "../security/services/hubSessionRecovery";
-import { getSupabaseClient } from "../security/services/supabaseClient";
+import { refreshMarketingSession } from "./marketingService";
 
 const SESSION_KEY = "hub-sm-active-session";
 const KEEPALIVE_MS = 10 * 60 * 1000;
@@ -21,17 +21,13 @@ export function MarketingSessionKeepalive() {
 
       busy = true;
       try {
-        const supabase = await getSupabaseClient();
-        if (!supabase || cancelled) return;
-        const { error } = await supabase.rpc("marketing_refresh_session", { p_session_token: sessionToken });
-        if (cancelled || !error) return;
-
-        const message = `${error.message ?? ""} ${error.details ?? ""} ${error.hint ?? ""}`.toUpperCase();
+        await refreshMarketingSession(sessionToken);
+        if (cancelled) return;
+      } catch (error) {
+        const message = (error instanceof Error ? error.message : String(error ?? "")).toUpperCase();
         if (message.includes("MARKETING_SESSION_EXPIRED") || message.includes("MARKETING_SESSION_MISMATCH")) {
           forceHubSessionReauthentication();
         }
-      } catch {
-        // Falhas temporárias de rede não devem derrubar a sessão local do HUB.
       } finally {
         busy = false;
       }
