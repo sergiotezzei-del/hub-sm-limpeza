@@ -1429,13 +1429,16 @@ function RequestDetail(props: { sessionToken: string; dashboard: MarketingDashbo
       props.onError("Defina Maria ou Arthur como responsável antes de avançar o pedido.");
       return;
     }
-    if (props.request.requestKind === "capture_edit" && status === "agendado" && !confirmed) {
-      props.onError("Escolha um horário antes de marcar o pedido como agendado.");
-      return;
-    }
-    if (props.request.requestKind === "capture_edit" && status === "solicitado" && confirmed) {
-      props.onError("Ao confirmar um horário, avance o pedido para Agendado.");
-      return;
+    if (props.request.requestKind === "capture_edit") {
+      const statusNeedsConfirmedCapture = ["agendado", "aguardando_edicao", "em_edicao", "em_aprovacao", "revisao", "pronto"].includes(status);
+      if (statusNeedsConfirmedCapture && !confirmed) {
+        props.onError("Confirme o horário da captação antes de colocar o pedido nessa etapa.");
+        return;
+      }
+      if (status === "solicitado" && confirmed) {
+        props.onError("Este pedido já possui captação confirmada. Escolha Agendado ou uma etapa de produção antes de salvar.");
+        return;
+      }
     }
     const payload: Record<string, unknown> = {
       status,
@@ -1522,7 +1525,7 @@ function RequestDetail(props: { sessionToken: string; dashboard: MarketingDashbo
         {requestIsClosed && (props.role === "admin" || props.role === "marketing") && <div className="marketing-closed-notice"><strong>Pedido encerrado</strong><span>O histórico permanece disponível, mas os controles operacionais estão bloqueados.</span></div>}
         {canManage && <form className="marketing-management-form" onSubmit={saveManagement}>
           <h3>Controle do Marketing</h3>
-          <label>Próxima etapa<select value={status} onChange={(event) => setStatus(event.target.value as MarketingRequestStatus)}>{selectableStatuses.map((value) => <option value={value} key={value}>{statusLabels[value]}</option>)}</select></label>
+          <label>Status<select value={status} onChange={(event) => setStatus(event.target.value as MarketingRequestStatus)}>{selectableStatuses.map((value) => <option value={value} key={value}>{statusLabels[value]}</option>)}</select></label>
           <label>Previsão de entrega<input type="datetime-local" value={promised} onChange={(event) => setPromised(event.target.value)} /></label>
           <label>Responsável no Marketing<select value={assigned} onChange={(event) => setAssigned(event.target.value)}><option value="">Não definido</option>{MARKETING_ASSIGNEES.map((name) => <option value={name} key={name}>{name}</option>)}</select></label>
           {props.request.requestKind === "capture_edit" && props.request.specialCaptureStatus !== "pending" && (
@@ -1642,19 +1645,10 @@ function availableTabs(role: MarketingRole): Array<{ id: MarketingTab; label: st
 }
 
 function allowedManagementStatuses(request: MarketingRequest): MarketingRequestStatus[] {
-  const status = request.status;
-  if (status === "pronto" || status === "cancelado") return [status];
-  if (status === "solicitado") {
-    return request.requestKind === "capture_edit"
-      ? ["solicitado", "agendado", "bloqueado", "cancelado"]
-      : ["solicitado", "aguardando_edicao", "bloqueado", "cancelado"];
-  }
-  if (status === "agendado") return ["agendado", "aguardando_edicao", "bloqueado", "cancelado"];
-  if (status === "aguardando_edicao") return ["aguardando_edicao", "em_edicao", "bloqueado", "cancelado"];
-  if (status === "em_edicao") return ["em_edicao", "em_aprovacao", "bloqueado", "cancelado"];
-  if (status === "em_aprovacao") return ["em_aprovacao", "revisao", "em_edicao", "pronto", "bloqueado", "cancelado"];
-  if (status === "revisao") return ["revisao", "em_edicao", "em_aprovacao", "pronto", "bloqueado", "cancelado"];
-  return ["bloqueado", "solicitado", "agendado", "aguardando_edicao", "em_edicao", "em_aprovacao", "revisao", "cancelado"];
+  if (request.status === "pronto" || request.status === "cancelado") return [request.status];
+  return request.requestKind === "capture_edit"
+    ? ["solicitado", "agendado", "aguardando_edicao", "em_edicao", "em_aprovacao", "revisao", "pronto", "bloqueado", "cancelado"]
+    : ["solicitado", "aguardando_edicao", "em_edicao", "em_aprovacao", "revisao", "pronto", "bloqueado", "cancelado"];
 }
 
 function defaultTab(role: MarketingRole): MarketingTab {
