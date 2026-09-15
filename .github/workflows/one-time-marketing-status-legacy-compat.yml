@@ -1,0 +1,122 @@
+name: One-time Marketing status legacy compatibility
+
+on:
+  push:
+    branches:
+      - fix/marketing-status-legacy-compat
+    paths:
+      - '.github/workflows/one-time-marketing-status-legacy-compat.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Restore Marketing status control
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path('src/modules/marketing/MarketingFeature.tsx')
+          text = path.read_text(encoding='utf-8')
+
+          old_label = '''          <label>Próxima etapa<select value={status} onChange={(event) => setStatus(event.target.value as MarketingRequestStatus)}>{selectableStatuses.map((value) => <option value={value} key={value}>{statusLabels[value]}</option>)}</select></label>'''
+          new_label = '''          <label>Status<select value={status} onChange={(event) => setStatus(event.target.value as MarketingRequestStatus)}>{selectableStatuses.map((value) => <option value={value} key={value}>{statusLabels[value]}</option>)}</select></label>'''
+          if old_label not in text:
+              raise SystemExit('Rótulo esperado do seletor não encontrado.')
+          text = text.replace(old_label, new_label, 1)
+
+          old_helper = '''function allowedManagementStatuses(request: MarketingRequest): MarketingRequestStatus[] {
+            const status = request.status;
+            if (status === "pronto" || status === "cancelado") return [status];
+            if (status === "solicitado") {
+              return request.requestKind === "capture_edit"
+                ? ["solicitado", "agendado", "bloqueado", "cancelado"]
+                : ["solicitado", "aguardando_edicao", "bloqueado", "cancelado"];
+            }
+            if (status === "agendado") return ["agendado", "aguardando_edicao", "bloqueado", "cancelado"];
+            if (status === "aguardando_edicao") return ["aguardando_edicao", "em_edicao", "bloqueado", "cancelado"];
+            if (status === "em_edicao") return ["em_edicao", "em_aprovacao", "bloqueado", "cancelado"];
+            if (status === "em_aprovacao") return ["em_aprovacao", "revisao", "em_edicao", "pronto", "bloqueado", "cancelado"];
+            if (status === "revisao") return ["revisao", "em_edicao", "em_aprovacao", "pronto", "bloqueado", "cancelado"];
+            return ["bloqueado", "solicitado", "agendado", "aguardando_edicao", "em_edicao", "em_aprovacao", "revisao", "cancelado"];
+          }'''.replace('          ', '')
+
+          new_helper = '''function allowedManagementStatuses(request: MarketingRequest): MarketingRequestStatus[] {
+            if (request.status === "pronto" || request.status === "cancelado") return [request.status];
+            return request.requestKind === "capture_edit"
+              ? ["solicitado", "agendado", "aguardando_edicao", "em_edicao", "em_aprovacao", "revisao", "pronto", "bloqueado", "cancelado"]
+              : ["solicitado", "aguardando_edicao", "em_edicao", "em_aprovacao", "revisao", "pronto", "bloqueado", "cancelado"];
+          }'''.replace('          ', '')
+
+          if old_helper not in text:
+              raise SystemExit('Função allowedManagementStatuses esperada não encontrada.')
+          text = text.replace(old_helper, new_helper, 1)
+
+          old_validation = '''    if (props.request.requestKind === "capture_edit" && status === "agendado" && !confirmed) {
+              props.onError("Escolha um horário antes de marcar o pedido como agendado.");
+              return;
+            }
+            if (props.request.requestKind === "capture_edit" && status === "solicitado" && confirmed) {
+              props.onError("Ao confirmar um horário, avance o pedido para Agendado.");
+              return;
+            }'''.replace('            ', '')
+
+          new_validation = '''    if (props.request.requestKind === "capture_edit") {
+              const statusNeedsConfirmedCapture = ["agendado", "aguardando_edicao", "em_edicao", "em_aprovacao", "revisao", "pronto"].includes(status);
+              if (statusNeedsConfirmedCapture && !confirmed) {
+                props.onError("Confirme o horário da captação antes de colocar o pedido nessa etapa.");
+                return;
+              }
+              if (status === "solicitado" && confirmed) {
+                props.onError("Este pedido já possui captação confirmada. Escolha Agendado ou uma etapa de produção antes de salvar.");
+                return;
+              }
+            }'''.replace('            ', '')
+
+          if old_validation not in text:
+              raise SystemExit('Validação de captação esperada não encontrada.')
+          text = text.replace(old_validation, new_validation, 1)
+          path.write_text(text, encoding='utf-8')
+
+          sw = Path('public/sw.js')
+          sw_text = sw.read_text(encoding='utf-8')
+          if 'hub-santa-maria-v20' in sw_text:
+              sw_text = sw_text.replace('hub-santa-maria-v20', 'hub-santa-maria-v21', 1)
+          elif 'hub-santa-maria-v21' not in sw_text:
+              raise SystemExit('Versão esperada do cache PWA não encontrada.')
+          sw.write_text(sw_text, encoding='utf-8')
+
+          migration = Path('supabase/migrations/20260915115000_marketing_status_legacy_compat.sql')
+          migration.write_text('''-- Restores manual Marketing status control while preserving final-state consistency checks.\n\ncreate or replace function private.marketing_validate_operational_state()\nreturns trigger\nlanguage plpgsql\nsecurity definer\nset search_path = ''\nas $$\nbegin\n  if new.deleted_at is not null then return new; end if;\n\n  -- Restoring a legacy row must preserve its historical values. New edits are\n  -- validated by the regular RPCs after the row has returned to the operation.\n  if tg_op = 'UPDATE' and old.deleted_at is not null and new.deleted_at is null then\n    return new;\n  end if;\n\n  -- Maria/Arthur control the operational status manually. The database validates\n  -- the resulting state instead of forcing a rigid one-step workflow. Closed\n  -- requests remain closed unless a future explicit reopen flow is introduced.\n  if tg_op = 'UPDATE'\n    and old.status is distinct from new.status\n    and old.status in ('pronto', 'cancelado') then\n    raise exception 'MARKETING_STATUS_TRANSITION_INVALID';\n  end if;\n\n  if new.request_kind = 'edit_only'\n    and (new.confirmed_capture_at is not null or new.confirmed_capture_duration_minutes is not null) then\n    raise exception 'MARKETING_EDIT_ONLY_CAPTURE_DENIED';\n  end if;\n\n  if (new.confirmed_capture_at is null) <> (new.confirmed_capture_duration_minutes is null) then\n    raise exception 'MARKETING_CAPTURE_DURATION_REQUIRED';\n  end if;\n\n  if new.confirmed_capture_at is not null and new.confirmed_capture_duration_minutes <> 60 then\n    raise exception 'MARKETING_CAPTURE_DURATION_INVALID';\n  end if;\n\n  if new.status = 'solicitado'\n    and new.confirmed_capture_at is not null\n    and (\n      tg_op = 'INSERT'\n      or new.status is distinct from old.status\n      or new.confirmed_capture_at is distinct from old.confirmed_capture_at\n    ) then\n    raise exception 'MARKETING_CONFIRMED_CAPTURE_STATE_INVALID';\n  end if;\n\n  if new.confirmed_capture_at is not null\n    and (tg_op = 'INSERT' or new.confirmed_capture_at is distinct from old.confirmed_capture_at)\n    and new.confirmed_capture_at <= now() then\n    raise exception 'MARKETING_CAPTURE_IN_PAST';\n  end if;\n\n  if new.preferred_capture_at is not null\n    and (tg_op = 'INSERT' or new.preferred_capture_at is distinct from old.preferred_capture_at)\n    and new.preferred_capture_at <= now() then\n    raise exception 'MARKETING_CAPTURE_IN_PAST';\n  end if;\n\n  if new.status = 'agendado' and (\n    new.request_kind <> 'capture_edit'\n    or new.confirmed_capture_at is null\n    or new.confirmed_capture_duration_minutes <> 60\n    or new.assigned_marketing_name is null\n    or new.assigned_marketing_name not in ('Maria', 'Arthur')\n  ) then\n    raise exception 'MARKETING_SCHEDULE_ASSIGNEE_REQUIRED';\n  end if;\n\n  if new.status in ('aguardando_edicao', 'em_edicao', 'em_aprovacao', 'revisao', 'pronto')\n    and (new.assigned_marketing_name is null or new.assigned_marketing_name not in ('Maria', 'Arthur')) then\n    raise exception 'MARKETING_SCHEDULE_ASSIGNEE_REQUIRED';\n  end if;\n\n  if new.request_kind = 'capture_edit'\n    and new.status in ('aguardando_edicao', 'em_edicao', 'em_aprovacao', 'revisao', 'pronto')\n    and new.confirmed_capture_at is null then\n    raise exception 'MARKETING_CAPTURE_DURATION_REQUIRED';\n  end if;\n\n  if new.capture_group_id is not null\n    and new.assigned_marketing_name is not null\n    and current_setting('app.marketing_group_assignee_sync', true) is distinct from 'on'\n    and exists (\n      select 1\n      from public.marketing_requests sibling\n      where sibling.capture_group_id = new.capture_group_id\n        and sibling.id <> new.id\n        and sibling.deleted_at is null\n        and sibling.status <> 'cancelado'\n        and sibling.assigned_marketing_name is distinct from new.assigned_marketing_name\n    ) then\n    raise exception 'MARKETING_GROUP_ASSIGNEE_MISMATCH';\n  end if;\n\n  return new;\nend;\n$$;\n\nrevoke all on function private.marketing_validate_operational_state() from public, anon, authenticated;\n\nnotify pgrst, 'reload schema';\n''', encoding='utf-8')
+
+          test = Path('supabase/tests/marketing_status_legacy_compat_rollback.sql')
+          test.write_text('''begin;\n\ndo $test$\ndeclare\n  v_edit_only uuid := gen_random_uuid();\n  v_team_id uuid;\nbegin\n  select team_id into v_team_id\n  from public.marketing_requests\n  where request_number = 207;\n\n  if v_team_id is null then raise exception 'TEST_TEAM_NOT_FOUND'; end if;\n\n  insert into public.marketing_requests(\n    id, team_id, manager_name, broker_name, has_property_code, property_reference,\n    request_kind, content_types, created_by_name, status\n  ) values (\n    v_edit_only, v_team_id, 'Fixture', 'Fixture status', true, 'TEST-STATUS',\n    'edit_only', array['video'], 'Teste transacional', 'solicitado'\n  );\n\n  update public.marketing_requests\n  set assigned_marketing_name = 'Arthur', status = 'em_edicao'\n  where id = v_edit_only;\n\n  if not exists (select 1 from public.marketing_requests where id = v_edit_only and status = 'em_edicao') then\n    raise exception 'TEST_EDIT_ONLY_DIRECT_STATUS_FAILED';\n  end if;\n\n  update public.marketing_requests set status = 'em_aprovacao' where id = v_edit_only;\n  update public.marketing_requests set status = 'pronto' where id = v_edit_only;\n\n  begin\n    update public.marketing_requests set status = 'em_edicao' where id = v_edit_only;\n    raise exception 'TEST_EXPECTED_CLOSED_REOPEN_REJECTION';\n  exception when others then\n    if sqlerrm not like '%MARKETING_STATUS_TRANSITION_INVALID%' then raise; end if;\n  end;\n\n  -- Real legacy shape #208 is exercised only inside this transaction and rolled back.\n  update public.marketing_requests\n  set assigned_marketing_name = 'Arthur', status = 'em_edicao'\n  where request_number = 208;\n\n  if not exists (\n    select 1 from public.marketing_requests\n    where request_number = 208 and status = 'em_edicao' and assigned_marketing_name = 'Arthur'\n  ) then raise exception 'TEST_LEGACY_208_RECOVERY_FAILED'; end if;\n\n  begin\n    update public.marketing_requests\n    set assigned_marketing_name = 'Arthur', status = 'em_edicao'\n    where request_number = 209;\n    raise exception 'TEST_EXPECTED_UNCONFIRMED_CAPTURE_REJECTION';\n  exception when others then\n    if sqlerrm not like '%MARKETING_CAPTURE_DURATION_REQUIRED%' then raise; end if;\n  end;\nend;\n$test$;\n\nrollback;\n''', encoding='utf-8')
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run build
+      - run: npx tsc --noEmit
+      - run: git diff --check
+
+      - name: Commit verified change
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/modules/marketing/MarketingFeature.tsx public/sw.js supabase/migrations/20260915115000_marketing_status_legacy_compat.sql supabase/tests/marketing_status_legacy_compat_rollback.sql
+          git diff --cached --quiet && exit 0
+          git commit -m "fix(marketing): restaurar controle de status e compatibilidade legada"
+          git push origin HEAD:fix/marketing-status-legacy-compat
