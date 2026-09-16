@@ -1,3 +1,7 @@
+import {
+  authenticatedSupabaseFetch,
+  SUPABASE_URL,
+} from "../../security/services/supabaseClient";
 import type {
   OrganizationPerson,
   PatrimonyItem,
@@ -39,8 +43,6 @@ export async function openUniformDeliveryTermForPrint(data: UniformTermPrintData
 
     // Inline critical print CSS: about:blank popups can print before an external
     // stylesheet has loaded. Keep the approved, versioned term text untouched.
-    // The compact layout was tested in Chromium with the four long-description
-    // rows from an actual delivery (two pages before, one A4 page after).
     const printStyles = `<style>
       #uniform-print-toolbar { position: sticky; top: 0; z-index: 1000; display: flex; align-items: center; justify-content: center; gap: 12px; flex-wrap: wrap; padding: 12px; margin: 0 0 16px; background: #fff7ed; border: 1px solid #fed7aa; border-radius: 8px; font: 14px Arial, sans-serif; color: #1f2937; }
       #uniform-print-button { padding: 11px 18px; border: 0; border-radius: 7px; background: #c45b14; color: #fff; font: 700 15px Arial, sans-serif; cursor: pointer; }
@@ -85,16 +87,37 @@ export async function openUniformDeliveryTermForPrint(data: UniformTermPrintData
     printWindow.focus();
   } catch (error) {
     if (!printWindow.closed) {
+      const message = error instanceof Error ? error.message : "Não foi possível preparar o recibo.";
       printWindow.document.open();
-      printWindow.document.write("<!doctype html><html lang=\"pt-BR\"><head><meta charset=\"utf-8\"><title>Erro no recibo</title></head><body style=\"font-family:Arial,sans-serif;padding:24px\">Não foi possível preparar o recibo. Volte ao HUB e tente novamente.</body></html>");
+      printWindow.document.write(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Recibo não disponível</title></head><body style="font-family:Arial,sans-serif;padding:24px"><h2>Recibo não disponível</h2><p>${escapeHtml(message)}</p><p>Volte ao HUB e corrija o cadastro antes de tentar novamente.</p></body></html>`);
       printWindow.document.close();
     }
     throw error;
   }
 }
 
+async function loadLegalIdentity(personId: string): Promise<{ fullName: string; cpf: string }> {
+  const response = await authenticatedSupabaseFetch(
+    `${SUPABASE_URL}/rest/v1/organization_people?id=eq.${encodeURIComponent(personId)}&select=full_name&limit=1`,
+  );
+  if (!response.ok) throw new Error("Não foi possível consultar o nome completo. Verifique seu acesso ao cadastro documental.");
+  const people = await response.json() as Array<{ full_name: string | null }>;
+  const fullName = people[0]?.full_name?.trim();
+  if (!fullName) throw new Error("Nome completo não cadastrado. Vá em Patrimônio → Dados para documentos, preencha e tente reimprimir.");
+
+  const detailResponse = await authenticatedSupabaseFetch(
+    `${SUPABASE_URL}/rest/v1/organization_person_private_details?person_id=eq.${encodeURIComponent(personId)}&select=cpf&limit=1`,
+  );
+  if (!detailResponse.ok) throw new Error("Não foi possível consultar os dados documentais com segurança.");
+  const details = await detailResponse.json() as Array<{ cpf: string | null }>;
+  return { fullName, cpf: details[0]?.cpf?.trim() ?? "" };
+}
+
 export async function buildUniformDeliveryTermHtml(data: UniformTermPrintData) {
-  const response = await fetch(data.template.printTemplatePath, { cache: "force-cache" });
+  const [response, legalIdentity] = await Promise.all([
+    fetch(data.template.printTemplatePath, { cache: "force-cache" }),
+    loadLegalIdentity(data.person.id),
+  ]);
   if (!response.ok) throw new Error("Template do termo indisponível.");
   const templateHtml = await response.text();
   const deliveredDate = formatDate(data.batch.deliveredAt);
@@ -112,14 +135,21 @@ export async function buildUniformDeliveryTermHtml(data: UniformTermPrintData) {
     })
     .join("");
 
-  return replaceTokens(templateHtml, {
+  // CPF is optional in the approved template; when absent, remove only that empty
+  // optional field rather than asking the employee to complete the receipt by hand.
+  const preparedTemplate = legalIdentity.cpf ? templateHtml : templateHtml.replace(
+    /<p><strong>CPF \(opcional, se a empresa desejar\):<\/strong>\s*{{CPF_COLABORADOR}}<\/p>/i,
+    "",
+  );
+
+  return replaceTokens(preparedTemplate, {
     "{{LOGO_SRC}}": data.template.logoPath || "/santa-maria-logo-transparent.png",
-    "{{NOME_COLABORADOR}}": escapeHtml(data.person.name),
+    "{{NOME_COLABORADOR}}": escapeHtml(legalIdentity.fullName),
     "{{SETOR}}": escapeHtml(data.person.department || "Não informado"),
     "{{EQUIPE}}": escapeHtml(data.person.teamName || "Sem equipe"),
     "{{DATA_ENTREGA}}": escapeHtml(deliveredDate),
     "{{ITENS_ENTREGUES_ROWS}}": rows || emptyRow(),
-    "{{CPF_COLABORADOR}}": "________________",
+    "{{CPF_COLABORADOR}}": escapeHtml(legalIdentity.cpf),
   });
 }
 
