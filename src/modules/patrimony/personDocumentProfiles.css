@@ -1,0 +1,21 @@
+.person-document-native-hidden { display: none !important; }
+.person-document-panel { margin: 18px auto; padding: 22px; max-width: 1120px; border: 1px solid #dce3ed; border-radius: 18px; background: #fff; color: #172b46; }
+.person-document-panel header h2 { margin: 0 0 6px; font-size: 23px; }
+.person-document-panel header p { margin: 0 0 18px; color: #52647d; }
+.person-document-picker, .person-document-fields { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px; margin: 14px 0; }
+.person-document-picker { grid-template-columns: minmax(0,1fr) minmax(0,1fr) auto; align-items: end; }
+.person-document-panel label { display: flex; flex-direction: column; gap: 6px; min-width: 0; font-size: 13px; font-weight: 700; }
+.person-document-panel input, .person-document-panel select, .person-document-panel textarea { width: 100%; min-width: 0; padding: 10px 12px; border: 1px solid #cad5e5; border-radius: 9px; font: inherit; color: #162842; background: white; }
+.person-document-panel input:focus, .person-document-panel select:focus, .person-document-panel textarea:focus { outline: 2px solid #e8a476; outline-offset: 1px; }
+.person-document-panel button { padding: 10px 14px; border: 1px solid #cad5e5; border-radius: 9px; background: #fff; color: #192e49; font-weight: 700; cursor: pointer; }
+.person-document-panel button:disabled { opacity: .55; cursor: not-allowed; }
+.person-document-system { padding: 11px 14px; background: #fff7ef; border-left: 4px solid #d96821; border-radius: 8px; margin: 18px 0; }
+.person-document-system span { color: #53647a; }
+.person-document-reason { margin-top: 16px; }
+.person-document-privacy { font-size: 12px; color: #516078; }
+.person-document-error, .person-document-success { padding: 10px 12px; border-radius: 8px; }
+.person-document-error { background: #fff1f1; color: #9c2525; }
+.person-document-success { background: #edf9f1; color: #176337; }
+.person-document-actions { display: flex; justify-content: flex-end; margin-top: 16px; }
+.person-document-actions button { background: #cc5c12; color: #fff; border-color: #cc5c12; }
+@media(max-width:760px) { .person-document-panel { padding: 16px; margin: 12px 0; } .person-document-picker, .person-document-fields { grid-template-columns: minmax(0,1fr); } .person-document-actions button { width: 100%; } }
