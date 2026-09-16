@@ -44,6 +44,10 @@ type BatchItemRow = {
   item_id: string;
   quantity: number | string;
   observation: string | null;
+  active: boolean | null;
+  corrected_at: string | null;
+  corrected_by_name: string | null;
+  correction_reason: string | null;
   created_at: string;
 };
 
@@ -57,6 +61,10 @@ type TermRow = {
   signed_document_path: string | null;
   signed_uploaded_at: string | null;
   signed_uploaded_by_name: string | null;
+  replaced_by_term_id: string | null;
+  replaced_at: string | null;
+  replaced_by_name: string | null;
+  replacement_reason: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -89,6 +97,16 @@ export type UniformDeliveryLineInput = {
   itemId: string;
   quantity: number;
   observation?: string;
+};
+
+export type UniformDeliveryCorrectionMode = "correcao_administrativa" | "troca_fisica";
+
+export type UniformDeliveryCorrectionResult = {
+  correctionId: string;
+  batchId: string;
+  termId: string;
+  createdNewBatch: boolean;
+  termStatus: string;
 };
 
 export class UniformsRemoteError extends Error {
@@ -176,6 +194,80 @@ export async function returnUniformAssignment(input: {
     },
   );
   return rows[0];
+}
+
+export async function correctUniformDeliveryPerson(input: {
+  correctionId?: string;
+  batchId: string;
+  newPersonId: string;
+  reason: string;
+  actorName: string;
+  newBatchId?: string;
+  newTermId?: string;
+  templateVersion?: string;
+}) {
+  const rows = await requestJson<Array<{
+    correction_id: string;
+    batch_id: string;
+    term_id: string;
+    created_new_batch: boolean;
+    term_status: string;
+  }>>(
+    "rpc/correct_uniform_delivery_person",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        p_correction_id: input.correctionId ?? crypto.randomUUID(),
+        p_batch_id: input.batchId,
+        p_new_person_id: input.newPersonId,
+        p_reason: input.reason.trim(),
+        p_actor_name: input.actorName,
+        p_new_batch_id: input.newBatchId ?? null,
+        p_new_term_id: input.newTermId ?? crypto.randomUUID(),
+        p_template_version: input.templateVersion ?? null,
+      }),
+    },
+  );
+  return mapCorrectionResult(rows[0]);
+}
+
+export async function correctUniformDeliverySize(input: {
+  correctionId?: string;
+  batchItemId: string;
+  targetItemId: string;
+  quantity: number;
+  mode: UniformDeliveryCorrectionMode;
+  reason: string;
+  actorName: string;
+  newBatchId?: string;
+  newTermId?: string;
+  templateVersion?: string;
+}) {
+  const rows = await requestJson<Array<{
+    correction_id: string;
+    batch_id: string;
+    term_id: string;
+    created_new_batch: boolean;
+    term_status: string;
+  }>>(
+    "rpc/correct_uniform_delivery_size",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        p_correction_id: input.correctionId ?? crypto.randomUUID(),
+        p_batch_item_id: input.batchItemId,
+        p_target_item_id: input.targetItemId,
+        p_quantity: input.quantity,
+        p_mode: input.mode,
+        p_reason: input.reason.trim(),
+        p_actor_name: input.actorName,
+        p_new_batch_id: input.newBatchId ?? null,
+        p_new_term_id: input.newTermId ?? crypto.randomUUID(),
+        p_template_version: input.templateVersion ?? null,
+      }),
+    },
+  );
+  return mapCorrectionResult(rows[0]);
 }
 
 export async function registerUniformStockReceipt(input: {
@@ -296,6 +388,11 @@ export function getUniformsErrorMessage(error: unknown) {
   if (normalized.includes("PESSOA NAO ENCONTRADA OU INATIVA")) return "Pessoa inativa não pode receber uniforme.";
   if (normalized.includes("ESTOQUE INSUFICIENTE")) return message.replace("Disponivel", "Disponível");
   if (normalized.includes("MOTIVO DA DEVOLUCAO")) return "Informe o motivo da devolução.";
+  if (normalized.includes("MOTIVO DA CORRECAO")) return "Informe o motivo da correção.";
+  if (normalized.includes("TERMO SUBSTITUIDO")) return "Este termo foi substituído por uma correção e não pode mais ser impresso ou assinado.";
+  if (normalized.includes("TERMO ASSINADO EXIGE RETIFICACAO")) return "Termo já assinado exige retificação com devolução e nova entrega.";
+  if (normalized.includes("FUNCIONARIO CORRETO NAO ENCONTRADO OU INATIVO")) return "O funcionário correto precisa estar ativo para receber a correção.";
+  if (normalized.includes("PESSOA DA ENTREGA NAO ENCONTRADA")) return "Não foi possível localizar a entrega selecionada.";
   if (normalized.includes("VERSAO DE TEMPLATE")) return "Template do termo não está ativo.";
   if (normalized.includes("TIPO DE ARQUIVO")) return "Envie JPG, PNG, WEBP ou PDF.";
   if (normalized.includes("JA EXISTE ITEM COM ESTE CODIGO")) return "Já existe um uniforme com este código.";
@@ -374,6 +471,10 @@ function mapBatchItem(row: BatchItemRow): UniformDeliveryBatchItem {
     itemId: row.item_id,
     quantity: Number(row.quantity),
     observation: row.observation ?? undefined,
+    active: row.active ?? true,
+    correctedAt: row.corrected_at ?? undefined,
+    correctedByName: row.corrected_by_name ?? undefined,
+    correctionReason: row.correction_reason ?? undefined,
     createdAt: row.created_at,
   };
 }
@@ -389,8 +490,29 @@ function mapTerm(row: TermRow): UniformDeliveryTerm {
     signedDocumentPath: row.signed_document_path ?? undefined,
     signedUploadedAt: row.signed_uploaded_at ?? undefined,
     signedUploadedByName: row.signed_uploaded_by_name ?? undefined,
+    replacedByTermId: row.replaced_by_term_id ?? undefined,
+    replacedAt: row.replaced_at ?? undefined,
+    replacedByName: row.replaced_by_name ?? undefined,
+    replacementReason: row.replacement_reason ?? undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+  };
+}
+
+function mapCorrectionResult(row?: {
+  correction_id: string;
+  batch_id: string;
+  term_id: string;
+  created_new_batch: boolean;
+  term_status: string;
+}): UniformDeliveryCorrectionResult {
+  if (!row) throw new UniformsRemoteError(500, "Não foi possível confirmar a correção.");
+  return {
+    correctionId: row.correction_id,
+    batchId: row.batch_id,
+    termId: row.term_id,
+    createdNewBatch: row.created_new_batch,
+    termStatus: row.term_status,
   };
 }
 

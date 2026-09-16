@@ -90,9 +90,9 @@ function createPdfPage(): PdfPage {
 export async function downloadUniformInventoryPdf(data: UniformsDataset) {
   const peopleById = new Map(data.patrimony.people.map((person) => [person.id, person]));
   const itemById = new Map(data.patrimony.items.map((item) => [item.id, item]));
-  const batchItemByAssignmentId = new Map(data.batchItems.map((item) => [item.patrimonyAssignmentId, item]));
+  const batchItemByAssignmentId = new Map(data.batchItems.filter((item) => item.active !== false).map((item) => [item.patrimonyAssignmentId, item]));
   const batchById = new Map(data.batches.map((batch) => [batch.id, batch]));
-  const termByBatchId = new Map(data.terms.map((term) => [term.batchId, term]));
+  const termByBatchId = currentTermByBatchId(data.terms);
   const uniformItems = data.patrimony.items
     .filter(isUniform)
     .sort((a, b) => `${a.name} ${a.uniformSize ?? ""}`.localeCompare(`${b.name} ${b.uniformSize ?? ""}`, "pt-BR", { numeric: true }));
@@ -116,7 +116,7 @@ export async function downloadUniformInventoryPdf(data: UniformsDataset) {
         size: item?.uniformSize || "-",
         quantity: openQuantity(assignment),
         deliveredAt: assignment.assignedAt,
-        termStatus: term?.status === "assinado" ? "Assinado" : "Aguardando assinatura",
+        termStatus: termStatusLabel(term?.status),
       };
     })
     .sort((a, b) => a.person.localeCompare(b.person, "pt-BR") || a.product.localeCompare(b.product, "pt-BR"));
@@ -327,6 +327,21 @@ function addSummary(page: PdfPage, startY: number, values: Array<[string, number
 
 function sum(values: number[]) {
   return values.reduce((total, value) => total + value, 0);
+}
+
+function currentTermByBatchId(data: UniformsDataset["terms"]) {
+  const map = new Map<string, UniformsDataset["terms"][number]>();
+  data.forEach((term) => {
+    if (term.status === "substituido" || map.has(term.batchId)) return;
+    map.set(term.batchId, term);
+  });
+  return map;
+}
+
+function termStatusLabel(status?: string) {
+  if (status === "assinado") return "Assinado";
+  if (status === "substituido") return "Substituído";
+  return "Aguardando assinatura";
 }
 
 function buildPdf(pages: PdfPage[]) {

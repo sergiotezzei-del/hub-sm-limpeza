@@ -101,7 +101,9 @@
 .uniforms-filter-row,
 .uniforms-line-list,
 .uniforms-list,
-.uniforms-success-actions {
+.uniforms-success-actions,
+.uniforms-correction-success,
+.uniforms-correction-items {
   display: grid;
   gap: 12px;
 }
@@ -273,6 +275,38 @@
   inset: 0;
   opacity: 0;
   cursor: pointer;
+}
+
+.uniforms-upload-button.disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.uniforms-correction-success {
+  grid-template-columns: repeat(auto-fit, minmax(180px, max-content));
+  align-items: center;
+}
+
+.uniforms-correction-items {
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.26);
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #334155;
+  font-size: 0.88rem;
+}
+
+.uniforms-person-term {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.notice-message.compact {
+  margin: 0;
 }
 
 .uniforms-person-card {
