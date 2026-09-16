@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <title>RECIBO DE ENTREGA DE UNIFORMES</title>
+  <style>
+    @page { size: A4; margin: 18mm 18mm 16mm; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: #111827;
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 11pt;
+      line-height: 1.35;
+      background: #ffffff;
+    }
+    .term-page { width: 100%; min-height: 100vh; background: #ffffff; }
+    .term-header {
+      display: grid;
+      grid-template-columns: 92px 1fr;
+      gap: 18px;
+      align-items: start;
+      margin-bottom: 16px;
+    }
+    .term-logo { width: 82px; max-height: 72px; object-fit: contain; }
+    .term-company { text-align: center; font-size: 10pt; line-height: 1.25; padding-top: 4px; }
+    h1 { margin: 18px 0 16px; text-align: center; font-size: 14pt; letter-spacing: 0; color: #000000; }
+    p { margin: 0 0 9px; }
+    .term-fields { margin: 12px 0 14px; display: grid; gap: 5px; }
+    .term-section-title { margin: 16px 0 7px; font-weight: 700; text-align: left; }
+    table { width: 100%; border-collapse: collapse; margin: 6px 0 14px; table-layout: fixed; }
+    th, td { border: 1px solid #6b7280; padding: 6px 7px; vertical-align: middle; word-wrap: break-word; }
+    th { font-weight: 700; text-align: center; background: #f3f4f6; }
+    td:nth-child(2), td:nth-child(3) { text-align: center; }
+    .signature-block { margin-top: 26px; }
+    .signature-line { margin-top: 28px; text-align: center; }
+    @media print { body { background: #ffffff; } .term-page { min-height: auto; } }
+  </style>
+</head>
+<body>
+  <main class="term-page">
+    <header class="term-header">
+      <img class="term-logo" src="{{LOGO_SRC}}" alt="Santa Maria">
+      <div class="term-company">
+        <strong>SANTA MARIA TEM – NEGÓCIOS IMOBILIÁRIOS LTDA</strong><br>
+        Av. Independência, 925 - Vila Seixas,<br>
+        Ribeirão Preto - SP, 14020-010
+      </div>
+    </header>
+
+    <h1>RECIBO DE ENTREGA DE UNIFORMES</h1>
+
+    <p>DECLARO estar recebendo, nesta data, da SANTA MARIA TEM – NEGÓCIOS IMOBILIÁRIOS LTDA, inscrita no CNPJ sob o nº 64.508.005/0001-02, os uniformes abaixo discriminados, para uso exclusivamente laboral durante a jornada de trabalho, conforme padrão de vestimenta adotado pela empresa.</p>
+
+    <section class="term-fields">
+      <div><strong>Nome do colaborador:</strong> {{NOME_COLABORADOR}}</div>
+      <div><strong>Setor / Equipe:</strong> {{SETOR}} / {{EQUIPE}}</div>
+      <div><strong>Data da entrega:</strong> {{DATA_ENTREGA}}</div>
+    </section>
+
+    <div class="term-section-title">ITENS ENTREGUES</div>
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 44%;">Produto</th>
+          <th style="width: 16%;">Quantidade</th>
+          <th style="width: 18%;">Tamanho</th>
+          <th style="width: 22%;">Observação</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{ITENS_ENTREGUES_ROWS}}
+      </tbody>
+    </table>
+
+    <div class="term-section-title">DECLARAÇÕES</div>
+
+    <p>O colaborador declara ter recebido os uniformes acima descritos novos e sem uso anterior.</p>
+
+    <p>O uniforme deverá ser utilizado durante a jornada de trabalho, de acordo com o padrão de vestimenta definido pela empresa e as orientações internas aplicáveis.</p>
+
+    <p>O não uso injustificado do uniforme, quando exigido para a atividade, poderá sujeitar o colaborador às medidas internas e disciplinares cabíveis, observada a legislação trabalhista aplicável.</p>
+
+    <p>O colaborador compromete-se a zelar pela adequada guarda, conservação e higiene dos uniformes, bem como a devolvê-los quando solicitado pela empresa, em caso de substituição, desligamento ou término do vínculo.</p>
+
+    <p>Em caso de dano, extravio ou não devolução, eventual apuração de responsabilidade e eventual desconto somente poderão ocorrer nas hipóteses legalmente admitidas, observadas as regras internas da empresa e a legislação trabalhista aplicável.</p>
+
+    <p>Este documento é emitido pelo sistema com os dados da entrega já preenchidos, restando ao colaborador apenas a conferência das informações e a assinatura.</p>
+
+    <section class="signature-block">
+      <p><strong>Local e data:</strong> Ribeirão Preto/SP, {{DATA_ENTREGA}}</p>
+      <p class="signature-line">Assinatura do colaborador: ________________________________</p>
+      <p><strong>Nome do colaborador:</strong> {{NOME_COLABORADOR}}</p>
+      <p><strong>CPF (opcional, se a empresa desejar):</strong> {{CPF_COLABORADOR}}</p>
+    </section>
+  </main>
+</body>
+</html>
