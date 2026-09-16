@@ -1,0 +1,19 @@
+/* Impressão compacta em A4. Não altera o texto do recibo. */
+@page { size: A4 portrait; margin: 9mm 10mm 9mm; }
+@media print {
+  html, body { margin: 0 !important; padding: 0 !important; width: auto !important; background: #fff !important; }
+  body { font-size: 9pt !important; line-height: 1.18 !important; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  .term-page { min-height: 0 !important; width: 100% !important; }
+  .term-header { grid-template-columns: 58px 1fr !important; gap: 9px !important; align-items: center !important; margin-bottom: 5px !important; break-inside: avoid; }
+  .term-logo { width: 55px !important; max-height: 45px !important; }
+  .term-company { font-size: 8.2pt !important; line-height: 1.16 !important; padding-top: 0 !important; }
+  h1 { margin: 7px 0 8px !important; font-size: 12pt !important; }
+  p { margin: 0 0 5px !important; }
+  .term-fields { margin: 7px 0 8px !important; gap: 2px !important; }
+  .term-section-title { margin: 8px 0 4px !important; }
+  table { margin: 4px 0 8px !important; }
+  th, td { padding: 3px 4px !important; font-size: 8.5pt !important; line-height: 1.12 !important; overflow-wrap: anywhere; }
+  tr { break-inside: avoid; }
+  .signature-block { margin-top: 9px !important; break-inside: avoid; }
+  .signature-line { margin-top: 18px !important; }
+}
