@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { AppIcon } from "../../components/AppIcon";
 import { SantaMariaBrand } from "../../components/SantaMariaBrand";
 import type { UserPermission } from "../../types";
+import { UniformsFeature } from "./UniformsFeature";
 import {
   assignPatrimonyItem,
   assignPatrimonySpace,
@@ -26,7 +27,7 @@ import type {
   PatrimonySpaceAssignment,
 } from "./types/patrimony.types";
 
-type PatrimonyTab = "overview" | "operations" | "spaces" | "records";
+type PatrimonyTab = "overview" | "uniforms" | "operations" | "spaces" | "records";
 type RecordsTab = "people" | "items" | "history";
 type OperationMode = "assign" | "return";
 type LoadStatus = "idle" | "loading" | "ready" | "error";
@@ -477,6 +478,7 @@ export function PatrimonyScreen({ permissions, actorName, onBack, onLogout }: Pa
 
       <nav className="patrimony-tabs" aria-label="Áreas de Patrimônio">
         <button className={activeTab === "overview" ? "active" : ""} type="button" onClick={() => setActiveTab("overview")}><AppIcon name="reports" size="sm" className="action-icon" />Visão geral</button>
+        <button className={activeTab === "uniforms" ? "active" : ""} type="button" onClick={() => setActiveTab("uniforms")}><AppIcon name="stock" size="sm" className="action-icon" />Uniformes</button>
         <button className={activeTab === "operations" ? "active" : ""} type="button" onClick={() => setActiveTab("operations")}><AppIcon name="save" size="sm" className="action-icon" />Entregar / Devolver</button>
         <button className={activeTab === "spaces" ? "active" : ""} type="button" onClick={() => setActiveTab("spaces")}><AppIcon name="map" size="sm" className="action-icon" />Mesas e lockers</button>
         <button className={activeTab === "records" ? "active" : ""} type="button" onClick={() => setActiveTab("records")}><AppIcon name="stock" size="sm" className="action-icon" />Cadastros e histórico</button>
@@ -514,6 +516,8 @@ export function PatrimonyScreen({ permissions, actorName, onBack, onLogout }: Pa
               spaceById={spaceById}
             />
           )}
+
+          {activeTab === "uniforms" && <UniformsFeature actorName={actorName} />}
 
           {activeTab === "operations" && (
             <OperationsPanel

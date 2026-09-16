@@ -106,6 +106,12 @@ export type PatrimonyItem = {
   storageSpaceId?: string;
   linkedSpaceId?: string;
   acquisitionDate?: string;
+  uniformSize?: string;
+  uniformFabric?: string;
+  uniformColor?: string;
+  uniformProposalNumber?: string;
+  uniformSupplier?: string;
+  uniformDescription?: string;
   active: boolean;
   notes?: string;
   createdAt: string;
@@ -191,6 +197,69 @@ export type OrganizationPersonDraft = {
   phone?: string;
   active?: boolean;
   notes?: string;
+};
+
+export type UniformTermTemplateVersion = {
+  version: string;
+  name: string;
+  sourceFileName: string;
+  sourceSha256: string;
+  sourceDocxPath: string;
+  printTemplatePath: string;
+  logoPath?: string;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type UniformDeliveryBatch = {
+  id: string;
+  personId: string;
+  deliveredAt: string;
+  deliveredByName: string;
+  notes?: string;
+  status: "aguardando_assinatura" | "assinado" | "cancelado";
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type UniformDeliveryBatchItem = {
+  id: string;
+  batchId: string;
+  patrimonyAssignmentId: string;
+  itemId: string;
+  quantity: number;
+  observation?: string;
+  createdAt: string;
+};
+
+export type UniformDeliveryTerm = {
+  id: string;
+  batchId: string;
+  templateVersion: string;
+  generatedAt: string;
+  printedAt?: string;
+  status: "aguardando_assinatura" | "assinado";
+  signedDocumentPath?: string;
+  signedUploadedAt?: string;
+  signedUploadedByName?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type UniformTermAttachment = {
+  id: string;
+  termId: string;
+  storagePath: string;
+  fileName: string;
+  contentType: string;
+  fileSize: number;
+  version: number;
+  active: boolean;
+  uploadedAt: string;
+  uploadedByName: string;
+  notes?: string;
+  createdAt: string;
 };
 
 export type PatrimonyItemDraft = {

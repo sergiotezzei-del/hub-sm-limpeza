@@ -59,6 +59,12 @@ type ItemRow = {
   storage_space_id: string | null;
   linked_space_id: string | null;
   acquisition_date: string | null;
+  uniform_size: string | null;
+  uniform_fabric: string | null;
+  uniform_color: string | null;
+  uniform_proposal_number: string | null;
+  uniform_supplier: string | null;
+  uniform_description: string | null;
   active: boolean;
   notes: string | null;
   created_at: string;
@@ -644,6 +650,12 @@ function mapItem(row: ItemRow): PatrimonyItem {
     storageSpaceId: row.storage_space_id ?? undefined,
     linkedSpaceId: row.linked_space_id ?? undefined,
     acquisitionDate: row.acquisition_date ?? undefined,
+    uniformSize: row.uniform_size ?? undefined,
+    uniformFabric: row.uniform_fabric ?? undefined,
+    uniformColor: row.uniform_color ?? undefined,
+    uniformProposalNumber: row.uniform_proposal_number ?? undefined,
+    uniformSupplier: row.uniform_supplier ?? undefined,
+    uniformDescription: row.uniform_description ?? undefined,
     active: row.active,
     notes: row.notes ?? undefined,
     createdAt: row.created_at,
