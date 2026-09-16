@@ -37,12 +37,36 @@ export async function openUniformDeliveryTermForPrint(data: UniformTermPrintData
       throw new Error("A aba do recibo foi fechada. Clique em Imprimir termo novamente.");
     }
 
-    // Mobile browsers commonly block print() called after an asynchronous fetch.
-    // A visible button in the receipt runs print() directly from the user's tap.
+    // Inline critical print CSS: about:blank popups can print before an external
+    // stylesheet has loaded. Keep the approved, versioned term text untouched.
+    // The compact layout was tested in Chromium with the four long-description
+    // rows from an actual delivery (two pages before, one A4 page after).
     const printStyles = `<style>
       #uniform-print-toolbar { position: sticky; top: 0; z-index: 1000; display: flex; align-items: center; justify-content: center; gap: 12px; flex-wrap: wrap; padding: 12px; margin: 0 0 16px; background: #fff7ed; border: 1px solid #fed7aa; border-radius: 8px; font: 14px Arial, sans-serif; color: #1f2937; }
       #uniform-print-button { padding: 11px 18px; border: 0; border-radius: 7px; background: #c45b14; color: #fff; font: 700 15px Arial, sans-serif; cursor: pointer; }
-      @media print { #uniform-print-toolbar { display: none !important; } }
+      @page { size: A4 portrait; margin: 8mm 9mm 8mm; }
+      @media print {
+        #uniform-print-toolbar { display: none !important; }
+        html, body { margin: 0 !important; padding: 0 !important; width: auto !important; background: #fff !important; }
+        body { font-size: 8.8pt !important; line-height: 1.16 !important; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+        .term-page { min-height: 0 !important; width: 100% !important; }
+        .term-header { grid-template-columns: 48px 1fr !important; gap: 8px !important; align-items: center !important; margin-bottom: 5px !important; break-inside: avoid; }
+        .term-logo { width: 45px !important; max-height: 39px !important; }
+        .term-company { font-size: 8.2pt !important; line-height: 1.15 !important; padding-top: 0 !important; }
+        h1 { margin: 7px 0 7px !important; font-size: 11.5pt !important; }
+        p { margin: 0 0 4px !important; }
+        .term-fields { margin: 6px 0 7px !important; gap: 1px !important; }
+        .term-section-title { margin: 7px 0 4px !important; }
+        table { margin: 3px 0 6px !important; }
+        th, td { padding: 3px 4px !important; font-size: 8.2pt !important; line-height: 1.12 !important; overflow-wrap: anywhere; }
+        th:nth-child(1) { width: 40% !important; }
+        th:nth-child(2) { width: 13% !important; }
+        th:nth-child(3) { width: 15% !important; }
+        th:nth-child(4) { width: 32% !important; }
+        tr { break-inside: avoid; }
+        .signature-block { margin-top: 7px !important; break-inside: avoid; }
+        .signature-line { margin-top: 16px !important; }
+      }
     </style>`;
     const toolbar = `<div id="uniform-print-toolbar" role="region" aria-label="Impressão do recibo"><button type="button" id="uniform-print-button">Imprimir ou salvar PDF</button><span>No celular, escolha a impressora ou Salvar em PDF.</span></div>`;
     const printableHtml = html
