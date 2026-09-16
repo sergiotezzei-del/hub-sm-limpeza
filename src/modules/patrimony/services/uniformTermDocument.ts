@@ -122,6 +122,7 @@ export async function buildUniformDeliveryTermHtml(data: UniformTermPrintData) {
   const templateHtml = await response.text();
   const deliveredDate = formatDate(data.batch.deliveredAt);
   const rows = data.batchItems
+    .filter((line) => line.active !== false)
     .map((line) => {
       const item = data.itemById.get(line.itemId);
       return [

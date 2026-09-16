@@ -2,6 +2,8 @@ import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
 import { AppIcon } from "../../components/AppIcon";
 import {
   createUniformSignedTermUrl,
+  correctUniformDeliveryPerson,
+  correctUniformDeliverySize,
   getUniformsErrorMessage,
   loadUniformsDataset,
   markUniformTermPrinted,
@@ -9,6 +11,7 @@ import {
   registerUniformStockReceipt,
   returnUniformAssignment,
   uploadUniformSignedTerm,
+  type UniformDeliveryCorrectionMode,
   type UniformDeliveryLineInput,
   type UniformsDataset,
 } from "./services/uniformsService";
@@ -24,6 +27,7 @@ import type {
   PatrimonyPersonType,
   PatrimonyReturnCondition,
   UniformDeliveryBatch,
+  UniformDeliveryBatchItem,
   UniformDeliveryTerm,
 } from "./types/patrimony.types";
 import "./uniforms.css";
@@ -40,6 +44,20 @@ type DeliveryLineDraft = {
   itemId: string;
   quantity: string;
   observation: string;
+};
+
+type CorrectionDraft = {
+  open: boolean;
+  operationId: string;
+  batchId: string;
+  action: "person" | "size";
+  newPersonId: string;
+  newPersonQuery: string;
+  batchItemId: string;
+  targetItemId: string;
+  quantity: string;
+  mode: UniformDeliveryCorrectionMode;
+  reason: string;
 };
 
 type ReceiptDraft = {
@@ -114,6 +132,22 @@ function newReceiptDraft(): ReceiptDraft {
   };
 }
 
+function newCorrectionDraft(batchId = ""): CorrectionDraft {
+  return {
+    open: Boolean(batchId),
+    operationId: crypto.randomUUID(),
+    batchId,
+    action: "person",
+    newPersonId: "",
+    newPersonQuery: "",
+    batchItemId: "",
+    targetItemId: "",
+    quantity: "1",
+    mode: "correcao_administrativa",
+    reason: "",
+  };
+}
+
 export function UniformsFeature({ actorName }: UniformsFeatureProps) {
   const [data, setData] = useState<UniformsDataset>(emptyData);
   const [loadStatus, setLoadStatus] = useState<LoadStatus>("idle");
@@ -127,7 +161,10 @@ export function UniformsFeature({ actorName }: UniformsFeatureProps) {
   const [deliveryLines, setDeliveryLines] = useState<DeliveryLineDraft[]>([newDeliveryLine()]);
   const [lastDelivery, setLastDelivery] = useState<{ batchId: string; termId: string } | null>(null);
   const [quickPersonOpen, setQuickPersonOpen] = useState(false);
+  const [quickPersonContext, setQuickPersonContext] = useState<"delivery" | "correction">("delivery");
   const [quickPersonDraft, setQuickPersonDraft] = useState<OrganizationPersonDraft>(() => newPersonDraft());
+  const [correctionDraft, setCorrectionDraft] = useState<CorrectionDraft>(() => newCorrectionDraft());
+  const [correctionResult, setCorrectionResult] = useState<{ batchId: string; termId: string } | null>(null);
 
   const [personQuery, setPersonQuery] = useState("");
   const [personStatusFilter, setPersonStatusFilter] = useState<"all" | "active" | "inactive">("all");
@@ -144,12 +181,13 @@ export function UniformsFeature({ actorName }: UniformsFeatureProps) {
 
   const itemById = useMemo(() => new Map(data.patrimony.items.map((item) => [item.id, item])), [data.patrimony.items]);
   const personById = useMemo(() => new Map(data.patrimony.people.map((person) => [person.id, person])), [data.patrimony.people]);
+  const assignmentById = useMemo(() => new Map(data.patrimony.assignments.map((assignment) => [assignment.id, assignment])), [data.patrimony.assignments]);
   const batchById = useMemo(() => new Map(data.batches.map((batch) => [batch.id, batch])), [data.batches]);
-  const termByBatchId = useMemo(() => new Map(data.terms.map((term) => [term.batchId, term])), [data.terms]);
+  const termByBatchId = useMemo(() => currentTermByBatchId(data.terms), [data.terms]);
   const templateByVersion = useMemo(() => new Map(data.templates.map((template) => [template.version, template])), [data.templates]);
-  const batchItemsByBatchId = useMemo(() => {
-    const map = new Map<string, typeof data.batchItems>();
-    data.batchItems.forEach((item) => {
+  const activeBatchItemsByBatchId = useMemo(() => {
+    const map = new Map<string, UniformDeliveryBatchItem[]>();
+    data.batchItems.filter((item) => item.active !== false).forEach((item) => {
       map.set(item.batchId, [...(map.get(item.batchId) ?? []), item]);
     });
     return map;
@@ -301,10 +339,80 @@ export function UniformsFeature({ actorName }: UniformsFeatureProps) {
     setNotice("");
     try {
       const saved = await saveOrganizationPerson({ ...quickPersonDraft, active: true });
-      setDeliveryPersonId(saved.id);
-      setDeliveryPersonQuery(saved.name);
+      if (quickPersonContext === "correction") {
+        setCorrectionDraft((current) => ({ ...current, newPersonId: saved.id, newPersonQuery: saved.name }));
+      } else {
+        setDeliveryPersonId(saved.id);
+        setDeliveryPersonQuery(saved.name);
+      }
       setQuickPersonOpen(false);
       setQuickPersonDraft(newPersonDraft());
+      await refresh(false);
+    } catch (error) {
+      setNotice(getUniformsErrorMessage(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleCorrectionSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (busy || !correctionDraft.open) return;
+    const batch = batchById.get(correctionDraft.batchId);
+    const term = batch ? termByBatchId.get(batch.id) : undefined;
+    const template = activeTemplate();
+    const reason = correctionDraft.reason.trim();
+    if (!batch || !term || !template) {
+      setNotice("Não foi possível localizar a entrega vigente para correção.");
+      return;
+    }
+    if (reason.length < 3) {
+      setNotice("Informe o motivo da correção.");
+      return;
+    }
+
+    setBusy(true);
+    setNotice("");
+    try {
+      if (correctionDraft.action === "person") {
+        const newPerson = personById.get(correctionDraft.newPersonId);
+        if (!newPerson?.active) throw new Error("Funcionário correto não encontrado ou inativo.");
+        const result = await correctUniformDeliveryPerson({
+          correctionId: correctionDraft.operationId,
+          batchId: batch.id,
+          newPersonId: newPerson.id,
+          reason,
+          actorName,
+          newBatchId: term.status === "assinado" ? crypto.randomUUID() : undefined,
+          newTermId: crypto.randomUUID(),
+          templateVersion: template.version,
+        });
+        setCorrectionResult({ batchId: result.batchId, termId: result.termId });
+      } else {
+        const line = (activeBatchItemsByBatchId.get(batch.id) ?? []).find((item) => item.id === correctionDraft.batchItemId);
+        const assignment = line ? assignmentById.get(line.patrimonyAssignmentId) : undefined;
+        const quantity = Number(correctionDraft.quantity);
+        if (!line || !assignment) throw new Error("Peça da entrega não encontrada.");
+        if (!Number.isFinite(quantity) || quantity <= 0 || quantity > Math.min(line.quantity, openQuantity(assignment))) throw new Error("Quantidade inválida para correção.");
+        const target = itemById.get(correctionDraft.targetItemId);
+        if (!target || !isUniform(target)) throw new Error("Tamanho correto não encontrado.");
+        const mode = term.status === "assinado" ? "troca_fisica" : correctionDraft.mode;
+        const result = await correctUniformDeliverySize({
+          correctionId: correctionDraft.operationId,
+          batchItemId: line.id,
+          targetItemId: target.id,
+          quantity,
+          mode,
+          reason,
+          actorName,
+          newBatchId: term.status === "assinado" ? crypto.randomUUID() : undefined,
+          newTermId: crypto.randomUUID(),
+          templateVersion: template.version,
+        });
+        setCorrectionResult({ batchId: result.batchId, termId: result.termId });
+      }
+      setCorrectionDraft(newCorrectionDraft());
+      setNotice("CORREÇÃO REALIZADA COM SUCESSO");
       await refresh(false);
     } catch (error) {
       setNotice(getUniformsErrorMessage(error));
@@ -384,13 +492,17 @@ export function UniformsFeature({ actorName }: UniformsFeatureProps) {
       setNotice("Não foi possível localizar os dados do termo.");
       return;
     }
+    if (term.status === "substituido") {
+      setNotice("Este termo foi substituído por uma correção e não pode mais ser impresso.");
+      return;
+    }
     try {
       await openUniformDeliveryTermForPrint({
         person,
         batch,
         term,
         template,
-        batchItems: batchItemsByBatchId.get(batch.id) ?? [],
+        batchItems: activeBatchItemsByBatchId.get(batch.id) ?? [],
         itemById,
       });
       await markUniformTermPrinted(term.id, actorName);
@@ -404,6 +516,10 @@ export function UniformsFeature({ actorName }: UniformsFeatureProps) {
     if (!file || busy) return;
     const batch = batchById.get(term.batchId);
     if (!batch) return;
+    if (term.status === "substituido") {
+      setNotice("Este termo foi substituído por uma correção e não pode receber assinatura.");
+      return;
+    }
     setBusy(true);
     setNotice("");
     setUploadingTermId(term.id);
@@ -450,6 +566,19 @@ export function UniformsFeature({ actorName }: UniformsFeatureProps) {
     }
   }
 
+  function openCorrection(batchId: string, action: "person" | "size" = "person") {
+    const firstLine = activeBatchItemsByBatchId.get(batchId)?.[0];
+    const term = termByBatchId.get(batchId);
+    setCorrectionResult(null);
+    setCorrectionDraft({
+      ...newCorrectionDraft(batchId),
+      action,
+      batchItemId: firstLine?.id ?? "",
+      mode: term?.status === "assinado" ? "troca_fisica" : "correcao_administrativa",
+    });
+    setNotice("");
+  }
+
   function activeTemplate() {
     return data.templates.find((template) => template.active) ?? data.templates[0];
   }
@@ -482,6 +611,12 @@ export function UniformsFeature({ actorName }: UniformsFeatureProps) {
       </header>
 
       {notice && <p className={isSuccessNotice(notice) ? "success-message" : "notice-message"}>{notice}</p>}
+      {correctionResult && (
+        <section className="uniforms-correction-success">
+          <button className="primary-button" type="button" disabled={busy} onClick={() => { void handlePrintTerm(correctionResult.batchId); }}>Ver termo atualizado</button>
+          <button className="secondary-button" type="button" disabled={busy} onClick={() => setCorrectionResult(null)}>Sair</button>
+        </section>
+      )}
 
       <nav className="uniforms-tabs" aria-label="Áreas de Uniformes">
         <button className={activeView === "stock" ? "active" : ""} type="button" onClick={() => setActiveView("stock")}>Estoque</button>
@@ -551,6 +686,7 @@ export function UniformsFeature({ actorName }: UniformsFeatureProps) {
                 setDeliveryPersonQuery(person.name);
               }}
               onCreate={(name) => {
+                setQuickPersonContext("delivery");
                 setQuickPersonDraft(newPersonDraft(name));
                 setQuickPersonOpen(true);
               }}
@@ -626,9 +762,10 @@ export function UniformsFeature({ actorName }: UniformsFeatureProps) {
       {activeView === "terms" && (
         <TermsPanel
           batches={data.batches}
-          batchItemsByBatchId={batchItemsByBatchId}
+          batchItemsByBatchId={activeBatchItemsByBatchId}
           busy={busy}
           itemById={itemById}
+          onCorrect={(batch) => openCorrection(batch.id)}
           onPrint={(batch) => { void handlePrintTerm(batch.id); }}
           onUpload={handleUploadTerm}
           onView={handleViewSignedTerm}
@@ -643,10 +780,12 @@ export function UniformsFeature({ actorName }: UniformsFeatureProps) {
       {activeView === "person" && (
         <PersonLookupPanel
           assignments={activeUniformAssignments}
+          batchItemsByBatchId={activeBatchItemsByBatchId}
           batches={data.batches}
           filteredPeople={filteredPeople}
           itemById={itemById}
           movements={uniformMovements}
+          onCorrectBatch={(batchId) => openCorrection(batchId)}
           onPersonQueryChange={setPersonQuery}
           onStatusFilterChange={setPersonStatusFilter}
           personQuery={personQuery}
@@ -751,6 +890,29 @@ export function UniformsFeature({ actorName }: UniformsFeatureProps) {
           onSubmit={handleQuickPersonSubmit}
         />
       )}
+
+      {correctionDraft.open && (
+        <UniformCorrectionModal
+          activePeople={activePeople}
+          assignmentsById={assignmentById}
+          batch={batchById.get(correctionDraft.batchId)}
+          batchItems={activeBatchItemsByBatchId.get(correctionDraft.batchId) ?? []}
+          busy={busy}
+          draft={correctionDraft}
+          itemById={itemById}
+          onClose={() => setCorrectionDraft(newCorrectionDraft())}
+          onCreatePerson={(name) => {
+            setQuickPersonContext("correction");
+            setQuickPersonDraft(newPersonDraft(name));
+            setQuickPersonOpen(true);
+          }}
+          onDraftChange={setCorrectionDraft}
+          onSubmit={handleCorrectionSubmit}
+          person={batchById.get(correctionDraft.batchId) ? personById.get(batchById.get(correctionDraft.batchId)!.personId) : undefined}
+          term={termByBatchId.get(correctionDraft.batchId)}
+          uniformItems={uniformItems}
+        />
+      )}
     </section>
   );
 
@@ -777,11 +939,12 @@ function TermsPanel(props: {
   terms: UniformDeliveryTerm[];
   peopleById: Map<string, OrganizationPerson>;
   itemById: Map<string, PatrimonyItem>;
-  batchItemsByBatchId: Map<string, Array<{ itemId: string; quantity: number }>>;
+  batchItemsByBatchId: Map<string, UniformDeliveryBatchItem[]>;
   busy: boolean;
   uploadingTermId: string;
   uploadNotes: string;
   setUploadNotes: (value: string) => void;
+  onCorrect: (batch: UniformDeliveryBatch) => void;
   onPrint: (batch: UniformDeliveryBatch) => void;
   onView: (term: UniformDeliveryTerm) => void;
   onUpload: (term: UniformDeliveryTerm, file?: File | null) => void;
@@ -797,22 +960,25 @@ function TermsPanel(props: {
           const batch = props.batches.find((current) => current.id === term.batchId);
           const person = batch ? props.peopleById.get(batch.personId) : undefined;
           const quantity = sum((props.batchItemsByBatchId.get(term.batchId) ?? []).map((item) => item.quantity));
+          const replaced = term.status === "substituido";
           return (
             <article className="uniforms-list-row" key={term.id}>
               <div>
                 <strong>{person?.name ?? "Pessoa não encontrada"}</strong>
-                <small>{formatDate(term.generatedAt)} · {formatNumber(quantity)} peça(s) · {term.status === "assinado" ? "Assinado" : "Aguardando assinatura"}</small>
+                <small>{formatDate(term.generatedAt)} · {formatNumber(quantity)} peça(s) · {termStatusLabel(term.status)}</small>
                 {term.signedUploadedAt && <small>TERMO ASSINADO · {formatDateTime(term.signedUploadedAt)} · {term.signedUploadedByName ?? "Responsável não informado"}</small>}
+                {replaced && <small>Substituído{term.replacedAt ? ` em ${formatDateTime(term.replacedAt)}` : ""}{term.replacedByName ? ` · ${term.replacedByName}` : ""}{term.replacementReason ? ` · ${term.replacementReason}` : ""}</small>}
               </div>
               <div className="uniforms-row-actions">
-                <button className="secondary-button" type="button" disabled={!batch || props.busy} onClick={() => batch && props.onPrint(batch)}>Reimprimir</button>
+                {batch && !replaced && <button className="secondary-button" type="button" disabled={props.busy} onClick={() => props.onCorrect(batch)}>Corrigir entrega</button>}
+                <button className="secondary-button" type="button" disabled={!batch || props.busy || replaced} onClick={() => batch && props.onPrint(batch)}>Reimprimir</button>
                 {term.signedDocumentPath && <button className="ghost-button" type="button" disabled={props.busy} onClick={() => props.onView(term)}>Visualizar</button>}
-                <label className="uniforms-upload-button">
+                <label className={replaced ? "uniforms-upload-button disabled" : "uniforms-upload-button"}>
                   {term.signedDocumentPath ? "Substituir documento" : "Registrar termo assinado"}
                   <input
                     accept="image/jpeg,image/png,image/webp,application/pdf"
                     capture="environment"
-                    disabled={props.busy}
+                    disabled={props.busy || replaced}
                     type="file"
                     onChange={(event: ChangeEvent<HTMLInputElement>) => props.onUpload(term, event.target.files?.[0] ?? null)}
                   />
@@ -828,19 +994,179 @@ function TermsPanel(props: {
   );
 }
 
+function UniformCorrectionModal(props: {
+  activePeople: OrganizationPerson[];
+  assignmentsById: Map<string, PatrimonyAssignment>;
+  batch?: UniformDeliveryBatch;
+  batchItems: UniformDeliveryBatchItem[];
+  busy: boolean;
+  draft: CorrectionDraft;
+  itemById: Map<string, PatrimonyItem>;
+  onClose: () => void;
+  onCreatePerson: (name: string) => void;
+  onDraftChange: (draft: CorrectionDraft) => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  person?: OrganizationPerson;
+  term?: UniformDeliveryTerm;
+  uniformItems: PatrimonyItem[];
+}) {
+  const selectedPerson = props.activePeople.find((person) => person.id === props.draft.newPersonId);
+  const selectedLine = props.batchItems.find((line) => line.id === props.draft.batchItemId);
+  const selectedAssignment = selectedLine ? props.assignmentsById.get(selectedLine.patrimonyAssignmentId) : undefined;
+  const sourceItem = selectedLine ? props.itemById.get(selectedLine.itemId) : undefined;
+  const targetItem = props.itemById.get(props.draft.targetItemId);
+  const quantityNumber = Number(props.draft.quantity);
+  const maxQuantity = selectedLine && selectedAssignment ? Math.min(selectedLine.quantity, openQuantity(selectedAssignment)) : 0;
+  const signedTerm = props.term?.status === "assinado";
+  const sizeMode = signedTerm ? "troca_fisica" : props.draft.mode;
+  const targetOptions = sourceItem ? uniformSizeCorrectionOptions(props.uniformItems, sourceItem, props.draft.targetItemId) : [];
+  const sizeValid = Boolean(
+    selectedLine
+    && targetItem
+    && Number.isFinite(quantityNumber)
+    && quantityNumber > 0
+    && quantityNumber <= maxQuantity
+    && quantityNumber <= targetItem.availableQuantity
+    && props.draft.reason.trim().length >= 3,
+  );
+  const personValid = Boolean(
+    selectedPerson?.active
+    && selectedPerson.id !== props.person?.id
+    && props.draft.reason.trim().length >= 3,
+  );
+  const canSubmit = Boolean(props.batch && props.term) && (props.draft.action === "person" ? personValid : sizeValid);
+
+  function update(update: Partial<CorrectionDraft>) {
+    props.onDraftChange({ ...props.draft, ...update });
+  }
+
+  return (
+    <div className="uniforms-modal-backdrop" role="dialog" aria-modal="true">
+      <form className="uniforms-modal uniforms-correction-modal" onSubmit={props.onSubmit}>
+        <header>
+          <div>
+            <h3>Corrigir entrega</h3>
+            <small>{props.term ? `Termo ${termStatusLabel(props.term.status)}` : "Termo não localizado"}</small>
+          </div>
+          <button type="button" onClick={props.onClose}>Fechar</button>
+        </header>
+
+        <section className="uniforms-inline-summary">
+          <strong>{props.person?.name ?? "Funcionário não localizado"}</strong>
+          <span>{props.person?.department ?? "Setor"} · {props.person?.teamName ?? "Equipe"}</span>
+          <span>{props.batch ? `Entrega de ${formatDate(props.batch.deliveredAt)}` : "Entrega não localizada"}</span>
+        </section>
+
+        <section className="uniforms-correction-items">
+          {props.batchItems.length === 0 ? <p className="empty-copy">Nenhuma peça pendente nesta entrega.</p> : props.batchItems.map((line) => {
+            const item = props.itemById.get(line.itemId);
+            return <span key={line.id}>{item?.name ?? "Uniforme"} · Tam. {item?.uniformSize ?? "-"} · {formatNumber(line.quantity)} peça(s)</span>;
+          })}
+        </section>
+
+        <div className="patrimony-segmented compact" role="group" aria-label="Tipo de correção">
+          <button className={props.draft.action === "person" ? "active" : ""} type="button" disabled={props.busy} onClick={() => update({ action: "person" })}>Corrigir pessoa</button>
+          <button className={props.draft.action === "size" ? "active" : ""} type="button" disabled={props.busy} onClick={() => update({ action: "size" })}>Corrigir tamanho</button>
+        </div>
+
+        {props.draft.action === "person" ? (
+          <>
+            <PersonSearchSelect
+              activeOnly
+              label="Funcionário correto"
+              people={props.activePeople}
+              query={props.draft.newPersonQuery}
+              selectedPersonId={props.draft.newPersonId}
+              onQueryChange={(value) => update({ newPersonQuery: value })}
+              onSelect={(person) => update({ newPersonId: person.id, newPersonQuery: person.name })}
+              onCreate={props.onCreatePerson}
+            />
+            {selectedPerson && (
+              <article className="uniforms-inline-summary">
+                <strong>{selectedPerson.name}</strong>
+                <span>{selectedPerson.department} · {selectedPerson.teamName ?? "Sem equipe"}</span>
+              </article>
+            )}
+          </>
+        ) : (
+          <>
+            <label>
+              Peça entregue
+              <select value={props.draft.batchItemId} disabled={props.busy} onChange={(event) => update({ batchItemId: event.target.value, targetItemId: "", quantity: "1" })}>
+                <option value="">Selecione</option>
+                {props.batchItems.map((line) => {
+                  const item = props.itemById.get(line.itemId);
+                  const assignment = props.assignmentsById.get(line.patrimonyAssignmentId);
+                  return <option key={line.id} value={line.id}>{item?.name ?? "Uniforme"} · Tam. {item?.uniformSize ?? "-"} · pendente {formatNumber(assignment ? openQuantity(assignment) : line.quantity)}</option>;
+                })}
+              </select>
+            </label>
+            <div className="uniforms-form-grid">
+              <label>
+                Tamanho correto
+                <select value={props.draft.targetItemId} disabled={props.busy || !sourceItem} onChange={(event) => update({ targetItemId: event.target.value })}>
+                  <option value="">Selecione</option>
+                  {targetOptions.map((item) => (
+                    <option key={item.id} value={item.id}>{item.code} · Tam. {item.uniformSize ?? "-"} · disponível {formatNumber(item.availableQuantity)}</option>
+                  ))}
+                </select>
+              </label>
+              <label>Quantidade<input type="number" min="1" step="1" max={maxQuantity || undefined} value={props.draft.quantity} disabled={props.busy} onChange={(event) => update({ quantity: event.target.value })} /></label>
+            </div>
+            {!signedTerm && (
+              <div className="patrimony-segmented compact" role="group" aria-label="Modo de correção de tamanho">
+                <button className={props.draft.mode === "correcao_administrativa" ? "active" : ""} type="button" disabled={props.busy} onClick={() => update({ mode: "correcao_administrativa" })}>Correção administrativa</button>
+                <button className={props.draft.mode === "troca_fisica" ? "active" : ""} type="button" disabled={props.busy} onClick={() => update({ mode: "troca_fisica" })}>Troca física</button>
+              </div>
+            )}
+            {signedTerm && <p className="notice-message compact">Termo assinado: o original será preservado e a correção gerará nova entrega/termo de retificação.</p>}
+          </>
+        )}
+
+        <label>Motivo obrigatório<textarea required rows={3} value={props.draft.reason} disabled={props.busy} onChange={(event) => update({ reason: event.target.value })} /></label>
+
+        <section className={canSubmit ? "uniforms-confirm ok" : "uniforms-confirm"}>
+          <strong>Resumo da correção</strong>
+          {props.draft.action === "person" ? (
+            <>
+              <span>De: {props.person?.name ?? "Pessoa atual"}</span>
+              <span>Para: {selectedPerson?.name ?? "Selecione o funcionário correto"}</span>
+              <span>Estoque: sem alteração de quantidade. {signedTerm ? "Termo assinado original preservado; nova entrega e novo termo serão gerados." : "Termo atual será substituído e o termo atualizado será gerado."}</span>
+            </>
+          ) : (
+            <>
+              <span>Peça: {sourceItem?.name ?? "Selecione a peça"} · Tam. {sourceItem?.uniformSize ?? "-"}</span>
+              <span>Correção: Tam. {targetItem?.uniformSize ?? "selecione"} · {Number.isFinite(quantityNumber) ? formatNumber(quantityNumber) : "0"} peça(s)</span>
+              <span>{sizeMode === "correcao_administrativa" ? "Sem devolução física fictícia: ajusta somente o lançamento e o saldo disponível dos tamanhos." : "Troca física: registra devolução da peça anterior e entrega do tamanho correto."}</span>
+              <span>Total recebido: não será alterado.</span>
+            </>
+          )}
+        </section>
+
+        <div className="button-grid">
+          <button className="primary-button" type="submit" disabled={props.busy || !canSubmit}>Confirmar correção</button>
+          <button className="ghost-button" type="button" disabled={props.busy} onClick={props.onClose}>Cancelar</button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 function PersonLookupPanel(props: {
   filteredPeople: OrganizationPerson[];
   assignments: PatrimonyAssignment[];
+  batchItemsByBatchId: Map<string, UniformDeliveryBatchItem[]>;
   itemById: Map<string, PatrimonyItem>;
   personQuery: string;
   personStatusFilter: "all" | "active" | "inactive";
+  onCorrectBatch: (batchId: string) => void;
   onPersonQueryChange: (value: string) => void;
   onStatusFilterChange: (value: "all" | "active" | "inactive") => void;
   batches: UniformDeliveryBatch[];
   terms: UniformDeliveryTerm[];
   movements: PatrimonyMovement[];
 }) {
-  const termByBatchId = new Map(props.terms.map((term) => [term.batchId, term]));
+  const termByBatchId = currentTermByBatchId(props.terms);
   return (
     <section className="uniforms-card">
       <div className="uniforms-filter-row">
@@ -865,7 +1191,13 @@ function PersonLookupPanel(props: {
               <h4>Termos</h4>
               {personBatches.length === 0 ? <p className="empty-copy">Nenhum termo.</p> : personBatches.map((batch) => {
                 const term = termByBatchId.get(batch.id);
-                return <p key={batch.id}>{formatDate(batch.deliveredAt)} · {term?.status === "assinado" ? "Assinado" : "Aguardando assinatura"}</p>;
+                const quantity = sum((props.batchItemsByBatchId.get(batch.id) ?? []).map((item) => item.quantity));
+                return (
+                  <div className="uniforms-person-term" key={batch.id}>
+                    <p>{formatDate(batch.deliveredAt)} · {formatNumber(quantity)} peça(s) · {termStatusLabel(term?.status)}</p>
+                    {term?.status !== "substituido" && <button className="secondary-button" type="button" onClick={() => props.onCorrectBatch(batch.id)}>Corrigir entrega</button>}
+                  </div>
+                );
               })}
               <h4>Histórico</h4>
               {props.movements.filter((movement) => movement.personId === person.id).length === 0 ? (
@@ -1019,7 +1351,37 @@ function movementLabel(value: string) {
   if (value === "entrada_estoque") return "Entrada em estoque";
   if (value === "entrega") return "Entrega";
   if (value === "devolucao") return "Devolução";
+  if (value === "transferencia") return "Transferência";
+  if (value === "ajuste") return "Ajuste";
   return value;
+}
+
+function currentTermByBatchId(terms: UniformDeliveryTerm[]) {
+  const map = new Map<string, UniformDeliveryTerm>();
+  terms.forEach((term) => {
+    if (term.status === "substituido" || map.has(term.batchId)) return;
+    map.set(term.batchId, term);
+  });
+  return map;
+}
+
+function termStatusLabel(status?: UniformDeliveryTerm["status"]) {
+  if (status === "assinado") return "Assinado";
+  if (status === "substituido") return "Substituído";
+  return "Aguardando assinatura";
+}
+
+function uniformSizeCorrectionOptions(items: PatrimonyItem[], sourceItem: PatrimonyItem, selectedItemId: string) {
+  const sameFamily = items.filter((item) => {
+    if (item.id === sourceItem.id) return false;
+    if (!isUniform(item)) return false;
+    return normalize(`${item.name} ${item.uniformFabric ?? ""} ${item.uniformColor ?? ""}`)
+      === normalize(`${sourceItem.name} ${sourceItem.uniformFabric ?? ""} ${sourceItem.uniformColor ?? ""}`);
+  });
+  const options = sameFamily.length > 0 ? sameFamily : items.filter((item) => item.id !== sourceItem.id && isUniform(item));
+  return options
+    .filter((item) => item.availableQuantity > 0 || item.id === selectedItemId)
+    .sort(compareUniformItems);
 }
 
 function normalize(value: string) {

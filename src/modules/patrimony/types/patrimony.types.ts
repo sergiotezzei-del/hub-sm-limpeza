@@ -230,6 +230,10 @@ export type UniformDeliveryBatchItem = {
   itemId: string;
   quantity: number;
   observation?: string;
+  active: boolean;
+  correctedAt?: string;
+  correctedByName?: string;
+  correctionReason?: string;
   createdAt: string;
 };
 
@@ -239,10 +243,14 @@ export type UniformDeliveryTerm = {
   templateVersion: string;
   generatedAt: string;
   printedAt?: string;
-  status: "aguardando_assinatura" | "assinado";
+  status: "aguardando_assinatura" | "assinado" | "substituido";
   signedDocumentPath?: string;
   signedUploadedAt?: string;
   signedUploadedByName?: string;
+  replacedByTermId?: string;
+  replacedAt?: string;
+  replacedByName?: string;
+  replacementReason?: string;
   createdAt: string;
   updatedAt: string;
 };
