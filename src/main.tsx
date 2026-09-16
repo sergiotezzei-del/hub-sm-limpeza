@@ -30,6 +30,7 @@ import { NotebookPersonComboboxEnhancer } from "./modules/patrimony/NotebookPers
 import { NotebookPersonEditEnhancer } from "./modules/patrimony/NotebookPersonEditEnhancer";
 import { PatrimonyPeopleEquipmentFeature } from "./modules/patrimony/PatrimonyPeopleEquipmentFeature";
 import { PatrimonySpaceMapsFeature } from "./modules/patrimony/PatrimonySpaceMapsFeature";
+import { PersonDocumentProfilesFeature } from "./modules/patrimony/PersonDocumentProfilesFeature";
 import { MarketingPushAttentionHost } from "./modules/marketing/MarketingPushAttentionHost";
 import { MarketingPushReceiverPage } from "./modules/marketing/MarketingPushReceiverPage";
 import { PublicMarketingRequestPage } from "./modules/marketing/PublicMarketingRequestPage";
@@ -144,6 +145,7 @@ createRoot(document.getElementById("root")!).render(
         <NotebookPersonEditEnhancer />
         <PatrimonyPeopleEquipmentFeature />
         <PatrimonySpaceMapsFeature />
+        <PersonDocumentProfilesFeature />
         <MarketingPushAttentionHost />
         <PublicPushBroadcastEnhancer />
         <RadioHomeEnhancer />
