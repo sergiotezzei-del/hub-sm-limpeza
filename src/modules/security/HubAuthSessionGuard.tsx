@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import type { GuardId } from "../../types";
 import { getSupabaseClient } from "./services/supabaseClient";
 import { getAdminSupabaseUserBinding, getGuardSupabaseUserBinding } from "./services/guardSupabaseConfig";
-import { forceHubSessionReauthentication, HUB_ACTIVE_SESSION_KEY } from "./services/hubSessionRecovery";
+import { HUB_ACTIVE_SESSION_KEY } from "./services/hubSessionRecovery";
 
 const CHECK_INTERVAL_MS = 5 * 60 * 1000;
 const GUARD_IDS = new Set<GuardId>(["carlos-clemente", "salomao"]);
@@ -29,11 +29,17 @@ export function HubAuthSessionGuard() {
         const { data, error } = await supabase.auth.getSession();
         if (cancelled) return;
 
-        if (error || !data.session?.user.id || data.session.user.id !== expectedUserId) {
-          forceHubSessionReauthentication();
-        }
+        if (!error && data.session?.user.id === expectedUserId) return;
+
+        // Try to recover an expired access token from the persisted refresh token.
+        // A temporary/missing cloud session must not erase the valid local HUB
+        // session or trigger a reload/login loop.
+        const refreshed = await supabase.auth.refreshSession();
+        if (cancelled) return;
+        if (!refreshed.error && refreshed.data.session?.user.id === expectedUserId) return;
       } catch {
-        // Falha de rede temporária não deve derrubar uma sessão local válida.
+        // Network/auth refresh failures are surfaced by protected modules when
+        // needed, but the main HUB session remains stable.
       } finally {
         checking = false;
       }
@@ -49,23 +55,11 @@ export function HubAuthSessionGuard() {
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onVisibilityChange);
 
-    let unsubscribe: () => void = () => {};
-    void getSupabaseClient().then((supabase) => {
-      if (!supabase || cancelled) return;
-      const subscription = supabase.auth.onAuthStateChange((event) => {
-        if (event === "SIGNED_OUT" && getExpectedSupabaseUserId()) {
-          forceHubSessionReauthentication();
-        }
-      });
-      unsubscribe = () => subscription.data.subscription.unsubscribe();
-    }).catch(() => undefined);
-
     return () => {
       cancelled = true;
       window.clearInterval(timer);
       window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onVisibilityChange);
-      unsubscribe();
     };
   }, []);
 
