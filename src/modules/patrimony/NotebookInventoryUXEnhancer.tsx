@@ -248,8 +248,10 @@ export function NotebookInventoryUXEnhancer() {
 
   useEffect(() => {
     let cancelled = false;
+    let inventoryVisible = false;
 
     const refreshDirectory = () => {
+      if (!document.querySelector(".patrimony-screen")) return;
       void Promise.all([loadOrganizationDirectory(true), loadPersonNotebookUsage()])
         .then(([people, offsite]) => {
           if (cancelled) return;
@@ -265,12 +267,21 @@ export function NotebookInventoryUXEnhancer() {
       if (detail?.personId) pendingOffsiteSaveRef.current = detail;
     };
 
-    refreshDirectory();
+    const syncVisibility = () => {
+      const nextVisible = Boolean(document.querySelector(".patrimony-screen"));
+      if (nextVisible && !inventoryVisible) refreshDirectory();
+      inventoryVisible = nextVisible;
+    };
+
+    syncVisibility();
+    const observer = new MutationObserver(syncVisibility);
+    observer.observe(document.body, { childList: true, subtree: true });
     const handleDirectoryChange = () => refreshDirectory();
     window.addEventListener("hub:organization-directory-updated", handleDirectoryChange);
     window.addEventListener("hub:notebook-offsite-submit", handleOffsiteSubmit);
     return () => {
       cancelled = true;
+      observer.disconnect();
       window.removeEventListener("hub:organization-directory-updated", handleDirectoryChange);
       window.removeEventListener("hub:notebook-offsite-submit", handleOffsiteSubmit);
     };

@@ -479,7 +479,7 @@ export function getMarketingErrorMessage(error: unknown) {
   const raw = error instanceof Error ? error.message : String(error ?? "");
   const normalized = raw.toUpperCase();
   if (normalized.includes("MARKETING_ACCESS_DENIED")) return "Este usuário ainda não tem acesso ao Marketing.";
-  if (normalized.includes("MARKETING_SESSION_EXPIRED")) return "Sua sessão do Marketing expirou. Entre novamente no HUB.";
+  if (normalized.includes("MARKETING_SESSION_EXPIRED")) return "Sua sessão do Marketing expirou. Renove seu acesso abaixo.";
   if (normalized.includes("MARKETING_SESSION_MISMATCH")) return "A sessão do Marketing não corresponde ao usuário atual.";
   if (normalized.includes("MARKETING_REQUEST_STALE")) return "Este pedido foi atualizado por outra pessoa. Recarregue os dados antes de salvar novamente.";
   if (normalized.includes("MARKETING_AUTH_REQUIRED")) return "A sessão segura do administrador não está disponível. Entre novamente no HUB.";

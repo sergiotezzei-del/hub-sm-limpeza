@@ -2070,3 +2070,38 @@
   .marketing-schedule-footer-actions button,
   .marketing-schedule-exception-actions button { width:100%; }
 }
+.marketing-session-recovery {
+  width: min(100%, 460px);
+  display: grid;
+  gap: 16px;
+  margin: 18px auto 0;
+  padding: 20px;
+  border: 1px solid #d7dee8;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 8px 24px rgba(24, 39, 58, 0.08);
+}
+
+.marketing-session-recovery h2,
+.marketing-session-recovery p {
+  margin: 0;
+}
+
+.marketing-session-recovery div {
+  display: grid;
+  gap: 6px;
+}
+
+.marketing-session-recovery label {
+  display: grid;
+  gap: 7px;
+  font-weight: 700;
+}
+
+.marketing-session-recovery input {
+  min-height: 44px;
+}
+
+.marketing-session-recovery .marketing-message {
+  margin: 0;
+}
