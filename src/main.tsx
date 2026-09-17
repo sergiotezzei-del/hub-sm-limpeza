@@ -22,7 +22,6 @@ import { CleaningNewOrderEnhancer } from "./modules/cleaning/components/Cleaning
 import { CleaningOrdersCollapseEnhancer } from "./modules/cleaning/components/CleaningOrdersCollapseEnhancer";
 import { NeiaDeliveryShortcutFeature } from "./modules/cleaning/components/NeiaDeliveryShortcutFeature";
 import { NeiaHistoryEnhancer } from "./modules/cleaning/components/NeiaHistoryEnhancer";
-import { MarketingSessionKeepalive } from "./modules/marketing/MarketingSessionKeepalive";
 import { AirConditioningMapFeature } from "./modules/patrimony/AirConditioningMapFeature";
 import { NotebookInventoryFeatureV3 } from "./modules/patrimony/NotebookInventoryFeatureV3";
 import { NotebookInventoryUXEnhancer } from "./modules/patrimony/NotebookInventoryUXEnhancer";
@@ -122,7 +121,6 @@ createRoot(document.getElementById("root")!).render(
         <App />
         <HubSaveSuccessHost />
         <HubAuthSessionGuard />
-        <MarketingSessionKeepalive />
         <LiveAlertDashboardEnhancer />
         <AlertTimeEnhancer />
         <WindowsNotificationControl />

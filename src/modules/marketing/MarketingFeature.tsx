@@ -114,6 +114,7 @@ type MarketingFeatureProps = {
   onBack: () => void;
   onOpen: () => void;
   onSessionInvalid: () => void;
+  onSessionReconnect: (accessCode: string) => Promise<void>;
   onSummaryChange: (summary: MarketingSummary) => void;
 };
 
@@ -190,6 +191,9 @@ export function MarketingFeature(props: MarketingFeatureProps) {
         setError("");
       } catch (refreshError) {
         if (!active) return;
+        if (isMarketingError(refreshError, "MARKETING_SESSION_EXPIRED") || isMarketingError(refreshError, "MARKETING_SESSION_MISMATCH")) {
+          props.onSessionInvalid();
+        }
         setDashboard(null);
         setError(getMarketingErrorMessage(refreshError));
       } finally {
@@ -376,19 +380,80 @@ export function MarketingFeature(props: MarketingFeatureProps) {
           onNotice={setNotice}
         />
       )}
-      {props.active && (!dashboard || !props.sessionToken) && <MarketingUnavailableScreen loading={loading} error={error} onBack={props.onBack} />}
+      {props.active && (!dashboard || !props.sessionToken) && (
+        <MarketingUnavailableScreen
+          loading={loading}
+          error={error}
+          sessionMissing={!props.sessionToken}
+          onBack={props.onBack}
+          onReconnect={props.onSessionReconnect}
+        />
+      )}
     </>
   );
 }
 
-function MarketingUnavailableScreen({ loading, error, onBack }: { loading: boolean; error: string; onBack: () => void }) {
+function MarketingUnavailableScreen({ loading, error, sessionMissing, onBack, onReconnect }: {
+  loading: boolean;
+  error: string;
+  sessionMissing: boolean;
+  onBack: () => void;
+  onReconnect: (accessCode: string) => Promise<void>;
+}) {
+  const [accessCode, setAccessCode] = useState("");
+  const [reconnecting, setReconnecting] = useState(false);
+  const [reconnectError, setReconnectError] = useState("");
+
+  async function handleReconnect(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (reconnecting || !accessCode.trim()) return;
+    setReconnecting(true);
+    setReconnectError("");
+    try {
+      await onReconnect(accessCode);
+      setAccessCode("");
+    } catch (reconnectFailure) {
+      const rawMessage = reconnectFailure instanceof Error ? reconnectFailure.message : "";
+      setReconnectError(rawMessage.startsWith("O código") || rawMessage.startsWith("Entre novamente")
+        ? rawMessage
+        : getMarketingErrorMessage(reconnectFailure));
+    } finally {
+      setReconnecting(false);
+    }
+  }
+
   return (
     <section className="marketing-screen">
       <header className="marketing-topbar">
         <button type="button" className="marketing-back" onClick={onBack}><AppIcon name="back" size="sm" /> Voltar ao HUB</button>
         <div><small>SANTA MARIA · OPERAÇÃO</small><h1>Marketing</h1><p>{loading ? "Carregando acesso..." : "Acesso indisponível"}</p></div>
       </header>
-      <main className="marketing-content"><div className="marketing-message error">{error || "Não foi possível carregar o Marketing."}</div></main>
+      <main className="marketing-content">
+        <div className="marketing-message error">{error || "Não foi possível carregar o Marketing."}</div>
+        {sessionMissing && (
+          <form className="marketing-session-recovery" onSubmit={handleReconnect}>
+            <div>
+              <h2>Renovar acesso ao Marketing</h2>
+              <p>Seu login do HUB continua ativo. Confirme somente seu código de acesso para abrir uma nova sessão segura do Marketing.</p>
+            </div>
+            <label>
+              Código de acesso
+              <input
+                type="password"
+                autoComplete="current-password"
+                value={accessCode}
+                onChange={(event) => setAccessCode(event.target.value)}
+                disabled={reconnecting}
+                autoFocus
+              />
+            </label>
+            {reconnectError && <p className="marketing-message error" role="alert">{reconnectError}</p>}
+            <button type="submit" className="marketing-primary" disabled={reconnecting || !accessCode.trim()}>
+              {reconnecting ? "Renovando..." : "Renovar sessão"}
+            </button>
+          </form>
+        )}
+      </main>
     </section>
   );
 }

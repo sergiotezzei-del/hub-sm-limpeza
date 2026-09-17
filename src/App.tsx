@@ -8,6 +8,7 @@ import { activities, employees } from "./data";
 import { HistoryDisclosure, NeiaHistory, ProductStockDates, useProductStockActivity } from "./modules/cleaning/CleaningHistory";
 import type { MasterMapTargetScreen } from "./features/master-map/masterMapTypes";
 import { MarketingFeature, type MarketingSummary } from "./modules/marketing/MarketingFeature";
+import { MarketingSessionKeepalive } from "./modules/marketing/MarketingSessionKeepalive";
 import { endMarketingSession, startMarketingSession } from "./modules/marketing/marketingService";
 import { GuardShiftPanel, GuardSyncDiagnosticPanel } from "./modules/security/components/GuardShift";
 import { signInAdminSupabaseAuth, signInGuardSupabaseAuth } from "./modules/security/services/guardAuthBridge";
@@ -547,12 +548,17 @@ function App() {
 
   useEffect(() => {
     document.title = `${BRAND} - Central Operacional HUB SM`;
+  }, []);
+
+  useEffect(() => {
+    refreshOfflinePendingCount();
+    if (!currentUser) return;
+
     void refreshOrders();
     void refreshProfiles();
     void refreshInventory();
     void refreshStockMovements();
     void refreshManagedUsersFromCloud({ showNotice: false });
-    refreshOfflinePendingCount();
     void syncOfflinePendencies();
 
     const interval = window.setInterval(() => {
@@ -571,7 +577,7 @@ function App() {
       window.clearInterval(interval);
       window.removeEventListener("online", handleOnline);
     };
-  }, []);
+  }, [currentUser]);
 
   useEffect(() => {
     if (currentUser) {
@@ -649,6 +655,16 @@ function App() {
     setMarketingSessionToken(null);
     setMarketingSummary({ newCount: 0, urgencyCount: 0, unreadCount: 0, queueOverrideCount: 0, managerReviewCount: 0 });
   }, []);
+
+  const handleMarketingSessionReconnect = useCallback(async (accessCode: string) => {
+    if (!currentUser) throw new Error("Entre novamente no HUB para acessar o Marketing.");
+    const marketingSession = await startMarketingSession(accessCode.trim());
+    if (marketingSession.userId !== currentUser) {
+      void endMarketingSession(marketingSession.sessionToken).catch(() => undefined);
+      throw new Error("O código informado pertence a outro usuário do HUB.");
+    }
+    setMarketingSessionToken(marketingSession.sessionToken);
+  }, [currentUser]);
 
   async function refreshOrders() {
     const currentOrders = await getOrders();
@@ -887,11 +903,6 @@ function App() {
     setLoginError("");
     setPassword("");
     setNotice(loginNotice);
-    void refreshOrders();
-    void refreshProfiles();
-    void refreshInventory();
-    void refreshStockMovements();
-    void syncOfflinePendencies();
     setView(user.id === "tezzei" && hasMasterMapPageUrl() ? "master-map" : getInitialViewForManagedUser(user));
   }
 
@@ -2357,6 +2368,13 @@ function App() {
         </section>
       )}
 
+      {currentUser && marketingSessionToken && (
+        <MarketingSessionKeepalive
+          sessionToken={marketingSessionToken}
+          onSessionInvalid={handleMarketingSessionInvalid}
+        />
+      )}
+
       {currentUser && hasCurrentPermission("marketing") && (
         <MarketingFeature
           active={view === "marketing"}
@@ -2365,6 +2383,7 @@ function App() {
           onBack={goToMainMenu}
           onOpen={openMarketing}
           onSessionInvalid={handleMarketingSessionInvalid}
+          onSessionReconnect={handleMarketingSessionReconnect}
           onSummaryChange={setMarketingSummary}
         />
       )}

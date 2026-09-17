@@ -135,7 +135,17 @@ export async function authenticatedSupabaseFetch(input: RequestInfo | URL, init:
 
 export async function sessionAwareSupabaseFetch(input: RequestInfo | URL, init: RequestInit = {}) {
   const accessToken = await getFreshSupabaseAccessToken();
-  return supabaseRestFetch(input, init, accessToken);
+  const response = await supabaseRestFetch(input, init, accessToken);
+
+  // These endpoints are explicitly designed to work with anon as well as an
+  // authenticated session. If PostgREST rejects a stale JWT, retry without an
+  // Authorization header instead of taking public inventory/operational reads
+  // down with the expired auxiliary session.
+  if (accessToken && response.status === 401) {
+    return supabaseRestFetch(input, init, undefined);
+  }
+
+  return response;
 }
 
 export function publicSupabaseFetch(input: RequestInfo | URL, init: RequestInit = {}) {
