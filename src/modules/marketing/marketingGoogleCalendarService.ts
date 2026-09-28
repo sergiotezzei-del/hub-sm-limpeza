@@ -1,3 +1,5 @@
+import { RECOVERY_MODE } from "../security/services/supabaseClient";
+
 export type MarketingGoogleCalendarUserStatus = {
   userId: string;
   userName: string;
@@ -34,6 +36,15 @@ export class MarketingGoogleCalendarApiError extends Error {
 }
 
 export async function loadMarketingGoogleCalendarStatus(sessionToken: string) {
+  if (isRecoveryLocal()) {
+    return {
+      configured: false,
+      canConnect: false,
+      currentUserId: "recovery-ui-test",
+      currentUserName: "RECOVERY TESTE",
+      users: [],
+    } satisfies MarketingGoogleCalendarStatus;
+  }
   return marketingGoogleCalendarRequest<MarketingGoogleCalendarStatus>(sessionToken, {
     action: "status",
   });
@@ -84,6 +95,9 @@ export function clearMarketingGoogleCalendarCallbackFromUrl() {
 }
 
 async function marketingGoogleCalendarRequest<T>(sessionToken: string, body: Record<string, unknown>): Promise<T> {
+  if (isRecoveryLocal()) {
+    throw new MarketingGoogleCalendarApiError(503, "recovery_external_blocked", "Agenda Google indisponível no recovery local.");
+  }
   if (!sessionToken.trim()) {
     throw new MarketingGoogleCalendarApiError(401, "marketing_session_required", "Sua sessão do Marketing não está disponível.");
   }
@@ -113,6 +127,10 @@ async function marketingGoogleCalendarRequest<T>(sessionToken: string, body: Rec
     );
   }
   return payload as T;
+}
+
+function isRecoveryLocal() {
+  return RECOVERY_MODE;
 }
 
 async function readResponsePayload(response: Response) {

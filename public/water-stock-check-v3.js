@@ -1,7 +1,12 @@
 (() => {
-  const SUPABASE_URL = 'https://dtdepfpkyiqtnsjztjit.supabase.co';
-  const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR0ZGVwZnBreWlxdG5zanp0aml0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMxODkyMTcsImV4cCI6MjA5ODc2NTIxN30.kNYAYQTw8gqUaYqRTqdcPtthXO5vbZD6XwxeBvhpRgo';
-  const AUTH_KEY = 'sb-dtdepfpkyiqtnsjztjit-auth-token';
+  const recovery = window.__HUB_RECOVERY_SUPABASE__;
+  if (recovery?.mode !== 'recovery' || recovery?.url !== window.location.origin || recovery?.schema !== 'recovery_api' || !recovery?.anonKey) {
+    throw new Error('RECOVERY_CONFIG_REJECTED: configuração do estoque de água inválida.');
+  }
+  const SUPABASE_URL = recovery.url;
+  const SUPABASE_KEY = recovery.anonKey;
+  const SUPABASE_SCHEMA = recovery.schema;
+  const AUTH_KEY = recovery.authStorageKey;
   const SESSION_KEY = 'hub-sm-active-session';
   const PAGE_ID = 'water-stock-check-page';
   const USER_CACHE_KEY = 'hub-water-stock-user';
@@ -64,6 +69,8 @@
       apikey: SUPABASE_KEY,
       Accept: 'application/json',
       'Content-Type': 'application/json',
+      'Accept-Profile': SUPABASE_SCHEMA,
+      'Content-Profile': SUPABASE_SCHEMA,
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...extra,
     };

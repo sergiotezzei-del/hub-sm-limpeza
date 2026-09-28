@@ -4,9 +4,11 @@ import {
   SUPABASE_KEY_HEADER,
   SUPABASE_PUBLIC_KEY,
   SUPABASE_URL,
+  RECOVERY_MODE,
 } from "../security/services/supabaseClient";
 
 const PUSH_FUNCTION_URL = `${SUPABASE_URL}/functions/v1/hub-public-push`;
+const RECOVERY_EXTERNAL_INTEGRATIONS_BLOCKED = RECOVERY_MODE;
 
 export type PublicPushBroadcastTarget = "all" | "auditorio" | "service_request" | "marketing";
 
@@ -18,6 +20,9 @@ export type HubPublicPushStats = {
 };
 
 export async function loadHubPublicPushStats(): Promise<HubPublicPushStats> {
+  if (RECOVERY_EXTERNAL_INTEGRATIONS_BLOCKED) {
+    return { activeDevices: 0, auditorio: 0, serviceRequest: 0, marketing: 0 };
+  }
   const response = await authenticatedSupabaseFetch(`${SUPABASE_URL}/rest/v1/rpc/hub_public_push_admin_stats`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -39,6 +44,7 @@ export async function broadcastHubPublicPush(input: {
   body: string;
   url?: string;
 }) {
+  if (RECOVERY_EXTERNAL_INTEGRATIONS_BLOCKED) throw new Error("HUB_PUBLIC_PUSH_RECOVERY_BLOCKED");
   const token = await getFreshSupabaseAccessToken();
   if (!token) throw new Error("HUB_ADMIN_SESSION_REQUIRED");
 

@@ -1,9 +1,11 @@
 import {
   authenticatedSupabaseFetch,
+  RECOVERY_MODE,
   SUPABASE_URL,
 } from "../security/services/supabaseClient";
 
 const ADMIN_PUSH_FUNCTION_URL = `${SUPABASE_URL}/functions/v1/hub-admin-push`;
+const RECOVERY_EXTERNAL_INTEGRATIONS_BLOCKED = RECOVERY_MODE;
 
 type AdminPushStatusRow = {
   active_count?: number | string | null;
@@ -35,6 +37,9 @@ export function isStandaloneDisplay() {
 }
 
 export async function loadAdminPushStatus(): Promise<AdminPushStatus> {
+  if (RECOVERY_EXTERNAL_INTEGRATIONS_BLOCKED) {
+    return { activeCount: 0, lastSentAt: "", lastError: "Indisponível no recovery local." };
+  }
   const response = await authenticatedSupabaseFetch(`${SUPABASE_URL}/rest/v1/rpc/hub_admin_push_get_status`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -51,6 +56,7 @@ export async function loadAdminPushStatus(): Promise<AdminPushStatus> {
 }
 
 export async function activateAdminPush() {
+  if (RECOVERY_EXTERNAL_INTEGRATIONS_BLOCKED) throw new Error("ADMIN_PUSH_UNSUPPORTED");
   if (!isAdminPushSupported()) throw new Error("ADMIN_PUSH_UNSUPPORTED");
   if (isIosDevice() && !isStandaloneDisplay()) throw new Error("ADMIN_PUSH_IOS_INSTALL_REQUIRED");
 

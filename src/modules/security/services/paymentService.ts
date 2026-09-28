@@ -1,10 +1,11 @@
 import type { GuardId } from "../../../types";
 import type { GuardPaymentLoadState, GuardPaymentProfile, GuardPaymentRecord, GuardPaymentStatus } from "../types/payment.types";
-import { authenticatedSupabaseFetch, getSupabaseAccessToken, SUPABASE_URL, supabaseConfigured } from "./supabaseClient";
+import { authenticatedSupabaseFetch, getSupabaseAccessToken, RECOVERY_MODE, SUPABASE_URL, supabaseConfigured } from "./supabaseClient";
 
 const PAYMENT_PROFILES_KEY = "hub-sm-guard-payment-profiles";
 const PAYMENT_RECORDS_KEY = "hub-sm-guard-payment-records";
 const PAYMENT_REQUEST_TIMEOUT_MS = 8000;
+const RECOVERY_LOCAL_FALLBACK_ONLY = RECOVERY_MODE;
 
 type GuardPaymentProfileRow = {
   id: string;
@@ -53,12 +54,15 @@ class GuardPaymentRemoteError extends Error {
 }
 
 export async function loadGuardPaymentData(): Promise<GuardPaymentLoadState> {
-  if (!supabaseConfigured) {
+  if (!supabaseConfigured || RECOVERY_LOCAL_FALLBACK_ONLY) {
     return {
       profiles: getLocalPaymentProfiles(),
       records: getLocalPaymentRecords(),
       remoteReadable: false,
       remoteProtected: false,
+      message: RECOVERY_LOCAL_FALLBACK_ONLY
+        ? "Tabelas de pagamento ausentes no backup. Exibindo somente registros deste aparelho."
+        : undefined,
     };
   }
 
@@ -94,7 +98,7 @@ export async function saveGuardPaymentProfile(profile: GuardPaymentProfile): Pro
   const cleanProfile = normalizePaymentProfile(profile);
   const accessToken = getSupabaseAccessToken();
 
-  if (supabaseConfigured && accessToken) {
+  if (supabaseConfigured && accessToken && !RECOVERY_LOCAL_FALLBACK_ONLY) {
     try {
       const response = await paymentRequest("guard_payment_profiles?on_conflict=guard_id", {
         method: "POST",
@@ -127,7 +131,7 @@ export async function saveGuardPaymentRecords(records: GuardPaymentRecord[]): Pr
   const normalizedRecords = records.map(normalizePaymentRecord);
   const accessToken = getSupabaseAccessToken();
 
-  if (supabaseConfigured && accessToken) {
+  if (supabaseConfigured && accessToken && !RECOVERY_LOCAL_FALLBACK_ONLY) {
     try {
       const response = await paymentRequest("guard_payment_records", {
         method: "POST",
@@ -156,7 +160,7 @@ export async function saveGuardPaymentRecords(records: GuardPaymentRecord[]): Pr
 
 export async function updateGuardPaymentRecordStatus(recordId: string, status: GuardPaymentStatus): Promise<{ record?: GuardPaymentRecord; message: string }> {
   const accessToken = getSupabaseAccessToken();
-  if (supabaseConfigured && accessToken) {
+  if (supabaseConfigured && accessToken && !RECOVERY_LOCAL_FALLBACK_ONLY) {
     try {
       const response = await paymentRequest(`guard_payment_records?id=eq.${encodeURIComponent(recordId)}`, {
         method: "PATCH",

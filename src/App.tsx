@@ -8,9 +8,11 @@ import { activities, employees } from "./data";
 import { HistoryDisclosure, NeiaHistory, ProductStockDates, useProductStockActivity } from "./modules/cleaning/CleaningHistory";
 import type { MasterMapTargetScreen } from "./features/master-map/masterMapTypes";
 import { MarketingFeature, type MarketingSummary } from "./modules/marketing/MarketingFeature";
+import { MarketingSessionKeepalive } from "./modules/marketing/MarketingSessionKeepalive";
 import { endMarketingSession, startMarketingSession } from "./modules/marketing/marketingService";
 import { GuardShiftPanel, GuardSyncDiagnosticPanel } from "./modules/security/components/GuardShift";
 import { signInAdminSupabaseAuth, signInGuardSupabaseAuth } from "./modules/security/services/guardAuthBridge";
+import { signInRecoverySupabaseAuth } from "./modules/security/services/recoveryAuthBridge";
 import { loadGuardPaymentData, saveGuardPaymentProfile, saveGuardPaymentRecords, updateGuardPaymentRecordStatus } from "./modules/security/services/paymentService";
 import { DEFAULT_GUARD_ROUND_POINTS, DEFAULT_GUARD_ROUND_SCHEDULES, loadGuardRoundReport } from "./modules/security/services/roundService";
 import { loadGuardMonitoringEntries } from "./modules/security/services/shiftService";
@@ -344,6 +346,12 @@ const permissionOptions: Array<{ id: UserPermission; label: string }> = [
   { id: "relatorios", label: "Relatórios" },
 ];
 const allUserPermissions = permissionOptions.map((permission) => permission.id);
+const RECOVERY_ADMIN_USER_ID = "recovery-ui-test";
+
+function isLocalRecoveryAdmin(userId: unknown) {
+  return userId === "tezzei" || userId === RECOVERY_ADMIN_USER_ID;
+}
+
 const defaultCreatedAt = "2026-01-01T00:00:00.000Z";
 
 const defaultManagedUsers: ManagedUser[] = [
@@ -547,12 +555,17 @@ function App() {
 
   useEffect(() => {
     document.title = `${BRAND} - Central Operacional HUB SM`;
+  }, []);
+
+  useEffect(() => {
+    refreshOfflinePendingCount();
+    if (!currentUser) return;
+
     void refreshOrders();
     void refreshProfiles();
     void refreshInventory();
     void refreshStockMovements();
     void refreshManagedUsersFromCloud({ showNotice: false });
-    refreshOfflinePendingCount();
     void syncOfflinePendencies();
 
     const interval = window.setInterval(() => {
@@ -571,7 +584,7 @@ function App() {
       window.clearInterval(interval);
       window.removeEventListener("online", handleOnline);
     };
-  }, []);
+  }, [currentUser]);
 
   useEffect(() => {
     if (currentUser) {
@@ -649,6 +662,16 @@ function App() {
     setMarketingSessionToken(null);
     setMarketingSummary({ newCount: 0, urgencyCount: 0, unreadCount: 0, queueOverrideCount: 0, managerReviewCount: 0 });
   }, []);
+
+  const handleMarketingSessionReconnect = useCallback(async (accessCode: string) => {
+    if (!currentUser) throw new Error("Entre novamente no HUB para acessar o Marketing.");
+    const marketingSession = await startMarketingSession(accessCode.trim());
+    if (marketingSession.userId !== currentUser) {
+      void endMarketingSession(marketingSession.sessionToken).catch(() => undefined);
+      throw new Error("O código informado pertence a outro usuário do HUB.");
+    }
+    setMarketingSessionToken(marketingSession.sessionToken);
+  }, [currentUser]);
 
   async function refreshOrders() {
     const currentOrders = await getOrders();
@@ -830,7 +853,7 @@ function App() {
             lastSyncedAt: new Date().toISOString(),
           });
           user = normalizedRemoteUser;
-          loginNotice = "Usuário sincronizado. Entrando...";
+          loginNotice = "Usuário sincronizado.";
         } else if (!user || !user.system) {
           setLoginError("Senha incorreta");
           return;
@@ -856,7 +879,15 @@ function App() {
     const activeElement = document.activeElement;
     if (activeElement instanceof HTMLElement) activeElement.blur();
 
-    if (user.linkedGuardId) {
+    if (user.id === "recovery-ui-test") {
+      try {
+        await signInRecoverySupabaseAuth(user.id, cleanPassword);
+      } catch {
+        await signOutSupabaseAuth();
+        setLoginError("Não foi possível criar a sessão segura de recuperação.");
+        return;
+      }
+    } else if (user.linkedGuardId) {
       await signInGuardSupabaseAuth(user.linkedGuardId, cleanPassword);
     } else if (user.id === "tezzei") {
       await signInAdminSupabaseAuth(cleanPassword);
@@ -887,12 +918,7 @@ function App() {
     setLoginError("");
     setPassword("");
     setNotice(loginNotice);
-    void refreshOrders();
-    void refreshProfiles();
-    void refreshInventory();
-    void refreshStockMovements();
-    void syncOfflinePendencies();
-    setView(user.id === "tezzei" && hasMasterMapPageUrl() ? "master-map" : getInitialViewForManagedUser(user));
+    setView(isLocalRecoveryAdmin(user.id) && hasMasterMapPageUrl() ? "master-map" : getInitialViewForManagedUser(user));
   }
 
   function setProductQuantity(productId: string, value: string) {
@@ -1408,7 +1434,7 @@ function App() {
   }
 
   function openSecurityMenu() {
-    if (!hasAnyCurrentPermission(["seguranca", "guardas", "estacionamento-consulta", "estacionamento-cadastro"])) {
+    if (!hasAnyCurrentPermission(["painel-admin", "seguranca", "guardas", "estacionamento-consulta", "estacionamento-cadastro"])) {
       setNotice("Sem permissão para acessar Segurança.");
       return;
     }
@@ -1419,7 +1445,7 @@ function App() {
   }
 
   function openSecurityAlarm() {
-    if (currentUser !== "tezzei" || !hasCurrentPermission("painel-admin")) {
+    if (!isLocalRecoveryAdmin(currentUser) || !hasCurrentPermission("painel-admin")) {
       setNotice("Sem permissão para acessar o Alarme Intelbras.");
       return;
     }
@@ -1452,7 +1478,7 @@ function App() {
   }
 
   function openServiceRequests() {
-    if (currentUser !== "tezzei" || !hasCurrentPermission("chamados")) {
+    if (!isLocalRecoveryAdmin(currentUser) || !hasCurrentPermission("chamados")) {
       setNotice("Sem permissão para acessar Chamados.");
       return;
     }
@@ -1463,7 +1489,7 @@ function App() {
   }
 
   function openTaskBoard() {
-    if (currentUser !== "tezzei" || !hasCurrentPermission("afazeres")) {
+    if (!isLocalRecoveryAdmin(currentUser) || !hasCurrentPermission("afazeres")) {
       setNotice("Sem permissão para acessar Afazeres.");
       return;
     }
@@ -1476,7 +1502,7 @@ function App() {
   }
 
   function openTaskBoardFromServiceRequest(request: ServiceRequest, protocol: string) {
-    if (currentUser !== "tezzei" || !currentManagedUser || !hasCurrentPermission("afazeres")) {
+    if (!isLocalRecoveryAdmin(currentUser) || !currentManagedUser || !hasCurrentPermission("afazeres")) {
       setNotice("Sem permissão para acessar Afazeres.");
       return;
     }
@@ -1501,7 +1527,7 @@ function App() {
   }
 
   function openLinkedTaskFromServiceRequest(taskId: string) {
-    if (currentUser !== "tezzei" || !hasCurrentPermission("afazeres")) {
+    if (!isLocalRecoveryAdmin(currentUser) || !hasCurrentPermission("afazeres")) {
       setNotice("Sem permissão para acessar Afazeres.");
       return;
     }
@@ -1590,7 +1616,7 @@ function App() {
   }
 
   function openSecurityMonitoring() {
-    if (currentUser !== "tezzei" || !hasCurrentPermission("painel-admin")) {
+    if (!isLocalRecoveryAdmin(currentUser) || !hasCurrentPermission("painel-admin")) {
       setNotice("Sem permissão para acessar Monitoramento.");
       return;
     }
@@ -1612,7 +1638,7 @@ function App() {
   }
 
   function openGuardPaymentReport() {
-    if (currentUser !== "tezzei" || !hasCurrentPermission("painel-admin")) {
+    if (!isLocalRecoveryAdmin(currentUser) || !hasCurrentPermission("painel-admin")) {
       setNotice("Sem permissão para acessar Fechamento / Pagamento.");
       return;
     }
@@ -1647,7 +1673,7 @@ function App() {
   }
 
   function openSystemStatus() {
-    if (currentUser !== "tezzei" || !hasCurrentPermission("painel-admin")) {
+    if (!isLocalRecoveryAdmin(currentUser) || !hasCurrentPermission("painel-admin")) {
       setNotice("Você não tem acesso a este módulo.");
       return;
     }
@@ -1658,7 +1684,7 @@ function App() {
   }
 
   function openMasterMap() {
-    if (currentUser !== "tezzei" || !hasCurrentPermission("painel-admin")) {
+    if (!isLocalRecoveryAdmin(currentUser) || !hasCurrentPermission("painel-admin")) {
       setNotice("Você não tem acesso a este módulo.");
       return;
     }
@@ -1740,7 +1766,7 @@ function App() {
   }
 
   function openCleaningPreparation() {
-    if (currentUser !== "tezzei" || !hasCurrentPermission("painel-admin")) {
+    if (!isLocalRecoveryAdmin(currentUser) || !hasCurrentPermission("painel-admin")) {
       setNotice("Somente o Admin Tezzei pode preparar a Limpeza para uso real.");
       return;
     }
@@ -2051,9 +2077,9 @@ function App() {
       {view === "stock-exit-history" && <StockExitHistoryScreen movements={stockMovements} onBack={() => setView("cleaning-dashboard")} onLogout={goToLogin} />}
       {view === "current-stock" && <CurrentStockScreen inventoryProducts={inventoryProducts} onBack={() => setView("cleaning-dashboard")} onLogout={goToLogin} onEditProduct={openProductRegisterFromStock} />}
 
-      {view === "admin" && (
+      {view === "admin" && currentManagedUser && (
         <AdminSectorHomeScreen
-          user={currentManagedUser ?? defaultManagedUsers[0]}
+          user={currentManagedUser}
           notice={notice}
           newOrdersCount={newOrders.length}
           onlineEnabled={onlineEnabled}
@@ -2075,7 +2101,7 @@ function App() {
       )}
 
       {view === "tasks-board" && (
-        currentUser === "tezzei" && currentManagedUser && hasCurrentPermission("afazeres") ? (
+        isLocalRecoveryAdmin(currentUser) && currentManagedUser && hasCurrentPermission("afazeres") ? (
           <Suspense fallback={<section className="screen"><TopBar title="Afazeres" subtitle="Carregando seu quadro de trabalho." onLogout={goToLogin} /><section className="empty-state"><h2>Carregando Afazeres...</h2></section></section>}>
             <TaskBoardScreen
               currentUser={currentManagedUser}
@@ -2094,7 +2120,7 @@ function App() {
       )}
 
       {view === "service-requests" && (
-        currentUser === "tezzei" && currentManagedUser && hasCurrentPermission("chamados") ? (
+        isLocalRecoveryAdmin(currentUser) && currentManagedUser && hasCurrentPermission("chamados") ? (
           <Suspense fallback={<section className="screen"><TopBar title="Chamados" subtitle="Carregando solicitações internas." onLogout={goToLogin} /><section className="empty-state"><h2>Carregando Chamados...</h2></section></section>}>
             <ServiceRequestsScreen
               currentUser={currentManagedUser}
@@ -2147,6 +2173,7 @@ function App() {
           onOpenReports={openReportsMenu}
           onOpenUsersPermissions={openUsersPermissions}
           onOpenSystemStatus={openSystemStatus}
+          onOpenMasterMap={openMasterMap}
         />
       )}
 
@@ -2187,7 +2214,7 @@ function App() {
       )}
 
       {view === "system-status" && (
-        currentUser === "tezzei" && hasCurrentPermission("painel-admin") ? (
+        isLocalRecoveryAdmin(currentUser) && hasCurrentPermission("painel-admin") ? (
           <SystemStatusScreen
             permissions={getManagedUserPermissions(currentUser, managedUsers)}
             users={managedUsers}
@@ -2200,10 +2227,10 @@ function App() {
       )}
 
       {view === "master-map" && (
-        currentUser === "tezzei" && hasCurrentPermission("painel-admin") ? (
+        isLocalRecoveryAdmin(currentUser) && hasCurrentPermission("painel-admin") ? (
           <Suspense fallback={<section className="screen"><TopBar title="Mapa Mestre" subtitle="Carregando visão geral do HUB SM." onLogout={goToLogin} /><section className="empty-state"><h2>Carregando Mapa Mestre...</h2></section></section>}>
             <MasterMapScreen
-              canEdit={currentUser === "tezzei" && hasCurrentPermission("painel-admin")}
+              canEdit={isLocalRecoveryAdmin(currentUser) && hasCurrentPermission("painel-admin")}
               onBack={() => setView("admin")}
               onLogout={goToLogin}
               onOpenModule={openMasterMapTarget}
@@ -2214,12 +2241,12 @@ function App() {
         )
       )}
 
-      {view === "security-menu" && <SecurityMenuScreen permissions={getManagedUserPermissions(currentUser, managedUsers)} isAdmin={currentUser === "tezzei"} onBack={() => setView(getCurrentHomeView())} onLogout={goToLogin} onOpenAlarm={openSecurityAlarm} onOpenGuards={openSecurityGuards} onOpenMonitoring={openSecurityMonitoring} onOpenParking={openSecurityParking} />}
+      {view === "security-menu" && <SecurityMenuScreen permissions={getManagedUserPermissions(currentUser, managedUsers)} isAdmin={isLocalRecoveryAdmin(currentUser)} canOpenAlarm={isLocalRecoveryAdmin(currentUser)} onBack={() => setView(getCurrentHomeView())} onLogout={goToLogin} onOpenAlarm={openSecurityAlarm} onOpenGuards={openSecurityGuards} onOpenMonitoring={openSecurityMonitoring} onOpenParking={openSecurityParking} />}
 
       {view === "security-alarm" && (
-        currentUser === "tezzei" && hasCurrentPermission("painel-admin") ? (
+        isLocalRecoveryAdmin(currentUser) && hasCurrentPermission("painel-admin") ? (
           <Suspense fallback={<section className="loading-state">Carregando Alarme Intelbras...</section>}>
-            <IntelbrasAlarmScreen actorUserId="tezzei" actorName={currentManagedUser?.name ?? "Admin Tezzei"} onBack={openSecurityMenu} onLogout={goToLogin} />
+            <IntelbrasAlarmScreen actorUserId={currentUser ?? "recovery-ui-test"} actorName={currentManagedUser?.name ?? "Administrador recovery"} onBack={openSecurityMenu} onLogout={goToLogin} />
           </Suspense>
         ) : (
           <AccessDeniedScreen onBack={() => setView(getCurrentHomeView())} onLogout={goToLogin} />
@@ -2228,14 +2255,14 @@ function App() {
 
       {view === "security-guards" && (
         hasCurrentPermission("guardas") ? (
-          <SecurityGuardsScreen isAdmin={currentUser === "tezzei"} onBack={openSecurityMenu} onLogout={goToLogin} onOpenGuard={openGuardDetail} onOpenPayment={openGuardPaymentReport} showPayment={currentUser === "tezzei"} />
+          <SecurityGuardsScreen isAdmin={isLocalRecoveryAdmin(currentUser)} onBack={openSecurityMenu} onLogout={goToLogin} onOpenGuard={openGuardDetail} onOpenPayment={openGuardPaymentReport} showPayment={isLocalRecoveryAdmin(currentUser)} />
         ) : (
           <AccessDeniedScreen onBack={() => setView(getCurrentHomeView())} onLogout={goToLogin} />
         )
       )}
 
       {view === "security-guards-payment" && (
-        currentUser === "tezzei" && hasCurrentPermission("painel-admin") ? (
+        isLocalRecoveryAdmin(currentUser) && hasCurrentPermission("painel-admin") ? (
           <SecurityGuardsPaymentScreen onBack={openSecurityGuards} onLogout={goToLogin} />
         ) : (
           <AccessDeniedScreen onBack={() => setView(getCurrentHomeView())} onLogout={goToLogin} />
@@ -2243,7 +2270,7 @@ function App() {
       )}
 
       {view === "security-monitoring" && (
-        currentUser === "tezzei" && hasCurrentPermission("painel-admin") ? (
+        isLocalRecoveryAdmin(currentUser) && hasCurrentPermission("painel-admin") ? (
           <SecurityMonitoringScreen onBack={openSecurityMenu} onLogout={goToLogin} />
         ) : (
           <AccessDeniedScreen onBack={() => setView(getCurrentHomeView())} onLogout={goToLogin} />
@@ -2252,7 +2279,7 @@ function App() {
 
       {view === "security-parking" && (
         hasAnyCurrentPermission(["painel-admin", "estacionamento-consulta", "estacionamento-cadastro"]) ? (
-          <SecurityParkingScreen permissions={getManagedUserPermissions(currentUser, managedUsers)} isAdmin={currentUser === "tezzei"} onBack={() => setView(isGuardId(currentUser) ? "guard" : "security-menu")} onLogout={goToLogin} />
+          <SecurityParkingScreen permissions={getManagedUserPermissions(currentUser, managedUsers)} isAdmin={isLocalRecoveryAdmin(currentUser)} onBack={() => setView(isGuardId(currentUser) ? "guard" : "security-menu")} onLogout={goToLogin} />
         ) : (
           <AccessDeniedScreen onBack={() => setView(getCurrentHomeView())} onLogout={goToLogin} />
         )
@@ -2357,6 +2384,23 @@ function App() {
         </section>
       )}
 
+      {currentUser && marketingSessionToken && (
+        <MarketingSessionKeepalive
+          sessionToken={marketingSessionToken}
+          onSessionInvalid={handleMarketingSessionInvalid}
+        />
+      )}
+
+      {view === "admin" && currentUser && !currentManagedUser && (
+        <section className="screen">
+          <TopBar title="Sessão do HUB" subtitle="Identidade do usuário indisponível." onLogout={goToLogin} />
+          <section className="empty-state">
+            <h2>Não foi possível confirmar o usuário atual.</h2>
+            <p>Saia e entre novamente para sincronizar a identidade.</p>
+          </section>
+        </section>
+      )}
+
       {currentUser && hasCurrentPermission("marketing") && (
         <MarketingFeature
           active={view === "marketing"}
@@ -2365,6 +2409,7 @@ function App() {
           onBack={goToMainMenu}
           onOpen={openMarketing}
           onSessionInvalid={handleMarketingSessionInvalid}
+          onSessionReconnect={handleMarketingSessionReconnect}
           onSummaryChange={setMarketingSummary}
         />
       )}
@@ -2956,10 +3001,10 @@ function UsersPermissionsScreen({ users, syncState, notice, onBack, onLogout, on
             <h2>Permissões por módulo</h2>
             <div className="permissions-grid">
               {permissionOptions.map((permission) => {
-                const checked = draft.id === "tezzei" || draft.permissions.includes(permission.id);
+                const checked = isLocalRecoveryAdmin(draft.id) || draft.permissions.includes(permission.id);
                 return (
                   <label className={`checkbox-row permission-row ${checked ? "has-access" : "no-access"}`} key={permission.id}>
-                    <input type="checkbox" checked={checked} disabled={actionBusy || draft.id === "tezzei"} onChange={() => togglePermission(permission.id)} />
+                    <input type="checkbox" checked={checked} disabled={actionBusy || isLocalRecoveryAdmin(draft.id)} onChange={() => togglePermission(permission.id)} />
                     <span>{permission.label}</span>
                   </label>
                 );
@@ -3349,11 +3394,12 @@ function AssetsMaterialsMenuScreen({ permissions, onBack, onLogout, onOpenMateri
   return <OperationalSectorScreen title="Bens e Materiais" subtitle="Controle de bens duráveis, alocações e materiais de apoio" cards={cards} onBack={onBack} onLogout={onLogout} />;
 }
 
-function HubAdministrationMenuScreen({ permissions, onBack, onLogout, onOpenReports, onOpenUsersPermissions, onOpenSystemStatus }: { permissions: UserPermission[]; onBack: () => void; onLogout: () => void; onOpenReports: () => void; onOpenUsersPermissions: () => void; onOpenSystemStatus: () => void }) {
+function HubAdministrationMenuScreen({ permissions, onBack, onLogout, onOpenReports, onOpenUsersPermissions, onOpenSystemStatus, onOpenMasterMap }: { permissions: UserPermission[]; onBack: () => void; onLogout: () => void; onOpenReports: () => void; onOpenUsersPermissions: () => void; onOpenSystemStatus: () => void; onOpenMasterMap: () => void }) {
   const cards: SectorModuleCard[] = [
     { key: "usuarios-permissoes", title: "Usuários e Permissões", detail: "Cadastro de usuários, acessos e permissões do sistema.", enabled: permissions.includes("painel-admin"), onClick: onOpenUsersPermissions, className: "users-card", icon: "users" },
     { key: "relatorios", title: "Relatórios", detail: "Consultas e relatórios por área operacional.", enabled: permissions.includes("relatorios"), onClick: onOpenReports, icon: "reports" },
     { key: "status-sistema", title: "Status do Sistema", detail: "Situação dos módulos, integrações e pendências do HUB.", enabled: permissions.includes("painel-admin"), onClick: onOpenSystemStatus, className: "users-card", icon: "reports" },
+    { key: "mapa-mestre", title: "Mapa Mestre", detail: "Mapa operacional, páginas dinâmicas e vínculos entre módulos.", enabled: permissions.includes("painel-admin"), onClick: onOpenMasterMap, className: "users-card", icon: "reports" },
   ];
   return <OperationalSectorScreen title="Administração do HUB" subtitle="Usuários, permissões, relatórios e situação do sistema" cards={cards} onBack={onBack} onLogout={onLogout} />;
 }
@@ -3407,13 +3453,13 @@ function AdminScreen({ newOrdersCount, onlineEnabled, permissions, onLogout, onO
   );
 }
 
-function SecurityMenuScreen({ permissions, isAdmin, onBack, onLogout, onOpenAlarm, onOpenGuards, onOpenMonitoring, onOpenParking }: { permissions: UserPermission[]; isAdmin: boolean; onBack: () => void; onLogout: () => void; onOpenAlarm: () => void; onOpenGuards: () => void; onOpenMonitoring: () => void; onOpenParking: () => void }) {
+function SecurityMenuScreen({ permissions, isAdmin, canOpenAlarm, onBack, onLogout, onOpenAlarm, onOpenGuards, onOpenMonitoring, onOpenParking }: { permissions: UserPermission[]; isAdmin: boolean; canOpenAlarm: boolean; onBack: () => void; onLogout: () => void; onOpenAlarm: () => void; onOpenGuards: () => void; onOpenMonitoring: () => void; onOpenParking: () => void }) {
   const canGuards = permissions.includes("guardas");
   const canMonitoring = isAdmin && permissions.includes("painel-admin");
   const canParking = permissions.includes("estacionamento-consulta") || permissions.includes("estacionamento-cadastro") || permissions.includes("painel-admin");
   const canRegisterParking = isAdmin || permissions.includes("painel-admin") || permissions.includes("estacionamento-cadastro");
   const cards: SectorModuleCard[] = [
-    { key: "alarm", title: "Alarme Intelbras", detail: "Central AMT 8000 LITE, partições, zonas e comandos", enabled: isAdmin && permissions.includes("painel-admin"), onClick: onOpenAlarm, className: "security-card", icon: "security" },
+    { key: "alarm", title: "Alarme Intelbras", detail: "Central AMT 8000 LITE, partições, zonas e comandos", enabled: canOpenAlarm && permissions.includes("painel-admin"), onClick: onOpenAlarm, className: "security-card", icon: "security" },
     { key: "guards", title: "Guardas", detail: isAdmin ? "Controle dos guardas" : "Serviço, rondas e QR Code", enabled: canGuards, onClick: onOpenGuards, className: "security-card", icon: "guards" },
     { key: "monitoring", title: "Monitoramento", detail: "Entradas, saídas e rondas", enabled: canMonitoring, onClick: onOpenMonitoring, className: "security-card", icon: "reports" },
     { key: "parking", title: "Estacionamento", detail: canRegisterParking ? "Consulta e cadastro de veículos" : "Consulta rápida de veículos", enabled: canParking, onClick: onOpenParking, className: "security-card", icon: "parking" },
@@ -6311,7 +6357,7 @@ function getManagedUser(users: ManagedUser[], userId: UserRole | null) {
 }
 
 function getRequiredProfilePermissions(user: ManagedUser): UserPermission[] {
-  if (user.id === "tezzei") return allUserPermissions;
+  if (isLocalRecoveryAdmin(user.id)) return allUserPermissions;
   if (user.linkedGuardId || normalizeOperationalText(user.jobTitle).includes("GUARDA")) {
     return ["seguranca", "guardas", "estacionamento-consulta"];
   }
@@ -6322,12 +6368,12 @@ function getRequiredProfilePermissions(user: ManagedUser): UserPermission[] {
 }
 
 function getNormalizedManagedUserPermissions(user: ManagedUser, permissions: UserPermission[]) {
-  if (user.id === "tezzei") return allUserPermissions;
+  if (isLocalRecoveryAdmin(user.id)) return allUserPermissions;
   return uniquePermissions([...getRequiredProfilePermissions(user), ...permissions]);
 }
 
 function getManagedUserPermissions(userId: UserRole | null, users: ManagedUser[]) {
-  if (userId === "tezzei") return allUserPermissions;
+  if (isLocalRecoveryAdmin(userId)) return allUserPermissions;
   const user = getManagedUser(users, userId);
   return user?.active ? getNormalizedManagedUserPermissions(user, user.permissions) : [];
 }
@@ -6443,7 +6489,7 @@ function getInitialSession(): SavedSession {
     if (!storedSession) return fallback;
     const parsed = JSON.parse(storedSession) as SavedSession;
     if (!parsed.currentUser) return fallback;
-    if (hasMasterMapPageUrl() && parsed.currentUser === "tezzei") {
+    if (hasMasterMapPageUrl() && isLocalRecoveryAdmin(parsed.currentUser)) {
       return { ...parsed, view: "master-map", previewEmployeeId: null, selectedGuardName: null };
     }
     if (isGuardId(parsed.currentUser)) {
@@ -6513,14 +6559,20 @@ function mergeManagedUsers(storedUsers: unknown[]) {
 }
 
 function mergeManagedUserSources(remoteUsers: ManagedUser[], localUsers: ManagedUser[]) {
-  const remoteIds = new Set(remoteUsers.map((user) => user.id));
-  const remoteAccessCodes = new Set(remoteUsers.map((user) => user.accessCode));
-  const unsyncedLocalUsers = localUsers.filter((user) =>
-    !remoteIds.has(user.id)
-    && !remoteAccessCodes.has(user.accessCode)
+  const validRemoteUsers = remoteUsers.filter(isManagedUserLike);
+  const remoteIds = new Set(validRemoteUsers.map((user) => user.id));
+  const remoteAccessCodes = new Set(
+    validRemoteUsers
+      .map((user) => user.accessCode.trim())
+      .filter((accessCode) => accessCode.length > 0),
   );
+  const unsyncedLocalUsers = localUsers.filter((user) => {
+    const accessCode = user.accessCode.trim();
+    return !remoteIds.has(user.id)
+      && (!accessCode || !remoteAccessCodes.has(accessCode));
+  });
 
-  return mergeManagedUsers([...remoteUsers, ...unsyncedLocalUsers]);
+  return mergeManagedUsers([...validRemoteUsers, ...unsyncedLocalUsers]);
 }
 
 function isManagedUserLike(value: unknown): value is ManagedUser {

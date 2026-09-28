@@ -1,4 +1,4 @@
-import { getSupabaseClient } from "../security/services/supabaseClient";
+import { getSupabaseClient, RECOVERY_MODE } from "../security/services/supabaseClient";
 
 export type GoogleCalendarStatus = {
   configured: boolean;
@@ -44,6 +44,7 @@ export class GoogleCalendarApiError extends Error {
 }
 
 export async function loadGoogleCalendarStatus() {
+  if (isRecoveryLocal()) return recoveryOfflineStatus();
   return googleCalendarRequest<GoogleCalendarStatus>("/api/google-calendar?action=status");
 }
 
@@ -98,6 +99,9 @@ export function clearGoogleCalendarCallbackFromUrl() {
 }
 
 async function googleCalendarRequest<T>(path: string, init?: RequestInit): Promise<T> {
+  if (isRecoveryLocal()) {
+    throw new GoogleCalendarApiError(503, "recovery_external_blocked", "Agenda Google indisponível no recovery local.");
+  }
   const token = await getAccessToken();
   let response: Response;
   try {
@@ -120,6 +124,22 @@ async function googleCalendarRequest<T>(path: string, init?: RequestInit): Promi
     throw new GoogleCalendarApiError(response.status, error.error ?? "google_calendar_error", error.message ?? "Falha na integração com a Agenda Google.");
   }
   return payload as T;
+}
+
+function isRecoveryLocal() {
+  return RECOVERY_MODE;
+}
+
+function recoveryOfflineStatus(): GoogleCalendarStatus {
+  return {
+    configured: false,
+    connected: false,
+    googleEmail: "",
+    calendarId: "",
+    redirectUri: "",
+    javascriptOrigin: typeof window === "undefined" ? "" : window.location.origin,
+    scope: "",
+  };
 }
 
 async function getAccessToken() {

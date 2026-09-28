@@ -1,22 +1,33 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-const FALLBACK_SUPABASE_URL = "https://dtdepfpkyiqtnsjztjit.supabase.co";
-const LEGACY_ANON_COMPAT_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR0ZGVwZnBreWlxdG5zanp0aml0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMxODkyMTcsImV4cCI6MjA5ODc2NTIxN30.kNYAYQTw8gqUaYqRTqdcPtthXO5vbZD6XwxeBvhpRgo";
-const rawSupabaseUrl = (import.meta.env.VITE_DB_URL ?? FALLBACK_SUPABASE_URL).trim();
+const RECOVERY_DB_SCHEMA = "recovery_api";
+const RECOVERY_FRONTEND_ORIGINS = new Set([
+  "http://127.0.0.1:15173",
+  "https://hubsantamariatem.vercel.app",
+]);
+const frontendOrigin = typeof window === "undefined" ? "" : window.location.origin;
+const configuredSchema = (import.meta.env.VITE_DB_SCHEMA ?? "").trim();
 const configuredPublicKey = (import.meta.env.VITE_DB_PUBLIC_KEY ?? "").trim();
 
-export const SUPABASE_URL = rawSupabaseUrl.replace(/\/+$/, "");
-// Temporary compatibility path for the hosted project's active legacy anon key.
-// User authorization still comes exclusively from the session JWT in Authorization.
-export const SUPABASE_PUBLIC_KEY = !configuredPublicKey
-  ? LEGACY_ANON_COMPAT_KEY
-  : configuredPublicKey.startsWith("sb_publishable_")
-  ? LEGACY_ANON_COMPAT_KEY
-  : configuredPublicKey;
+if (!RECOVERY_FRONTEND_ORIGINS.has(frontendOrigin)) {
+  throw new Error("RECOVERY_CONFIG_REJECTED: origem do frontend recovery não autorizada.");
+}
+if (configuredSchema !== RECOVERY_DB_SCHEMA) {
+  throw new Error("RECOVERY_CONFIG_REJECTED: VITE_DB_SCHEMA deve ser recovery_api.");
+}
+if (!configuredPublicKey) {
+  throw new Error("RECOVERY_CONFIG_REJECTED: VITE_DB_PUBLIC_KEY ausente.");
+}
+assertFrontendKeyIsNotPrivileged(configuredPublicKey);
+
+export const RECOVERY_MODE = true;
+export const SUPABASE_URL = frontendOrigin;
+export const SUPABASE_SCHEMA = RECOVERY_DB_SCHEMA;
+export const SUPABASE_PUBLIC_KEY = configuredPublicKey;
 export const SUPABASE_KEY_HEADER = ["api", "key"].join("");
 export const supabaseConfigured = Boolean(SUPABASE_URL && SUPABASE_PUBLIC_KEY);
 
-let clientPromise: Promise<SupabaseClient | null> | null = null;
+let clientPromise: Promise<SupabaseClient<any, "recovery_api"> | null> | null = null;
 let activeSessionSnapshot: SupabaseSessionSnapshot = {};
 let freshAccessTokenPromise: Promise<string | undefined> | null = null;
 
@@ -43,6 +54,11 @@ export type SupabaseRestErrorDiagnostic = {
   hint: string | null;
 };
 
+export type RecoveryAuthSessionTokens = {
+  access_token: string;
+  refresh_token: string;
+};
+
 type SessionLike = {
   access_token?: string | null;
   user?: { id?: string | null } | null;
@@ -60,6 +76,9 @@ export async function getSupabaseClient() {
   if (!clientPromise) {
     clientPromise = import("@supabase/supabase-js").then(({ createClient }) => {
       const client = createClient(SUPABASE_URL, SUPABASE_PUBLIC_KEY, {
+        db: {
+          schema: SUPABASE_SCHEMA,
+        },
         auth: {
           autoRefreshToken: true,
           detectSessionInUrl: false,
@@ -135,7 +154,17 @@ export async function authenticatedSupabaseFetch(input: RequestInfo | URL, init:
 
 export async function sessionAwareSupabaseFetch(input: RequestInfo | URL, init: RequestInit = {}) {
   const accessToken = await getFreshSupabaseAccessToken();
-  return supabaseRestFetch(input, init, accessToken);
+  const response = await supabaseRestFetch(input, init, accessToken);
+
+  // These endpoints are explicitly designed to work with anon as well as an
+  // authenticated session. If PostgREST rejects a stale JWT, retry without an
+  // Authorization header instead of taking public inventory/operational reads
+  // down with the expired auxiliary session.
+  if (accessToken && response.status === 401) {
+    return supabaseRestFetch(input, init, undefined);
+  }
+
+  return response;
 }
 
 export function publicSupabaseFetch(input: RequestInfo | URL, init: RequestInit = {}) {
@@ -209,19 +238,43 @@ export async function verifySupabaseAuthenticatedRest() {
     );
   }
 
-  // Keep a non-blocking comparison with supabase-js native PostgREST transport.
-  // A native transport failure must never invalidate an Auth session that was
-  // already accepted by /auth/v1/user and by the explicit JWT REST probe above.
-  const { error: nativeRestError } = await supabase
-    .from("hub_alert_rules")
-    .select("id")
-    .limit(1);
-  if (nativeRestError) {
-    logSupabaseAuthProbeError("hub-alert-rules-native", diagnostic, nativeRestError);
-  }
-
   logSupabaseAuthDiagnostic("post-login-rest-ok", diagnostic);
-  return { userId: userData.user.id, diagnostic, nativeRestOk: !nativeRestError };
+  return { userId: userData.user.id, diagnostic };
+}
+
+export async function installAndVerifyRecoveryAuthSession(tokens: RecoveryAuthSessionTokens) {
+  const accessToken = readString(tokens.access_token);
+  const refreshToken = readString(tokens.refresh_token);
+  if (!accessToken || !refreshToken) throw new Error("RECOVERY_AUTH_SESSION_INVALID");
+
+  const supabase = await getSupabaseClient();
+  if (!supabase) throw new Error("SUPABASE_CLIENT_UNAVAILABLE");
+
+  try {
+    const { data: sessionData, error: sessionError } = await supabase.auth.setSession({
+      access_token: accessToken,
+      refresh_token: refreshToken,
+    });
+    const sessionUser = sessionData.session?.user;
+    if (sessionError || !sessionData.session?.access_token || !sessionUser?.id
+        || sessionUser.app_metadata?.role !== "tezzei") {
+      throw new Error("RECOVERY_AUTH_SESSION_REJECTED");
+    }
+    rememberSupabaseSession(sessionData.session);
+
+    const { data: userData, error: userError } = await supabase.auth.getUser();
+    if (userError || !userData.user?.id || userData.user.id !== sessionUser.id
+        || userData.user.app_metadata?.role !== "tezzei") {
+      throw new Error("RECOVERY_AUTH_USER_REJECTED");
+    }
+
+    const probe = await verifySupabaseAuthenticatedRest();
+    if (probe.userId !== userData.user.id) throw new Error("RECOVERY_AUTH_USER_MISMATCH");
+    return { userId: userData.user.id };
+  } catch {
+    await signOutSupabaseAuth();
+    throw new Error("RECOVERY_AUTH_SESSION_FAILED");
+  }
 }
 
 export async function signOutSupabaseAuth() {
@@ -242,6 +295,8 @@ function supabaseRestFetch(input: RequestInfo | URL, init: RequestInit, accessTo
   if (init.headers) new Headers(init.headers).forEach((value, key) => headers.set(key, value));
 
   headers.set(SUPABASE_KEY_HEADER, SUPABASE_PUBLIC_KEY);
+  headers.set("Accept-Profile", SUPABASE_SCHEMA);
+  headers.set("Content-Profile", SUPABASE_SCHEMA);
   if (accessToken) headers.set("Authorization", `Bearer ${accessToken}`);
   else headers.delete("Authorization");
 
@@ -252,6 +307,26 @@ function assertSupabaseRestRequest(input: RequestInfo | URL) {
   const requestUrl = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
   if (!SUPABASE_URL || !requestUrl.startsWith(`${SUPABASE_URL}/rest/v1/`)) {
     throw new Error("SUPABASE_REST_URL_REQUIRED");
+  }
+}
+
+function assertFrontendKeyIsNotPrivileged(key: string) {
+  if (key.startsWith("sb_secret_")) {
+    throw new Error("RECOVERY_CONFIG_REJECTED: chave privilegiada nao pode ser usada no frontend.");
+  }
+
+  if (!key.startsWith("eyJ")) return;
+  try {
+    const encodedPayload = key.split(".")[1];
+    if (!encodedPayload || typeof atob !== "function") return;
+    const normalized = encodedPayload.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
+    const claims = JSON.parse(atob(padded)) as { role?: unknown };
+    if (claims.role === "service_role") {
+      throw new Error("RECOVERY_CONFIG_REJECTED: service_role nao pode ser usada no frontend.");
+    }
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith("RECOVERY_CONFIG_REJECTED:")) throw error;
   }
 }
 

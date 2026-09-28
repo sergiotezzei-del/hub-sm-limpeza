@@ -1,5 +1,10 @@
-import { publicSupabaseFetch, sessionAwareSupabaseFetch, SUPABASE_URL, supabaseConfigured } from "../security/services/supabaseClient";
+import { authenticatedSupabaseFetch, SUPABASE_URL, supabaseConfigured } from "../security/services/supabaseClient";
 import { DEFAULT_MARKETING_CAPTURE_WINDOWS, type MarketingOccupiedCaptureSlot, type MarketingScheduleConfig } from "./marketingConfig";
+import {
+  endRecoveryMarketingSession,
+  refreshRecoveryMarketingSession,
+  startRecoveryMarketingSession,
+} from "./marketingSessionBridge";
 
 export type MarketingRole = "admin" | "marketing" | "sales_manager";
 export type MarketingRequestStatus =
@@ -242,12 +247,7 @@ export class MarketingRemoteError extends Error {
 }
 
 export async function startMarketingSession(accessCode: string): Promise<MarketingSession> {
-  const rows = await rpc<Array<{ session_token: string; user_id: string; expires_at: string }>>(
-    "marketing_start_session",
-    { p_access_code: accessCode },
-    true,
-  );
-  const session = rows?.[0];
+  const session = await startRecoveryMarketingSession(accessCode);
   if (!session?.session_token || !session.user_id) {
     throw new MarketingRemoteError(403, "MARKETING_ACCESS_DENIED");
   }
@@ -260,12 +260,12 @@ export async function startMarketingSession(accessCode: string): Promise<Marketi
 
 export async function endMarketingSession(sessionToken: string) {
   if (!sessionToken) return;
-  await rpc<unknown>("marketing_end_session", { p_session_token: sessionToken });
+  await endRecoveryMarketingSession(sessionToken);
 }
 
 export async function refreshMarketingSession(sessionToken: string) {
   if (!sessionToken) throw new MarketingRemoteError(401, "MARKETING_SESSION_REQUIRED");
-  await rpc<unknown>("marketing_refresh_session", { p_session_token: sessionToken });
+  await refreshRecoveryMarketingSession(sessionToken);
 }
 
 export async function getMarketingDashboard(sessionToken: string): Promise<MarketingDashboard> {
@@ -479,7 +479,7 @@ export function getMarketingErrorMessage(error: unknown) {
   const raw = error instanceof Error ? error.message : String(error ?? "");
   const normalized = raw.toUpperCase();
   if (normalized.includes("MARKETING_ACCESS_DENIED")) return "Este usuário ainda não tem acesso ao Marketing.";
-  if (normalized.includes("MARKETING_SESSION_EXPIRED")) return "Sua sessão do Marketing expirou. Entre novamente no HUB.";
+  if (normalized.includes("MARKETING_SESSION_EXPIRED")) return "Sua sessão do Marketing expirou. Renove seu acesso abaixo.";
   if (normalized.includes("MARKETING_SESSION_MISMATCH")) return "A sessão do Marketing não corresponde ao usuário atual.";
   if (normalized.includes("MARKETING_REQUEST_STALE")) return "Este pedido foi atualizado por outra pessoa. Recarregue os dados antes de salvar novamente.";
   if (normalized.includes("MARKETING_AUTH_REQUIRED")) return "A sessão segura do administrador não está disponível. Entre novamente no HUB.";
@@ -557,13 +557,12 @@ function toIsoOrNull(value?: string) {
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
-async function rpc<T>(name: string, body: Record<string, unknown>, sessionAware = false): Promise<T> {
+async function rpc<T>(name: string, body: Record<string, unknown>): Promise<T> {
   if (!supabaseConfigured) throw new MarketingRemoteError(0, "Supabase não configurado.");
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
-    const transport = sessionAware ? sessionAwareSupabaseFetch : publicSupabaseFetch;
-    const response = await transport(`${SUPABASE_URL}/rest/v1/rpc/${name}`, {
+    const response = await authenticatedSupabaseFetch(`${SUPABASE_URL}/rest/v1/rpc/${name}`, {
       method: "POST",
       signal: controller.signal,
       headers: {
