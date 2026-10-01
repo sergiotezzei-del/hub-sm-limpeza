@@ -25,7 +25,7 @@ export async function signInRecoverySupabaseAuth(managedUserId: string, accessCo
       },
       body: JSON.stringify({ accessCode: cleanAccessCode }),
       cache: "no-store",
-      credentials: "omit",
+      credentials: "same-origin",
       signal: controller.signal,
     });
     if (!response.ok) throw new Error("RECOVERY_AUTH_BRIDGE_REJECTED");

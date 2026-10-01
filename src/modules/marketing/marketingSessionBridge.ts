@@ -43,7 +43,7 @@ async function request<T>(method: "POST" | "DELETE", path: string, body: Record<
       },
       body: JSON.stringify(body),
       cache: "no-store",
-      credentials: "omit",
+      credentials: "same-origin",
     });
     if (!response.ok) {
       const diagnostic = await readSupabaseRestError(response);
