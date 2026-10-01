@@ -4,6 +4,7 @@ const RECOVERY_DB_SCHEMA = "recovery_api";
 const RECOVERY_FRONTEND_ORIGINS = new Set([
   "http://127.0.0.1:15173",
   "https://hubsantamariatem.vercel.app",
+  "https://hub-santamariatem-git-recover-11cfa4-sergiotezzei-dels-projects.vercel.app",
 ]);
 const frontendOrigin = typeof window === "undefined" ? "" : window.location.origin;
 const configuredSchema = (import.meta.env.VITE_DB_SCHEMA ?? "").trim();
