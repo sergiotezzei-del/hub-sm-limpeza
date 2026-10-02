@@ -10,6 +10,7 @@
     <meta name="application-name" content="HUB Santa Maria" />
     <meta name="apple-mobile-web-app-title" content="HUB Santa Maria" />
     <meta name="description" content="Central Operacional HUB Santa Maria" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; worker-src 'self' blob:; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="stylesheet" href="/employee-card-fix.css?v=1" />
     <link rel="stylesheet" href="/profile-photo-rect.css?v=1" />
@@ -20,8 +21,87 @@
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      (() => {
+        const allowedFrontendOrigins = new Set([
+          "http://127.0.0.1:15173",
+          "https://hubsantamariatem.vercel.app",
+          "https://hub-santamariatem-git-recover-11cfa4-sergiotezzei-dels-projects.vercel.app",
+        ]);
+        const expectedFrontendOrigin = window.location.origin;
+        const expectedUrl = expectedFrontendOrigin;
+        const expectedMarketingBridgeUrl = expectedFrontendOrigin;
+        const expectedSchema = "recovery_api";
+        const url = expectedFrontendOrigin;
+        const anonKey = "%VITE_DB_PUBLIC_KEY%".trim();
+        const schema = "%VITE_DB_SCHEMA%".trim();
+
+        if (!allowedFrontendOrigins.has(expectedFrontendOrigin)) {
+          throw new Error("RECOVERY_ORIGIN_REJECTED: origem do frontend recovery não autorizada.");
+        }
+        if (schema !== expectedSchema || !anonKey) {
+          throw new Error("RECOVERY_CONFIG_REJECTED: configuração recovery obrigatória ausente ou divergente.");
+        }
+        if (anonKey.startsWith("sb_secret_")) {
+          throw new Error("RECOVERY_CONFIG_REJECTED: chave privilegiada nao pode ser usada no frontend.");
+        }
+        if (anonKey.startsWith("eyJ")) {
+          try {
+            const encoded = anonKey.split(".")[1];
+            const normalized = encoded.replace(/-/g, "+").replace(/_/g, "/");
+            const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
+            const claims = JSON.parse(atob(padded));
+            if (claims.role === "service_role") {
+              throw new Error("RECOVERY_CONFIG_REJECTED: service_role nao pode ser usada no frontend.");
+            }
+          } catch (error) {
+            if (error instanceof Error && error.message.startsWith("RECOVERY_CONFIG_REJECTED:")) throw error;
+          }
+        }
+
+        const projectRef = new URL(url).hostname.split(".")[0];
+        const nativeFetch = window.fetch.bind(window);
+        window.fetch = (input, init) => {
+          const requestUrl = input instanceof Request ? input.url : String(input);
+          const target = new URL(requestUrl, window.location.href);
+          const requestMethod = (input instanceof Request ? input.method : init?.method ?? "GET").toUpperCase();
+          const sameFrontend = target.origin === expectedFrontendOrigin;
+          const allowedStaticRead = sameFrontend
+            && requestMethod === "GET"
+            && !target.pathname.startsWith("/api/")
+            && !target.pathname.startsWith("/functions/");
+          const allowedGateway = sameFrontend
+            && (target.pathname.startsWith("/auth/v1/") || target.pathname.startsWith("/rest/v1/"));
+          const allowedRecoveryAuth = sameFrontend
+            && target.pathname === "/recovery-auth/v1/session"
+            && !target.search
+            && !target.hash
+            && requestMethod === "POST";
+          const allowedRecoveryMarketing = sameFrontend
+            && !target.search
+            && !target.hash
+            && (
+              (target.pathname === "/recovery-marketing/v1/session"
+                && (requestMethod === "POST" || requestMethod === "DELETE"))
+              || (target.pathname === "/recovery-marketing/v1/session/refresh"
+                && requestMethod === "POST")
+            );
+          if (!allowedStaticRead && !allowedGateway && !allowedRecoveryAuth && !allowedRecoveryMarketing) {
+            throw new Error("RECOVERY_NETWORK_REJECTED: destino fora do frontend/gateway local autorizado.");
+          }
+          return nativeFetch(input, init);
+        };
+
+        window.__HUB_RECOVERY_SUPABASE__ = Object.freeze({
+          url,
+          anonKey,
+          schema,
+          mode: "recovery",
+          authStorageKey: `sb-${projectRef}-auth-token`,
+        });
+      })();
+    </script>
     <script src="/mutation-observer-throttle.js?v=1"></script>
-    <script src="/master-map-disabled.js?v=1"></script>
     <script type="module" src="/src/main.tsx"></script>
     <script src="/app-name.js?v=1"></script>
     <script src="/profile-ui.js?v=1"></script>

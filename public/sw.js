@@ -1,7 +1,7 @@
-const CACHE_NAME = "hub-santa-maria-v21";
+const CACHE_NAME = "hub-santa-maria-v23-recovery-wide-final";
 const MARKETING_PUSH_CACHE = "hub-marketing-push-state";
 const LAST_MARKETING_PUSH_KEY = "/__hub_last_marketing_push";
-const MARKETING_PUSH_ENDPOINT = "https://dtdepfpkyiqtnsjztjit.supabase.co/functions/v1/marketing-public-push";
+const MARKETING_PUSH_ENDPOINT = null;
 const APP_SHELL = [
   "/",
   "/manifest.webmanifest",
@@ -165,6 +165,7 @@ async function notifyOpenMarketingClients(payload) {
 }
 
 async function acknowledgeMarketingPush(ackToken) {
+  if (!MARKETING_PUSH_ENDPOINT) return;
   try {
     await fetch(MARKETING_PUSH_ENDPOINT, {
       method: "POST",

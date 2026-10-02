@@ -26,24 +26,33 @@
   async function getConfig() {
     if (configPromise) return configPromise;
     configPromise = (async () => {
-      const appScript = Array.from(document.scripts).find((script) => script.src.includes('/assets/index-'));
-      if (!appScript) throw new Error('Bundle principal não encontrado');
-      const code = await fetch(appScript.src).then((response) => response.text());
-      const url = code.match(/https:\/\/dtdepfpkyiqtnsjztjit\.supabase\.co/)?.[0];
-      const key = code.match(/sb_publishable_[A-Za-z0-9_-]+/)?.[0];
-      if (!url || !key) throw new Error('Configuração online não encontrada');
-      return { url, key };
+      const recovery = window.__HUB_RECOVERY_SUPABASE__;
+      if (recovery?.mode !== 'recovery' || recovery?.url !== window.location.origin || recovery?.schema !== 'recovery_api' || !recovery?.anonKey) {
+        throw new Error('RECOVERY_CONFIG_REJECTED: configuração de permissões de foto inválida.');
+      }
+      return { url: recovery.url, key: recovery.anonKey, schema: recovery.schema };
     })();
     return configPromise;
   }
 
   async function api(path, options = {}) {
-    const { url, key } = await getConfig();
+    const { url, key, schema } = await getConfig();
+    let accessToken = '';
+    try {
+      const recovery = window.__HUB_RECOVERY_SUPABASE__;
+      const stored = JSON.parse(localStorage.getItem(recovery.authStorageKey) || '{}');
+      accessToken = typeof stored?.access_token === 'string' ? stored.access_token : '';
+    } catch {
+      accessToken = '';
+    }
     const response = await fetch(`${url}/rest/v1/${path}`, {
       ...options,
       headers: {
         apikey: key,
         'Content-Type': 'application/json',
+        'Accept-Profile': schema,
+        'Content-Profile': schema,
+        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
         ...(options.headers || {}),
       },
     });

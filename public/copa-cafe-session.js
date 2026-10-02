@@ -1,6 +1,11 @@
 (() => {
-  const SUPABASE_URL = 'https://dtdepfpkyiqtnsjztjit.supabase.co';
-  const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR0ZGVwZnBreWlxdG5zanp0aml0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMxODkyMTcsImV4cCI6MjA5ODc2NTIxN30.kNYAYQTw8gqUaYqRTqdcPtthXO5vbZD6XwxeBvhpRgo';
+  const recovery = window.__HUB_RECOVERY_SUPABASE__;
+  if (recovery?.mode !== 'recovery' || recovery?.url !== window.location.origin || recovery?.schema !== 'recovery_api' || !recovery?.anonKey) {
+    throw new Error('RECOVERY_CONFIG_REJECTED: configuração da Copa/Café inválida.');
+  }
+  const SUPABASE_URL = recovery.url;
+  const SUPABASE_KEY = recovery.anonKey;
+  const SUPABASE_SCHEMA = recovery.schema;
   const SESSION_KEY = 'hub-copa-cafe-session-v1';
 
   function parseStored() {
@@ -22,13 +27,26 @@
     sessionStorage.removeItem(SESSION_KEY);
   }
 
+  function readRecoveryAccessToken() {
+    try {
+      const stored = JSON.parse(localStorage.getItem(recovery.authStorageKey) || '{}');
+      return typeof stored?.access_token === 'string' && stored.access_token ? stored.access_token : '';
+    } catch {
+      return '';
+    }
+  }
+
   async function request(path, options = {}) {
+    const accessToken = readRecoveryAccessToken();
     const response = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
       ...options,
       headers: {
         apikey: SUPABASE_KEY,
         Accept: 'application/json',
         'Content-Type': 'application/json',
+        'Accept-Profile': SUPABASE_SCHEMA,
+        'Content-Profile': SUPABASE_SCHEMA,
+        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
         ...(options.headers || {}),
       },
     });

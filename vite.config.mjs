@@ -103,7 +103,26 @@ const xyflowDependencyAliases = [
   replacement: packageDir(packageName, xyflowReactDir),
 }));
 
+const recoveryGatewayProxy = {
+  "/auth/v1": { target: "http://127.0.0.1:18000", changeOrigin: false },
+  "/rest/v1": { target: "http://127.0.0.1:18000", changeOrigin: false },
+  "/recovery-auth": { target: "http://127.0.0.1:18000", changeOrigin: false },
+  "/recovery-marketing": { target: "http://127.0.0.1:18000", changeOrigin: false },
+};
+
 export default defineConfig({
+  server: {
+    host: "127.0.0.1",
+    port: 15173,
+    strictPort: true,
+    proxy: recoveryGatewayProxy,
+  },
+  preview: {
+    host: "127.0.0.1",
+    port: 15173,
+    strictPort: true,
+    proxy: recoveryGatewayProxy,
+  },
   resolve: {
     preserveSymlinks: true,
     alias: [

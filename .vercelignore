@@ -1,0 +1,12 @@
+.env*
+.tmp/
+.git/
+node_modules/
+dist/
+dist.*/
+*.bak*
+.worktrees/
+api/
+supabase/
+tools/
+fase0b/

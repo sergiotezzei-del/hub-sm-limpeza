@@ -1,5 +1,5 @@
 import {
-  publicSupabaseFetch,
+  authenticatedSupabaseFetch,
   SUPABASE_URL,
   supabaseConfigured,
 } from "../security/services/supabaseClient";
@@ -42,7 +42,7 @@ async function rpc<T>(name: string, body: Record<string, unknown>): Promise<T> {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
-    const response = await publicSupabaseFetch(`${SUPABASE_URL}/rest/v1/rpc/${name}`, {
+    const response = await authenticatedSupabaseFetch(`${SUPABASE_URL}/rest/v1/rpc/${name}`, {
       method: "POST",
       signal: controller.signal,
       headers: {

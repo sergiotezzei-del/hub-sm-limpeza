@@ -1,5 +1,23 @@
 {
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "outputDirectory": "dist",
   "rewrites": [
+    {
+      "source": "/auth/v1/:path*",
+      "destination": "https://tezzei.tail78d990.ts.net/auth/v1/:path*"
+    },
+    {
+      "source": "/rest/v1/:path*",
+      "destination": "https://tezzei.tail78d990.ts.net/rest/v1/:path*"
+    },
+    {
+      "source": "/recovery-auth/:path*",
+      "destination": "https://tezzei.tail78d990.ts.net/recovery-auth/:path*"
+    },
+    {
+      "source": "/recovery-marketing/:path*",
+      "destination": "https://tezzei.tail78d990.ts.net/recovery-marketing/:path*"
+    },
     { "source": "/chamados", "destination": "/" },
     { "source": "/chamados/", "destination": "/" },
     { "source": "/marketing/pedido", "destination": "/" },
@@ -12,5 +30,39 @@
     { "source": "/auditorio/consulta/", "destination": "/" },
     { "source": "/radio", "destination": "/" },
     { "source": "/radio/", "destination": "/" }
+  ],
+  "headers": [
+    {
+      "source": "/auth/v1/:path*",
+      "headers": [
+        { "key": "Cache-Control", "value": "private, no-store, max-age=0" },
+        { "key": "CDN-Cache-Control", "value": "no-store" },
+        { "key": "Vercel-CDN-Cache-Control", "value": "no-store" }
+      ]
+    },
+    {
+      "source": "/rest/v1/:path*",
+      "headers": [
+        { "key": "Cache-Control", "value": "private, no-store, max-age=0" },
+        { "key": "CDN-Cache-Control", "value": "no-store" },
+        { "key": "Vercel-CDN-Cache-Control", "value": "no-store" }
+      ]
+    },
+    {
+      "source": "/recovery-auth/:path*",
+      "headers": [
+        { "key": "Cache-Control", "value": "private, no-store, max-age=0" },
+        { "key": "CDN-Cache-Control", "value": "no-store" },
+        { "key": "Vercel-CDN-Cache-Control", "value": "no-store" }
+      ]
+    },
+    {
+      "source": "/recovery-marketing/:path*",
+      "headers": [
+        { "key": "Cache-Control", "value": "private, no-store, max-age=0" },
+        { "key": "CDN-Cache-Control", "value": "no-store" },
+        { "key": "Vercel-CDN-Cache-Control", "value": "no-store" }
+      ]
+    }
   ]
 }
