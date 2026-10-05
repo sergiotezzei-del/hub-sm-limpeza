@@ -136,7 +136,9 @@ export async function registerGuardRoundPoint(input: {
   const point = input.point ?? currentState.expectedPoint;
   if (!point) throw new Error("ROUND_SEQUENCE_COMPLETE");
   const status = getCheckinStatus(input.session, schedule, point, currentState.checkins, new Date());
-  const guardId = input.session.guardId ?? getGuardSupabaseUserBinding(input.guardLocalId).userId;
+  const guardId = getStoredSupabaseSessionSnapshot().userId
+    ?? input.session.guardId
+    ?? getGuardSupabaseUserBinding(input.guardLocalId).userId;
   const checkinSource = input.checkinSource ?? "manual";
 
   if (data.remoteReadable && isRoundRemoteSyncReady(guardId, input.session)) {

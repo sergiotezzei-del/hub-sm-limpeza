@@ -243,10 +243,19 @@ export async function verifySupabaseAuthenticatedRest() {
   return { userId: userData.user.id, diagnostic };
 }
 
-export async function installAndVerifyRecoveryAuthSession(tokens: RecoveryAuthSessionTokens) {
+export async function installAndVerifyRecoveryAuthSession(
+  tokens: RecoveryAuthSessionTokens,
+  managedUserId: string,
+) {
   const accessToken = readString(tokens.access_token);
   const refreshToken = readString(tokens.refresh_token);
-  if (!accessToken || !refreshToken) throw new Error("RECOVERY_AUTH_SESSION_INVALID");
+  const expectedManagedUserId = managedUserId.trim();
+  const expectedAuthRole = expectedManagedUserId === "tezzei" || expectedManagedUserId === "recovery-ui-test"
+    ? "tezzei"
+    : "hub_user";
+  if (!accessToken || !refreshToken || !expectedManagedUserId) {
+    throw new Error("RECOVERY_AUTH_SESSION_INVALID");
+  }
 
   const supabase = await getSupabaseClient();
   if (!supabase) throw new Error("SUPABASE_CLIENT_UNAVAILABLE");
@@ -258,20 +267,22 @@ export async function installAndVerifyRecoveryAuthSession(tokens: RecoveryAuthSe
     });
     const sessionUser = sessionData.session?.user;
     if (sessionError || !sessionData.session?.access_token || !sessionUser?.id
-        || sessionUser.app_metadata?.role !== "tezzei") {
+        || sessionUser.app_metadata?.managed_user_id !== expectedManagedUserId
+        || sessionUser.app_metadata?.role !== expectedAuthRole) {
       throw new Error("RECOVERY_AUTH_SESSION_REJECTED");
     }
     rememberSupabaseSession(sessionData.session);
 
     const { data: userData, error: userError } = await supabase.auth.getUser();
     if (userError || !userData.user?.id || userData.user.id !== sessionUser.id
-        || userData.user.app_metadata?.role !== "tezzei") {
+        || userData.user.app_metadata?.managed_user_id !== expectedManagedUserId
+        || userData.user.app_metadata?.role !== expectedAuthRole) {
       throw new Error("RECOVERY_AUTH_USER_REJECTED");
     }
 
     const probe = await verifySupabaseAuthenticatedRest();
     if (probe.userId !== userData.user.id) throw new Error("RECOVERY_AUTH_USER_MISMATCH");
-    return { userId: userData.user.id };
+    return { userId: userData.user.id, managedUserId: expectedManagedUserId };
   } catch {
     await signOutSupabaseAuth();
     throw new Error("RECOVERY_AUTH_SESSION_FAILED");

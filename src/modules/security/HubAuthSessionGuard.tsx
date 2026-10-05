@@ -1,12 +1,8 @@
 import { useEffect } from "react";
-import type { GuardId } from "../../types";
 import { getSupabaseClient } from "./services/supabaseClient";
-import { getAdminSupabaseUserBinding, getGuardSupabaseUserBinding } from "./services/guardSupabaseConfig";
 import { HUB_ACTIVE_SESSION_KEY } from "./services/hubSessionRecovery";
 
 const CHECK_INTERVAL_MS = 5 * 60 * 1000;
-const GUARD_IDS = new Set<GuardId>(["carlos-clemente", "salomao"]);
-
 type SavedHubSession = {
   currentUser?: string | null;
 };
@@ -18,8 +14,8 @@ export function HubAuthSessionGuard() {
 
     const validate = async () => {
       if (cancelled || checking) return;
-      const expectedUserId = getExpectedSupabaseUserId();
-      if (!expectedUserId) return;
+      const expectedManagedUserId = readSavedCurrentUser();
+      if (!expectedManagedUserId) return;
 
       checking = true;
       try {
@@ -29,14 +25,14 @@ export function HubAuthSessionGuard() {
         const { data, error } = await supabase.auth.getSession();
         if (cancelled) return;
 
-        if (!error && data.session?.user.id === expectedUserId) return;
+        if (!error && sessionMatchesManagedUser(data.session?.user, expectedManagedUserId)) return;
 
         // Try to recover an expired access token from the persisted refresh token.
         // A temporary/missing cloud session must not erase the valid local HUB
         // session or trigger a reload/login loop.
         const refreshed = await supabase.auth.refreshSession();
         if (cancelled) return;
-        if (!refreshed.error && refreshed.data.session?.user.id === expectedUserId) return;
+        if (!refreshed.error && sessionMatchesManagedUser(refreshed.data.session?.user, expectedManagedUserId)) return;
       } catch {
         // Network/auth refresh failures are surfaced by protected modules when
         // needed, but the main HUB session remains stable.
@@ -66,12 +62,8 @@ export function HubAuthSessionGuard() {
   return null;
 }
 
-function getExpectedSupabaseUserId() {
-  const currentUser = readSavedCurrentUser();
-  if (!currentUser) return undefined;
-  if (currentUser === "tezzei") return getAdminSupabaseUserBinding().userId;
-  if (GUARD_IDS.has(currentUser as GuardId)) return getGuardSupabaseUserBinding(currentUser as GuardId).userId;
-  return undefined;
+function sessionMatchesManagedUser(user: { app_metadata?: Record<string, unknown> } | null | undefined, managedUserId: string) {
+  return user?.app_metadata?.managed_user_id === managedUserId;
 }
 
 function readSavedCurrentUser() {

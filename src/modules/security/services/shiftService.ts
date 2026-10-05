@@ -101,9 +101,9 @@ export async function loadGuardShiftState(input: {
   nextShift: GuardScheduleShift | null;
 }): Promise<GuardShiftState> {
   const binding = getGuardSupabaseUserBinding(input.guardLocalId);
-  const guardId = binding.userId;
+  const guardId = getStoredSupabaseSessionSnapshot().userId ?? binding.userId;
   const localSession = input.todayShift ? getOrCreateLocalTodaySession(input.guardLocalId, input.guardName, input.todayShift, guardId) : null;
-  const remoteReady = isGuardRemoteSyncReady(binding);
+  const remoteReady = isGuardRemoteSyncReady(guardId);
   const syncMessages = getSyncSetupMessages(input.guardName, binding, Boolean(input.todayShift), remoteReady);
 
   if (!input.todayShift || !remoteReady || !guardId) {
@@ -143,11 +143,11 @@ export async function activateGuardShift(input: {
   if (!input.todayShift) throw new GuardShiftNoTodayError();
 
   const binding = getGuardSupabaseUserBinding(input.guardLocalId);
-  const guardId = binding.userId;
+  const guardId = getStoredSupabaseSessionSnapshot().userId ?? binding.userId;
   const currentSession = getOrCreateLocalTodaySession(input.guardLocalId, input.guardName, input.todayShift, guardId);
   ensureNoLocalActiveDuplicate(input.guardLocalId, currentSession.id);
 
-  if (isGuardRemoteSyncReady(binding) && guardId) {
+  if (isGuardRemoteSyncReady(guardId) && guardId) {
     try {
       await ensureNoCloudActiveDuplicate(guardId, currentSession.id);
       const cloudSession = await upsertCloudActivation(currentSession, input.location);
@@ -184,9 +184,9 @@ export async function endGuardShift(input: {
   location: GuardShiftLocation;
 }): Promise<GuardShiftActionResult> {
   const binding = getGuardSupabaseUserBinding(input.guardLocalId);
-  const guardId = input.session.guardId ?? binding.userId;
+  const guardId = getStoredSupabaseSessionSnapshot().userId ?? input.session.guardId ?? binding.userId;
 
-  if (isGuardRemoteSyncReady(binding) && guardId && input.session.syncStatus === "supabase") {
+  if (isGuardRemoteSyncReady(guardId) && guardId && input.session.syncStatus === "supabase") {
     try {
       const cloudSession = await updateCloudShift(input.session.id, {
         status: "ended",
@@ -423,12 +423,12 @@ export async function loadGuardMonitoringEntries(): Promise<GuardMonitoringLoadS
 }
 
 export function getGuardSupabaseUserId(guardLocalId: GuardId) {
-  return getGuardSupabaseUserBinding(guardLocalId).userId;
+  return getStoredSupabaseSessionSnapshot().userId ?? getGuardSupabaseUserBinding(guardLocalId).userId;
 }
 
-function isGuardRemoteSyncReady(binding: GuardSupabaseUserBinding) {
+function isGuardRemoteSyncReady(guardId?: string) {
   const session = getStoredSupabaseSessionSnapshot();
-  return Boolean(supabaseConfigured && binding.userId && session.accessToken && session.userId === binding.userId);
+  return Boolean(supabaseConfigured && guardId && session.accessToken && session.userId === guardId);
 }
 
 function getCurrentAuthUserLabel(sessionUserId?: string, adminUserId?: string, carlosUserId?: string, salomaoUserId?: string) {
@@ -775,7 +775,10 @@ function getOrCreateLocalTodaySession(guardLocalId: GuardId, guardName: string, 
     && session.scheduledStart === shift.startTime
   ));
 
-  if (existing) return { ...existing, guardId: existing.guardId ?? guardId };
+  if (existing) {
+    const canBindCurrentAuth = Boolean(guardId && existing.syncStatus !== "supabase");
+    return { ...existing, guardId: canBindCurrentAuth ? guardId : existing.guardId ?? guardId };
+  }
 
   const session: GuardShiftSession = {
     id: createId(),

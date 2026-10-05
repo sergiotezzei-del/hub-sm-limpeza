@@ -11,7 +11,6 @@ import { MarketingFeature, type MarketingSummary } from "./modules/marketing/Mar
 import { MarketingSessionKeepalive } from "./modules/marketing/MarketingSessionKeepalive";
 import { endMarketingSession, startMarketingSession } from "./modules/marketing/marketingService";
 import { GuardShiftPanel, GuardSyncDiagnosticPanel } from "./modules/security/components/GuardShift";
-import { signInAdminSupabaseAuth, signInGuardSupabaseAuth } from "./modules/security/services/guardAuthBridge";
 import { signInRecoverySupabaseAuth } from "./modules/security/services/recoveryAuthBridge";
 import { loadGuardPaymentData, saveGuardPaymentProfile, saveGuardPaymentRecords, updateGuardPaymentRecordStatus } from "./modules/security/services/paymentService";
 import { DEFAULT_GUARD_ROUND_POINTS, DEFAULT_GUARD_ROUND_SCHEDULES, loadGuardRoundReport } from "./modules/security/services/roundService";
@@ -832,10 +831,10 @@ function App() {
   async function handleLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const cleanPassword = password.trim();
-    let user = findManagedUserByAccessCode(cleanPassword, managedUsers);
+    let user: ManagedUser | null = null;
     let loginNotice = "";
 
-    if (cleanPassword && (!user || !user.system)) {
+    if (cleanPassword) {
       try {
         const remoteUser = await loginManagedUserRemoteByAccessCode(cleanPassword);
 
@@ -854,15 +853,13 @@ function App() {
           });
           user = normalizedRemoteUser;
           loginNotice = "Usuário sincronizado.";
-        } else if (!user || !user.system) {
+        } else {
           setLoginError("Senha incorreta");
           return;
         }
       } catch (error) {
-        if (!user) {
-          setLoginError(getManagedUserRemoteLoginErrorMessage(error));
-          return;
-        }
+        setLoginError(getManagedUserRemoteLoginErrorMessage(error));
+        return;
       }
     }
 
@@ -879,21 +876,16 @@ function App() {
     const activeElement = document.activeElement;
     if (activeElement instanceof HTMLElement) activeElement.blur();
 
-    if (user.id === "recovery-ui-test") {
-      try {
-        await signInRecoverySupabaseAuth(user.id, cleanPassword);
-      } catch {
-        await signOutSupabaseAuth();
-        setLoginError("Não foi possível criar a sessão segura de recuperação.");
-        return;
-      }
-    } else if (user.linkedGuardId) {
-      await signInGuardSupabaseAuth(user.linkedGuardId, cleanPassword);
-    } else if (user.id === "tezzei") {
-      await signInAdminSupabaseAuth(cleanPassword);
-      void refreshManagedUsersFromCloud({ showNotice: false });
-    } else {
+    try {
+      await signInRecoverySupabaseAuth(user.id, cleanPassword);
+    } catch {
       await signOutSupabaseAuth();
+      setLoginError("Não foi possível criar a sessão segura de recuperação.");
+      return;
+    }
+
+    if (user.id === "tezzei" || user.id === "recovery-ui-test") {
+      void refreshManagedUsersFromCloud({ showNotice: false });
     }
 
     let nextMarketingSessionToken: string | null = null;
@@ -6380,10 +6372,6 @@ function getManagedUserPermissions(userId: UserRole | null, users: ManagedUser[]
 
 function hasManagedUserPermission(userId: UserRole | null, permission: UserPermission, users: ManagedUser[]) {
   return getManagedUserPermissions(userId, users).includes(permission);
-}
-
-function findManagedUserByAccessCode(accessCode: string, users: ManagedUser[]) {
-  return users.find((user) => user.accessCode === accessCode) ?? null;
 }
 
 function getInitialViewForManagedUser(user: ManagedUser): View {

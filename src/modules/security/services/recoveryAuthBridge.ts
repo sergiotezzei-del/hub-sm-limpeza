@@ -5,14 +5,16 @@ import {
   type RecoveryAuthSessionTokens,
 } from "./supabaseClient";
 
-const RECOVERY_MANAGED_USER_ID = "recovery-ui-test";
 const RECOVERY_AUTH_SESSION_URL = `${SUPABASE_URL}/recovery-auth/v1/session`;
 const REQUEST_TIMEOUT_MS = 15_000;
 
 export async function signInRecoverySupabaseAuth(managedUserId: string, accessCode: string) {
-  if (managedUserId !== RECOVERY_MANAGED_USER_ID) throw new Error("RECOVERY_AUTH_USER_REJECTED");
+  const cleanManagedUserId = managedUserId.trim();
   const cleanAccessCode = accessCode.trim();
-  if (!cleanAccessCode || cleanAccessCode.length > 128) throw new Error("RECOVERY_AUTH_REQUEST_REJECTED");
+  if (!cleanManagedUserId || cleanManagedUserId.length > 160
+      || !cleanAccessCode || cleanAccessCode.length > 128) {
+    throw new Error("RECOVERY_AUTH_REQUEST_REJECTED");
+  }
 
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -23,7 +25,7 @@ export async function signInRecoverySupabaseAuth(managedUserId: string, accessCo
         Accept: "application/json",
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ accessCode: cleanAccessCode }),
+      body: JSON.stringify({ managedUserId: cleanManagedUserId, accessCode: cleanAccessCode }),
       cache: "no-store",
       credentials: "same-origin",
       signal: controller.signal,
@@ -31,7 +33,7 @@ export async function signInRecoverySupabaseAuth(managedUserId: string, accessCo
     if (!response.ok) throw new Error("RECOVERY_AUTH_BRIDGE_REJECTED");
     const payload: unknown = await response.json();
     if (!isRecoveryAuthSessionTokens(payload)) throw new Error("RECOVERY_AUTH_RESPONSE_INVALID");
-    return await installAndVerifyRecoveryAuthSession(payload);
+    return await installAndVerifyRecoveryAuthSession(payload, cleanManagedUserId);
   } catch {
     await signOutSupabaseAuth();
     throw new Error("RECOVERY_AUTH_LOGIN_FAILED");
