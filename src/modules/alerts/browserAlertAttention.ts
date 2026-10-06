@@ -5,7 +5,8 @@ const ALERT_TITLE = "🔴 NOVO ALERTA · HUB Santa Maria";
 const CARD_SELECTOR = ".hub-alert-panel .hub-alert-card";
 const ATTENTION_ATTRIBUTE = "data-hub-alert-attention";
 const NEW_CARD_CLASS = "is-new-alert-attention";
-const STORAGE_KEY = "hub-sm-unseen-alerts-v1";
+const LEGACY_STORAGE_KEY = "hub-sm-unseen-alerts-v1";
+const SESSION_KEY = "hub-sm-active-session";
 const REMINDER_TAG = "hub-unseen-alert-reminder";
 const WARMUP_MS = 4000;
 const VISIBLE_FLASH_MS = 12000;
@@ -24,7 +25,11 @@ let blinkTimer = 0;
 let blinkOn = false;
 let attentionActive = false;
 let suppressGenericDetectionUntil = 0;
-let unseenAlerts = loadUnseenAlerts();
+// Badge = pendências do painel atual; "não visto" só controla a atenção visual.
+const unseenAlerts = new Map<string, StoredAlert>();
+let sessionUser = readSessionUser();
+let pendingCount = 0;
+let badgeWrite = Promise.resolve();
 const pendingTaskKeysByTitle = new Map<string, string[]>();
 
 const favicon = document.querySelector<HTMLLinkElement>('link[rel~="icon"]');
@@ -147,41 +152,55 @@ function identityForCard(card: HTMLElement) {
 }
 
 function cardsInPanel(panel: HTMLElement) {
-  return Array.from(panel.querySelectorAll<HTMLElement>(".hub-alert-card"));
+  return Array.from(panel.querySelectorAll<HTMLElement>(".hub-alert-card")).filter((card) => {
+    // Respeita as dispensas e a deduplicação já aplicadas pelo próprio painel.
+    if (card.closest('[hidden], [aria-hidden="true"]') || getComputedStyle(card).display === "none") return false;
+    // Entregas/saídas já realizadas são histórico, não pendências de análise.
+    if (card.classList.contains("hub-cleaning-activity-card")) {
+      const status = normalize(card.querySelector(".hub-alert-card-status span")?.textContent ?? "");
+      return status === "CONFERÊNCIA" || card.classList.contains("is-divergence");
+    }
+    return true;
+  });
 }
 
 function currentCards(panel: HTMLElement) {
   return new Set(cardsInPanel(panel).map(identityForCard).filter(Boolean));
 }
 
-function loadUnseenAlerts() {
-  const alerts = new Map<string, StoredAlert>();
+function readSessionUser() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return alerts;
-    const parsed = JSON.parse(raw) as StoredAlert[];
-    if (!Array.isArray(parsed)) return alerts;
-    parsed.forEach((alert) => {
-      if (!alert?.key || !alert?.title) return;
-      alerts.set(alert.key, {
-        key: alert.key,
-        title: normalize(alert.title),
-        body: normalize(alert.body) || "Abra o HUB para conferir.",
-        firstSeenAt: alert.firstSeenAt || new Date().toISOString(),
-      });
-    });
+    const raw = sessionStorage.getItem(SESSION_KEY);
+    const user = raw ? JSON.parse(raw)?.currentUser : null;
+    return typeof user === "string" ? user : String(user?.id ?? "");
   } catch {
-    // O contador segue em memória caso o armazenamento do navegador esteja indisponível.
+    return "";
   }
-  return alerts;
 }
 
-function persistUnseenAlerts() {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(Array.from(unseenAlerts.values()).slice(-100)));
-  } catch {
-    // Sem persistência, o contador ainda funciona enquanto o HUB estiver aberto.
-  }
+function syncSession() {
+  const nextUser = readSessionUser();
+  if (nextUser === sessionUser) return;
+  sessionUser = nextUser;
+  Array.from(unseenAlerts.keys()).forEach(acknowledgeAlert);
+  pendingTaskKeysByTitle.clear();
+  knownCards.clear();
+  initialized = false;
+  suppressGenericDetectionUntil = 0;
+  if (warmupTimer) window.clearTimeout(warmupTimer);
+  observedPanel = null;
+  pendingCount = 0;
+  stopVisualAttention();
+  syncAppBadge(true);
+}
+
+function reconcilePendingCards(panel: HTMLElement) {
+  const cards = cardsInPanel(panel);
+  pendingCount = cards.length;
+  const pendingKeys = new Set(cards.map(storageKeyForCard));
+  Array.from(unseenAlerts.keys()).forEach((key) => {
+    if (!pendingKeys.has(key)) acknowledgeAlert(key);
+  });
 }
 
 function setFavicon(inverse: boolean) {
@@ -195,12 +214,15 @@ function setFavicon(inverse: boolean) {
   favicon.setAttribute("href", originalFavicon);
 }
 
-function syncAppBadge() {
-  const count = unseenAlerts.size;
-  const promise = count > 0
-    ? badgeNavigator.setAppBadge?.(count)
-    : badgeNavigator.clearAppBadge?.();
-  promise?.catch(() => undefined);
+function syncAppBadge(force = false) {
+  const count = sessionUser ? pendingCount : 0;
+  if (!force && document.documentElement.dataset.hubUnseenAlerts === String(count)) return;
+  // Serializa as escritas para um set antigo não terminar depois do clear do logout.
+  badgeWrite = badgeWrite.catch(() => undefined).then(async () => {
+    if (count > 0) await badgeNavigator.setAppBadge?.(count);
+    else await badgeNavigator.clearAppBadge?.();
+  });
+  void badgeWrite.catch(() => undefined);
   document.documentElement.dataset.hubUnseenAlerts = String(count);
   document.dispatchEvent(new CustomEvent("hub:unseen-alert-count", { detail: { count } }));
 }
@@ -222,7 +244,6 @@ function registerUnseenAlert(key: string, title: string, body: string, notify = 
     firstSeenAt: new Date().toISOString(),
   };
   unseenAlerts.set(normalizedKey, alert);
-  persistUnseenAlerts();
   syncAppBadge();
   dispatchToast(alert);
   if (notify) void showHubWindowsNotification(alert.title, alert.body, notificationTagForKey(alert.key));
@@ -234,7 +255,6 @@ function acknowledgeAlert(key: string) {
   const normalizedKey = normalize(key);
   if (!normalizedKey || !unseenAlerts.has(normalizedKey)) return;
   unseenAlerts.delete(normalizedKey);
-  persistUnseenAlerts();
   syncAppBadge();
   void closeHubWindowsNotification(notificationTagForKey(normalizedKey));
 
@@ -272,6 +292,7 @@ function scheduleVisibleStop(delay = VISIBLE_FLASH_MS) {
 }
 
 function startAttention() {
+  if (!sessionUser || pendingCount === 0 || unseenAlerts.size === 0) return;
   if (blinkTimer) window.clearInterval(blinkTimer);
   if (visibleStopTimer) window.clearTimeout(visibleStopTimer);
   blinkTimer = 0;
@@ -290,7 +311,8 @@ function decorateUnseenCards(panel: HTMLElement) {
   assignPendingTaskKeys(panel);
   cardsInPanel(panel).forEach((card) => {
     const key = storageKeyForCard(card);
-    card.classList.toggle(NEW_CARD_CLASS, unseenAlerts.has(key));
+    const isUnseen = unseenAlerts.has(key);
+    if (card.classList.contains(NEW_CARD_CLASS) !== isUnseen) card.classList.toggle(NEW_CARD_CLASS, isUnseen);
   });
 }
 
@@ -314,8 +336,20 @@ function registerNewCards(panel: HTMLElement, identities: Set<string>) {
   });
 }
 
-function sync() {
+function sync(forceBadge = false) {
+  syncSession();
   const panel = document.querySelector<HTMLElement>(".hub-alert-panel");
+
+  if (!sessionUser) {
+    syncAppBadge(forceBadge);
+    return;
+  }
+  if (panel) {
+    assignPendingTaskKeys(panel);
+    reconcilePendingCards(panel);
+  }
+  // Ao navegar para outro módulo, mantém apenas o último estado desta sessão em memória.
+  syncAppBadge(forceBadge);
 
   if (panel !== observedPanel) {
     observedPanel = panel;
@@ -353,33 +387,45 @@ function remindUnseenAlerts() {
 }
 
 function acknowledgeWhenUserReturns() {
-  if (document.visibilityState === "visible" && attentionActive) scheduleVisibleStop(RETURN_FLASH_MS);
+  if (document.visibilityState !== "visible") return;
+  sync(true);
+  if (attentionActive) scheduleVisibleStop(RETURN_FLASH_MS);
 }
 
 function findCardByKey(key: string) {
-  return Array.from(document.querySelectorAll<HTMLElement>(CARD_SELECTOR))
-    .find((card) => storageKeyForCard(card) === key) ?? null;
+  const panel = document.querySelector<HTMLElement>(".hub-alert-panel");
+  return panel ? cardsInPanel(panel).find((card) => storageKeyForCard(card) === key) ?? null : null;
 }
 
 const root = document.getElementById("root");
 if (root) {
-  const observer = new MutationObserver(sync);
-  observer.observe(root, { childList: true, subtree: true, characterData: true });
-  syncAppBadge();
+  const observer = new MutationObserver(() => sync());
+  observer.observe(root, {
+    childList: true, subtree: true, characterData: true, attributes: true,
+    attributeFilter: ["class", "style", "hidden", "aria-hidden"],
+  });
+  // Descarta só o contador legado. Nenhuma pendência real é removida.
+  try { localStorage.removeItem(LEGACY_STORAGE_KEY); } catch { /* Armazenamento opcional. */ }
+  void closeHubWindowsNotification(REMINDER_TAG);
+  syncAppBadge(true);
   sync();
 }
 
-window.setInterval(syncAppBadge, BADGE_KEEPALIVE_MS);
+window.setInterval(() => sync(true), BADGE_KEEPALIVE_MS);
 window.setInterval(remindUnseenAlerts, REMINDER_MS);
 
 document.addEventListener("hub:new-alert-tasks", (event) => {
+  syncSession();
+  if (!sessionUser) return;
   const detail = (event as NewAlertTaskEvent).detail;
   const tasks = detail?.tasks ?? [];
   tasks.forEach((task) => {
     const taskTitle = normalize(task.title ?? "") || "Novo chamado no HUB";
     const key = `task:${normalize(task.id ?? "") || hashString(taskTitle)}`;
     rememberPendingTaskKey(taskTitle, key);
-    registerUnseenAlert(key, taskTitle, "Novo chamado/Afazer no HUB.");
+    if (observedPanel) assignPendingTaskKeys(observedPanel);
+    sync();
+    if (findCardByKey(key)) registerUnseenAlert(key, taskTitle, "Novo chamado/Afazer no HUB.");
   });
   suppressGenericDetectionUntil = Date.now() + EXTERNAL_REFRESH_SUPPRESS_MS;
   if (observedPanel) decorateUnseenCards(observedPanel);
@@ -398,11 +444,10 @@ document.addEventListener("hub:open-alert", (event) => {
 
 document.addEventListener("visibilitychange", acknowledgeWhenUserReturns);
 window.addEventListener("focus", acknowledgeWhenUserReturns);
-window.addEventListener("storage", (event) => {
-  if (event.key !== STORAGE_KEY) return;
-  unseenAlerts = loadUnseenAlerts();
-  syncAppBadge();
-  if (observedPanel) decorateUnseenCards(observedPanel);
+document.addEventListener("hub:alert-session-change", () => sync());
+navigator.serviceWorker?.addEventListener("controllerchange", () => sync(true));
+navigator.serviceWorker?.addEventListener("message", (event) => {
+  if (event.data?.type === "hub:refresh-alert-badge") sync(true);
 });
 
 document.addEventListener("click", (event) => {

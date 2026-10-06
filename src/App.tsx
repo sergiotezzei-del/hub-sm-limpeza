@@ -589,6 +589,7 @@ function App() {
     if (currentUser) {
       const session: SavedSession = { view, currentUser, previewEmployeeId, selectedGuardName, marketingSessionToken };
       window.sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
+      document.dispatchEvent(new Event("hub:alert-session-change"));
     }
   }, [view, currentUser, previewEmployeeId, selectedGuardName, marketingSessionToken]);
 
@@ -815,6 +816,7 @@ function App() {
     if (marketingSessionToken) void endMarketingSession(marketingSessionToken).catch(() => undefined);
     void signOutSupabaseAuth();
     window.sessionStorage.removeItem(SESSION_KEY);
+    document.dispatchEvent(new Event("hub:alert-session-change"));
     setMarketingSessionToken(null);
     setMarketingSummary({ newCount: 0, urgencyCount: 0, unreadCount: 0, queueOverrideCount: 0, managerReviewCount: 0 });
     setCurrentUser(null);

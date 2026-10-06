@@ -24,14 +24,6 @@ type EmailInboxStatusRow = {
 };
 
 export async function loadEmailInboxStatus(): Promise<EmailInboxStatus> {
-  if (RECOVERY_MODE) {
-    return {
-      emailAddress: "",
-      configured: false,
-      pendingNewCount: 0,
-      lastError: "Indisponível no recovery local.",
-    };
-  }
   const rows = await rpc<EmailInboxStatusRow[]>("hub_email_inbox_get_status", {});
   const row = Array.isArray(rows) ? rows[0] : undefined;
   return {
@@ -53,7 +45,6 @@ export async function saveEmailInboxConfig(emailAddress: string, password: strin
 }
 
 export async function acknowledgeEmailInbox() {
-  if (RECOVERY_MODE) throw new Error("EMAIL_INBOX_RECOVERY_BLOCKED");
   await rpc("hub_email_inbox_acknowledge", {});
 }
 

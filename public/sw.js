@@ -1,4 +1,4 @@
-const CACHE_NAME = "hub-santa-maria-v23-recovery-wide-final";
+const CACHE_NAME = "hub-santa-maria-v24-email-badge-preview";
 const MARKETING_PUSH_CACHE = "hub-marketing-push-state";
 const LAST_MARKETING_PUSH_KEY = "/__hub_last_marketing_push";
 const MARKETING_PUSH_ENDPOINT = null;
@@ -21,7 +21,9 @@ self.addEventListener("activate", (event) => {
       .then((keys) => Promise.all(keys
         .filter((key) => key !== CACHE_NAME && key !== MARKETING_PUSH_CACHE)
         .map((key) => caches.delete(key))))
-      .then(() => self.clients.claim()),
+      .then(() => clearHubBadge())
+      .then(() => self.clients.claim())
+      .then(() => refreshHubBadge()),
   );
 });
 
@@ -73,7 +75,7 @@ self.addEventListener("push", (event) => {
   };
 
   const jobs = [
-    setHubBadge(),
+    refreshHubBadge(),
     self.registration.showNotification(title, options),
   ];
 
@@ -93,7 +95,7 @@ self.addEventListener("notificationclick", (event) => {
 
   event.waitUntil((async () => {
     if (ackToken) await acknowledgeMarketingPush(ackToken);
-    await clearHubBadge();
+    await refreshHubBadge();
     const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
     for (const client of windows) {
       if ("focus" in client) {
@@ -177,13 +179,14 @@ async function acknowledgeMarketingPush(ackToken) {
   }
 }
 
-async function setHubBadge() {
+async function refreshHubBadge() {
+  // Push não conhece o usuário ativo nem a quantidade real de pendências.
+  // O frontend é o único responsável por calcular o badge; a notificação permanece.
   try {
-    if (self.navigator && typeof self.navigator.setAppBadge === "function") {
-      await self.navigator.setAppBadge(1);
-    }
+    const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    windows.forEach((client) => client.postMessage({ type: "hub:refresh-alert-badge" }));
   } catch {
-    // Nem todos os sistemas suportam badge.
+    // A notificação nativa segue independente da sincronização do badge.
   }
 }
 
