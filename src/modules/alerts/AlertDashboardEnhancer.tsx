@@ -123,7 +123,18 @@ function AlertDashboardPanel() {
   const [adminPushStatus, setAdminPushStatus] = useState<AdminPushStatus | null>(null);
   const [adminPushBusy, setAdminPushBusy] = useState(false);
   const [adminPushMessage, setAdminPushMessage] = useState("");
+  const [panelPendingCount, setPanelPendingCount] = useState(0);
   const today = getTodayIso();
+
+  useEffect(() => {
+    // Inclui os cards inseridos pelos outros enhancers, com os mesmos critérios do badge.
+    const syncCount = () => {
+      setPanelPendingCount(Math.max(0, Number(document.documentElement.dataset.hubUnseenAlerts ?? 0) || 0));
+    };
+    document.addEventListener("hub:unseen-alert-count", syncCount);
+    syncCount();
+    return () => document.removeEventListener("hub:unseen-alert-count", syncCount);
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -438,7 +449,7 @@ function AlertDashboardPanel() {
         <div>
           <p className="hub-alert-kicker">PAINEL DO DIA</p>
           <h2>ALERTAS</h2>
-          <small>{loading ? "Carregando..." : totalPending === 0 ? "Nenhuma pendência hoje" : `${totalPending} aviso(s) no painel${overdueCount ? ` · ${overdueCount} atrasado(s)` : ""}`}</small>
+          <small>{loading ? "Carregando..." : panelPendingCount === 0 ? "Nenhuma pendência hoje" : `${panelPendingCount} aviso(s) no painel${overdueCount ? ` · ${overdueCount} atrasado(s)` : ""}`}</small>
         </div>
         <button className="hub-alert-create-button" type="button" onClick={() => setManagerOpen(true)}>+ Criar alerta</button>
       </header>
