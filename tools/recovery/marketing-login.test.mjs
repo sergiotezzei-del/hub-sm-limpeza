@@ -185,6 +185,20 @@ test('regular Marketing user keeps own identity and hub_user role', async () => 
   assert.ok(s.state.marketingSessionToken);
 });
 
+for (const id of ['maria', 'murilo']) {
+  test(`${id} installs own hub_user Auth session and opens Marketing`, async () => {
+    const s = scenario({ id });
+    await s.login();
+    assert.equal(s.state.currentUser, id);
+    assert.equal(s.getSession().user.app_metadata.managed_user_id, id);
+    assert.equal(s.getSession().user.app_metadata.role, 'hub_user');
+    assert.equal(s.state.marketingSessionToken, 'synthetic-marketing-session');
+    s.openMarketing();
+    assert.equal(s.state.view, 'marketing');
+    assert.ok(s.requests.every((request) => request.url.startsWith(origin + '/')));
+  });
+}
+
 test('user without menu permission logs in but does not request Marketing', async () => {
   const s = scenario({ id: 'synthetic-common-user', marketing: false });
   await s.login();

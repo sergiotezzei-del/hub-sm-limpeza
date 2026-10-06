@@ -6,7 +6,8 @@ import { ExclusiveChoice } from "./ExclusiveChoice";
 import {
   formatCaptureRange,
   formatMarketingDateTime,
-  MARKETING_ASSIGNEES,
+  getMarketingAssigneeOptions,
+  isMarketingOperator,
   MARKETING_CONTENT_OPTIONS,
   MARKETING_REVIEW_REASONS,
   MARKETING_STANDARD_TIMES,
@@ -1274,7 +1275,7 @@ function AccessView(props: { sessionToken: string; dashboard: MarketingDashboard
             const managerAccess = props.dashboard.access.find((access) => access.role === "sales_manager" && access.teamId === team.id && access.active);
             return <article key={team.id}><strong>{team.managerName}</strong><span>{managerAccess ? `Usuário vinculado: ${managerAccess.userName}` : "Sem usuário vinculado"}</span><small>{props.dashboard.brokers.filter((broker) => broker.teamId === team.id).length} corretor(es) já usados em pedidos</small></article>;
           })}
-          <article className="marketing-staff-access"><strong>Equipe de Marketing</strong>{props.dashboard.access.filter((access) => access.role === "marketing" && access.active).map((access) => <span key={access.managedUserId}>{access.userName}</span>)}{props.dashboard.access.filter((access) => access.role === "marketing" && access.active).length === 0 && <span>Maria e Arthur ainda não vinculados a usuários do HUB.</span>}</article>
+          <article className="marketing-staff-access"><strong>Equipe de Marketing</strong>{props.dashboard.access.filter((access) => access.role === "marketing" && access.active).map((access) => <span key={access.managedUserId}>{access.userName}</span>)}{props.dashboard.access.filter((access) => access.role === "marketing" && access.active).length === 0 && <span>Maria e Murilo ainda não vinculados a usuários do HUB.</span>}</article>
         </div>
       </div>
     </section>
@@ -1377,7 +1378,7 @@ function RequestDetail(props: { sessionToken: string; dashboard: MarketingDashbo
   const actionInFlight = useRef(false);
   const requestIsClosed = ["pronto", "cancelado"].includes(props.request.status);
   const canManage = (props.role === "admin" || props.role === "marketing") && !requestIsClosed;
-  const isMarketingScheduler = props.dashboard.context.userId === "maria" || props.dashboard.context.userId === "arthur";
+  const isMarketingScheduler = isMarketingOperator(props.dashboard.context.userId, props.role);
   const selectableStatuses = allowedManagementStatuses(props.request);
   const pendingOverride = props.dashboard.queueOverrideRequests.find((request) => request.requestId === props.request.id && request.status === "pending");
   const pendingManagerReview = props.dashboard.managerReviews.find((review) => review.requestId === props.request.id && review.status === "pending");
@@ -1491,7 +1492,7 @@ function RequestDetail(props: { sessionToken: string; dashboard: MarketingDashbo
     event.preventDefault();
     const statusNeedsOwner = !["solicitado", "bloqueado", "cancelado"].includes(status);
     if (statusNeedsOwner && !assigned) {
-      props.onError("Defina Maria ou Arthur como responsável antes de avançar o pedido.");
+      props.onError("Defina Maria ou Murilo como responsável antes de avançar o pedido.");
       return;
     }
     if (props.request.requestKind === "capture_edit") {
@@ -1592,7 +1593,7 @@ function RequestDetail(props: { sessionToken: string; dashboard: MarketingDashbo
           <h3>Controle do Marketing</h3>
           <label>Status<select value={status} onChange={(event) => setStatus(event.target.value as MarketingRequestStatus)}>{selectableStatuses.map((value) => <option value={value} key={value}>{statusLabels[value]}</option>)}</select></label>
           <label>Previsão de entrega<input type="datetime-local" value={promised} onChange={(event) => setPromised(event.target.value)} /></label>
-          <label>Responsável no Marketing<select value={assigned} onChange={(event) => setAssigned(event.target.value)}><option value="">Não definido</option>{MARKETING_ASSIGNEES.map((name) => <option value={name} key={name}>{name}</option>)}</select></label>
+          <label>Responsável no Marketing<select value={assigned} onChange={(event) => setAssigned(event.target.value)}><option value="">Não definido</option>{getMarketingAssigneeOptions(props.request.assignedMarketingName || "").map((option) => <option value={option.value} key={option.value} disabled={option.disabled}>{option.label}</option>)}</select></label>
           {props.request.requestKind === "capture_edit" && props.request.specialCaptureStatus !== "pending" && (
             <section className="marketing-capture-control span-2">
               <div className="marketing-capture-control-head"><div><h4>Agendamento da captação</h4><small>Escolha um horário livre. Não é necessário informar duração.</small></div></div>
@@ -1665,8 +1666,8 @@ function RequestDetail(props: { sessionToken: string; dashboard: MarketingDashbo
             {props.role === "admin" && <small>A equipe de Marketing deve justificar a alteração antes da aprovação administrativa.</small>}
           </section>
         )}
-        {(props.dashboard.context.userId === "arthur" || props.dashboard.context.userId === "maria") && props.request.status === "agendado" && props.request.requestKind === "capture_edit" && Boolean(props.request.confirmedCaptureAt) && <button type="button" className="marketing-reschedule-request" disabled={busy} onClick={() => { void rescheduleRequest(); }}>REAGENDAR PEDIDO</button>}
-        {(props.dashboard.context.userId === "arthur" || props.dashboard.context.userId === "maria") && !requestIsClosed && <button type="button" className="marketing-cancel-request" disabled={busy} onClick={() => { const scheduled = Boolean(props.request.confirmedCaptureAt); if (window.confirm(scheduled ? "Cancelar este agendamento? O pedido ficará como cancelado e sairá da agenda." : "Cancelar este pedido? Ele sairá da operação, mas o histórico será preservado.")) void run("cancel", { reason: "Cancelado pelo Marketing a pedido do corretor." }); }}>{props.request.confirmedCaptureAt ? "CANCELAR AGENDAMENTO" : "CANCELAR PEDIDO"}</button>}
+        {isMarketingScheduler && props.request.status === "agendado" && props.request.requestKind === "capture_edit" && Boolean(props.request.confirmedCaptureAt) && <button type="button" className="marketing-reschedule-request" disabled={busy} onClick={() => { void rescheduleRequest(); }}>REAGENDAR PEDIDO</button>}
+        {isMarketingScheduler && !requestIsClosed && <button type="button" className="marketing-cancel-request" disabled={busy} onClick={() => { const scheduled = Boolean(props.request.confirmedCaptureAt); if (window.confirm(scheduled ? "Cancelar este agendamento? O pedido ficará como cancelado e sairá da agenda." : "Cancelar este pedido? Ele sairá da operação, mas o histórico será preservado.")) void run("cancel", { reason: "Cancelado pelo Marketing a pedido do corretor." }); }}>{props.request.confirmedCaptureAt ? "CANCELAR AGENDAMENTO" : "CANCELAR PEDIDO"}</button>}
         {!canManage && !["pronto", "cancelado"].includes(props.request.status) && <button type="button" className="marketing-cancel-request" disabled={busy} onClick={() => { if (window.confirm("Cancelar este pedido? Ele sairá da operação, mas o histórico será preservado.")) void run("cancel"); }}>Cancelar pedido</button>}
         {deleteOpen && <AdminDeleteRequestModal sessionToken={props.sessionToken} request={props.request} onClose={() => setDeleteOpen(false)} onError={props.onError} onDeleted={async () => { props.onNotice(`Pedido #${props.request.requestNumber} excluído da operação com o histórico preservado.`); setDeleteOpen(false); await props.onChanged(); props.onClose(); }} />}
       </section>

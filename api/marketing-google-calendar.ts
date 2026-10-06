@@ -531,7 +531,7 @@ async function supabaseRpc<T = unknown>(functionName: string, body: JsonRecord):
 
 function translateDatabaseError(message: string) {
   if (message.includes("MARKETING_SESSION_EXPIRED")) return "Sua sessão do Marketing expirou. Entre novamente.";
-  if (message.includes("MARKETING_GOOGLE_CONNECT_DENIED")) return "A conexão Google está disponível somente para Maria e Arthur.";
+  if (message.includes("MARKETING_GOOGLE_CONNECT_DENIED")) return "A conexão Google está disponível somente para Maria e Murilo.";
   if (message.includes("MARKETING_GOOGLE_NOT_CONFIGURED")) return "A credencial Google do HUB ainda não está configurada.";
   if (message.includes("MARKETING_GOOGLE_STATE_INVALID")) return "A autorização do Google expirou. Inicie a conexão novamente.";
   if (message.includes("MARKETING_GOOGLE_REFRESH_TOKEN_REQUIRED")) return "O Google não liberou acesso permanente. Conecte novamente.";

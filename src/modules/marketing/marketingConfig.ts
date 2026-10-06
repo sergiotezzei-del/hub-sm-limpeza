@@ -1,4 +1,17 @@
-export const MARKETING_ASSIGNEES = ["Maria", "Arthur"] as const;
+export const MARKETING_ASSIGNEES = ["Maria", "Murilo"] as const;
+
+export function isMarketingOperator(userId: string, role: string) {
+  return role === "marketing" && (userId === "maria" || userId === "murilo");
+}
+
+export function getMarketingAssigneeOptions(currentAssignee: string) {
+  const options: Array<{ value: string; label: string; disabled: boolean }> =
+    MARKETING_ASSIGNEES.map((name) => ({ value: name, label: name, disabled: false }));
+  if (currentAssignee && !options.some((option) => option.value === currentAssignee)) {
+    options.unshift({ value: currentAssignee, label: `${currentAssignee} (histórico)`, disabled: true });
+  }
+  return options;
+}
 
 export const MARKETING_STANDARD_TIMES = [
   "08:00",
