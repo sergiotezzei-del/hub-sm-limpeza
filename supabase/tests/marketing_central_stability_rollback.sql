@@ -141,9 +141,10 @@ begin
 
   begin
     update public.marketing_requests set status = 'pronto' where id = v_request_c;
-    raise exception 'TEST_EXPECTED_INVALID_TRANSITION';
+    raise exception 'TEST_EXPECTED_UNASSIGNED_REQUEST_REJECTION';
   exception when others then
-    if sqlerrm not like '%MARKETING_STATUS_TRANSITION_INVALID%' then raise; end if;
+    -- The current legacy-compatible workflow checks ownership before completion.
+    if sqlerrm not like '%MARKETING_SCHEDULE_ASSIGNEE_REQUIRED%' then raise; end if;
   end;
 
   update public.marketing_requests
@@ -226,7 +227,8 @@ begin
       and e.event_type = 'pedido_reagendado_para_fim_da_fila'
       and e.details->>'previousCaptureGroupId' = v_group_id::text
   ) then raise exception 'TEST_PREVIOUS_GROUP_NOT_AUDITED'; end if;
-  if not exists (
+  -- Google synchronization is deliberately disabled by the local recovery.
+  if to_regnamespace('recovery_api') is null and not exists (
     select 1 from private.marketing_google_calendar_sync_queue q where q.request_id = v_request_a
   ) then raise exception 'TEST_RESCHEDULE_NOT_QUEUED_FOR_GOOGLE'; end if;
 

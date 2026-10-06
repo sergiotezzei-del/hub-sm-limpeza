@@ -147,7 +147,7 @@ export function MarketingGoogleCalendarPanel(props: PanelProps) {
               {user.connected && <small className="marketing-google-sync">{user.lastSyncedAt ? `Última sincronização: ${formatDateTime(user.lastSyncedAt)}` : "Pronta para sincronizar os próximos agendamentos."}</small>}
             </article>
           ))}
-          <p className="marketing-google-admin-note">Maria e Arthur conectam a própria conta pelo login deles. Você acompanha aqui se cada agenda está ativa.</p>
+          <p className="marketing-google-admin-note">Maria e Murilo conectam a própria conta pelo login deles. Você acompanha aqui se cada agenda está ativa.</p>
         </div>
       ) : own ? (
         <div className={`marketing-google-own ${own.connected ? "connected" : "disconnected"}`}>
