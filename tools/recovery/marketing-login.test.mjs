@@ -70,7 +70,7 @@ function scenario({ id = 'tezzei', marketing = true, denyMarketing = false,
   } };
   const globals = {
     window: { setTimeout, clearTimeout, sessionStorage: { removeItem() { events.push('hub:clearStorage'); } } },
-    AbortController, console: { error() {}, log() {} },
+    AbortController, Event, console: { error() {}, log() {} },
     SUPABASE_URL: origin, readString: (value) => typeof value === 'string' && value ? value : undefined,
     getSupabaseClient: async () => supabase,
     rememberSupabaseSession() {}, activeSessionSnapshot: {},
@@ -133,7 +133,7 @@ function scenario({ id = 'tezzei', marketing = true, denyMarketing = false,
   const app = {
     ...globals, ...recovery, ...auth, ...marketingService,
     password: code, managedUsers: [], marketingSessionToken: null,
-    document: { activeElement: null }, HTMLElement: class {},
+    document: Object.assign(new EventTarget(), { activeElement: null }), HTMLElement: class {},
     loginManagedUserRemoteByAccessCode: async (input) => { assert.equal(input, code); return user; },
     normalizeManagedUser: (value) => value, upsertManagedUser: (_list, value) => [value],
     saveLocalManagedUsers() {}, setManagedUsers() {}, setManagedUsersSync() {},
